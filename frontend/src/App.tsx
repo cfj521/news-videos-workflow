@@ -2,6 +2,8 @@ import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
 import { DashboardPage } from "./pages/Dashboard";
 import { RunDetailPage } from "./pages/RunDetail";
 import { SourcesPage } from "./pages/Sources";
+import { SettingsPage } from "./pages/Settings";
+import { ToastProvider } from "./components/Toast";
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -10,6 +12,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         <span className="text-lg font-bold text-white">NewsVid</span>
         <NavLink
           to="/"
+          end
           className={({ isActive }) =>
             isActive ? "text-blue-400" : "text-gray-400 hover:text-gray-200"
           }
@@ -24,6 +27,14 @@ function Layout({ children }: { children: React.ReactNode }) {
         >
           Sources
         </NavLink>
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            isActive ? "text-blue-400" : "text-gray-400 hover:text-gray-200"
+          }
+        >
+          Settings
+        </NavLink>
       </nav>
       <main className="p-6">{children}</main>
     </div>
@@ -33,13 +44,16 @@ function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/sources" element={<SourcesPage />} />
-          <Route path="/runs/:id" element={<RunDetailPage />} />
-        </Routes>
-      </Layout>
+      <ToastProvider>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/sources" element={<SourcesPage />} />
+            <Route path="/runs/:id" element={<RunDetailPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </Layout>
+      </ToastProvider>
     </BrowserRouter>
   );
 }
