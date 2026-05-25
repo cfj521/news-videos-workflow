@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    .scene { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .scene img { width: 100%; height: 100%; object-fit: cover; }
+    .subtitle {
+      position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+      font-size: 36px; color: white; text-align: center; max-width: 80%;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      visibility: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="main"
+       data-composition-id="main"
+       data-width="{{ width }}"
+       data-height="{{ height }}"
+       data-start="0"
+       data-duration="{{ total_duration_s }}">
+
+    {% for entry in entries %}
+    <div class="scene clip" id="s{{ entry.scene_id }}"
+         data-start="{{ entry.start_s }}"
+         data-duration="{{ entry.duration_s }}"
+         data-track-index="0"
+         {% if not loop.first %}style="visibility:hidden;"{% endif %}>
+      <div class="scene-content">
+        <img src="{{ entry.image_path }}" alt="scene {{ entry.scene_id }}">
+        {% if entry.subtitle_text %}
+        <div class="subtitle" id="sub{{ entry.scene_id }}">{{ entry.subtitle_text }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+
+    {% for entry in entries %}
+    <audio id="narration-{{ entry.scene_id }}"
+           data-start="{{ entry.start_s }}"
+           data-duration="{{ entry.audio_duration_s }}"
+           data-track-index="1"
+           data-volume="1.0"
+           src="{{ entry.audio_path }}"></audio>
+    {% endfor %}
+  </div>
+
+  <script>
+    const tl = gsap.timeline();
+
+    {% for entry in entries %}
+    {% if not loop.first %}
+    tl.set("#s{{ entry.scene_id }}", { autoAlpha: 1 }, {{ entry.start_s }});
+    tl.set("#s{{ prev_scene_ids[loop.index0] }}", { autoAlpha: 0 }, {{ entry.start_s }});
+    {% endif %}
+    tl.from("#s{{ entry.scene_id }} img", {
+      scale: 1.06, duration: {{ entry.duration_s }}, ease: "sine.inOut"
+    }, {{ entry.start_s }});
+    {% if entry.subtitle_text %}
+    tl.set("#sub{{ entry.scene_id }}", { visibility: "visible", opacity: 1 }, {{ entry.start_s + 0.3 }});
+    tl.set("#sub{{ entry.scene_id }}", { visibility: "hidden" }, {{ entry.end_s - 0.2 }});
+    tl.from("#sub{{ entry.scene_id }}", {
+      y: 20, opacity: 0, duration: 0.4, ease: "power3.out"
+    }, {{ entry.start_s + 0.3 }});
+    {% endif %}
+    {% endfor %}
+
+    window.__timelines = { main: tl };
+  </script>
+</body>
+</html>
