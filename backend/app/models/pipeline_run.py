@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Integer, DateTime
+
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from .base import Base, TimestampMixin
 
 if TYPE_CHECKING:

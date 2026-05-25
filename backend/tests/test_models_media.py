@@ -1,22 +1,23 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models.base import Base
-from app.models.pipeline_run import PipelineRun
-from app.models.script import Script
+
 from app.models.asset import Asset
+from app.models.base import Base
+from app.models.issue_summary import IssueSummary
+from app.models.pipeline_run import PipelineRun
+from app.models.publish_record import PublishRecord
+from app.models.script import Script
 from app.models.timeline import Timeline
 from app.models.video import Video
-from app.models.publish_record import PublishRecord
-from app.models.issue_summary import IssueSummary
 
 
 @pytest.fixture
 def db_session():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session_factory = sessionmaker(bind=engine)
+    session = session_factory()
     yield session
     session.close()
 
@@ -31,8 +32,11 @@ def run(db_session):
 
 def test_script_create(db_session, run):
     script = Script(
-        run_id=run.id, title="AI 新突破", description="今天的科技新闻",
-        tags_json='["AI", "科技"]', scenes_json='[{"id": 1, "narration": "test"}]',
+        run_id=run.id,
+        title="AI 新突破",
+        description="今天的科技新闻",
+        tags_json='["AI", "科技"]',
+        scenes_json='[{"id": 1, "narration": "test"}]',
         mode="single",
     )
     db_session.add(script)
@@ -47,8 +51,11 @@ def test_asset_create(db_session, run):
     db_session.commit()
 
     asset = Asset(
-        script_id=script.id, scene_id=1, type="image",
-        file_path="data/runs/1/assets/scene_01_image.png", duration_ms=5000,
+        script_id=script.id,
+        scene_id=1,
+        type="image",
+        file_path="data/runs/1/assets/scene_01_image.png",
+        duration_ms=5000,
     )
     db_session.add(asset)
     db_session.commit()
@@ -80,9 +87,12 @@ def test_video_and_publish(db_session, run):
     db_session.commit()
 
     video = Video(
-        timeline_id=tl.id, file_path="data/runs/1/output.mp4",
+        timeline_id=tl.id,
+        file_path="data/runs/1/output.mp4",
         thumbnail_path="data/runs/1/thumbnail.jpg",
-        resolution="1080x1920", format="mp4", file_size_bytes=10_000_000,
+        resolution="1080x1920",
+        format="mp4",
+        file_size_bytes=10_000_000,
     )
     db_session.add(video)
     db_session.commit()
@@ -95,7 +105,8 @@ def test_video_and_publish(db_session, run):
 
 def test_issue_summary(db_session, run):
     summary = IssueSummary(
-        run_id=run.id, summary_text="本期包含 5 条 AI 相关新闻",
+        run_id=run.id,
+        summary_text="本期包含 5 条 AI 相关新闻",
         article_fingerprints_json='["abc123", "def456"]',
     )
     db_session.add(summary)

@@ -17,8 +17,7 @@ class ProviderRegistry:
         if name not in providers:
             available = list(providers.keys())
             raise KeyError(
-                f"Provider '{name}' not found in category '{category}'. "
-                f"Available: {available}"
+                f"Provider '{name}' not found in category '{category}'. Available: {available}"
             )
         instance = providers[name](**kwargs)
         self._instances.setdefault(category, {})[name] = instance

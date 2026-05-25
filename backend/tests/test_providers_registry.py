@@ -1,5 +1,6 @@
 import pytest
-from app.providers.base import CollectorProvider, RawArticleData
+
+from app.providers.base import CollectorProvider
 from app.providers.registry import ProviderRegistry
 
 

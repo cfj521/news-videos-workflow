@@ -1,5 +1,6 @@
-from sqlalchemy import create_engine as _create_engine, Engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import Engine
+from sqlalchemy import create_engine as _create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 
 def create_engine_from_url(url: str) -> Engine:

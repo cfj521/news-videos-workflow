@@ -1,23 +1,25 @@
 import pytest
+
 from app.providers.base import (
-    CollectorProvider,
-    TextProvider,
-    ImageProvider,
-    TTSProvider,
-    VideoClipProvider,
-    ComposerProvider,
-    PublisherAdapter,
-    RawArticleData,
     AssetResult,
-    VideoResult,
+    CollectorProvider,
+    ComposerProvider,
+    ImageProvider,
+    PublisherAdapter,
     PublishResult,
+    RawArticleData,
+    TextProvider,
+    TTSProvider,
+    VideoResult,
 )
 
 
 def test_raw_article_data():
     article = RawArticleData(
-        title="Test", content="Content",
-        source_url="https://example.com", source_name="Test",
+        title="Test",
+        content="Content",
+        source_url="https://example.com",
+        source_name="Test",
         published_at=None,
     )
     assert article.title == "Test"
@@ -37,7 +39,9 @@ def test_video_result():
 
 
 def test_publish_result():
-    result = PublishResult(platform="youtube", status="success", url="https://youtube.com/watch?v=abc")
+    result = PublishResult(
+        platform="youtube", status="success", url="https://youtube.com/watch?v=abc"
+    )
     assert result.platform == "youtube"
 
 

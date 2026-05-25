@@ -1,9 +1,8 @@
-from app.schemas.common import StatusEnum, TimeRangeEnum
-from app.schemas.source import NewsSourceCreate, NewsSourceRead
-from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
-from app.schemas.article import RawArticleRead
-from app.schemas.script import SceneSchema, ScriptRead
-from app.schemas.timeline import TimelineEntrySchema, TimelineRead
+from app.schemas.common import TimeRangeEnum
+from app.schemas.pipeline import PipelineRunCreate
+from app.schemas.script import SceneSchema
+from app.schemas.source import NewsSourceCreate
+from app.schemas.timeline import TimelineEntrySchema
 
 
 def test_time_range_enum():
@@ -24,14 +23,19 @@ def test_pipeline_run_create():
 
 
 def test_scene_schema():
-    scene = SceneSchema(id=1, narration="旁白文本", image_prompt="一张科技风格的图片", duration_hint=5.0)
+    scene = SceneSchema(
+        id=1, narration="旁白文本", image_prompt="一张科技风格的图片", duration_hint=5.0
+    )
     assert scene.motion_prompt == ""
 
 
 def test_timeline_entry():
     entry = TimelineEntrySchema(
-        scene_id=1, start_ms=0, end_ms=5000,
-        image_path="assets/scene_01.png", audio_path="assets/scene_01.mp3",
+        scene_id=1,
+        start_ms=0,
+        end_ms=5000,
+        image_path="assets/scene_01.png",
+        audio_path="assets/scene_01.mp3",
         subtitle_text="旁白文本",
     )
     assert entry.end_ms - entry.start_ms == 5000

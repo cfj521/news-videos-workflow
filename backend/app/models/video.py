@@ -1,5 +1,6 @@
-from sqlalchemy import String, Integer, BigInteger, ForeignKey
+from sqlalchemy import BigInteger, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from .base import Base, TimestampMixin
 
 

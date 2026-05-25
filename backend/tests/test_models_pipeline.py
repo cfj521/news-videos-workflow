@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
 from app.models.base import Base
 from app.models.pipeline_run import PipelineRun
 from app.models.raw_article import RawArticle
@@ -10,8 +11,8 @@ from app.models.raw_article import RawArticle
 def db_session():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session_factory = sessionmaker(bind=engine)
+    session = session_factory()
     yield session
     session.close()
 
@@ -42,9 +43,13 @@ def test_raw_article_create(db_session):
     db_session.commit()
 
     article = RawArticle(
-        run_id=run.id, title="Test Article", content="Article content here",
-        source_url="https://example.com/article", source_name="Test Source",
-        category="ai", language="en",
+        run_id=run.id,
+        title="Test Article",
+        content="Article content here",
+        source_url="https://example.com/article",
+        source_name="Test Source",
+        category="ai",
+        language="en",
     )
     db_session.add(article)
     db_session.commit()
@@ -60,8 +65,11 @@ def test_raw_article_relationship(db_session):
     db_session.commit()
 
     article = RawArticle(
-        run_id=run.id, title="Test", content="Content",
-        source_url="https://example.com", source_name="Test",
+        run_id=run.id,
+        title="Test",
+        content="Content",
+        source_url="https://example.com",
+        source_name="Test",
     )
     db_session.add(article)
     db_session.commit()

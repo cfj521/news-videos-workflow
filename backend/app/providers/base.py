@@ -55,14 +55,12 @@ class CollectorProvider(ABC):
         source_config: dict,
         time_range: str,
         max_items: int = 30,
-    ) -> list[RawArticleData]:
-        ...
+    ) -> list[RawArticleData]: ...
 
 
 class TextProvider(ABC):
     @abstractmethod
-    async def generate(self, prompt: str, system_prompt: str = "") -> str:
-        ...
+    async def generate(self, prompt: str, system_prompt: str = "") -> str: ...
 
 
 class ImageProvider(ABC):
@@ -72,8 +70,7 @@ class ImageProvider(ABC):
         prompt: str,
         size: str = "1080x1920",
         output_path: str = "",
-    ) -> AssetResult:
-        ...
+    ) -> AssetResult: ...
 
 
 class TTSProvider(ABC):
@@ -84,8 +81,7 @@ class TTSProvider(ABC):
         voice: str = "",
         speed: float = 1.0,
         output_path: str = "",
-    ) -> AssetResult:
-        ...
+    ) -> AssetResult: ...
 
 
 class VideoClipProvider(ABC):
@@ -97,8 +93,7 @@ class VideoClipProvider(ABC):
         duration: float,
         resolution: str = "768x512",
         output_path: str = "",
-    ) -> AssetResult:
-        ...
+    ) -> AssetResult: ...
 
 
 class ComposerProvider(ABC):
@@ -109,8 +104,7 @@ class ComposerProvider(ABC):
         assets_dir: str,
         output_path: str,
         resolution: str = "1080x1920",
-    ) -> VideoResult:
-        ...
+    ) -> VideoResult: ...
 
 
 class PublisherAdapter(ABC):
@@ -122,5 +116,4 @@ class PublisherAdapter(ABC):
         title: str,
         description: str,
         tags: list[str],
-    ) -> PublishResult:
-        ...
+    ) -> PublishResult: ...

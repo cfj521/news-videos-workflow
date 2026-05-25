@@ -1,5 +1,6 @@
 def test_config_loads_defaults():
     from app.config import Settings
+
     settings = Settings(
         ANTHROPIC_API_KEY="test-key",
         OPENAI_API_KEY="test-key",
@@ -13,6 +14,7 @@ def test_config_loads_defaults():
 
 def test_data_dir_creation(tmp_path):
     from app.config import Settings
+
     settings = Settings(
         ANTHROPIC_API_KEY="test-key",
         OPENAI_API_KEY="test-key",
