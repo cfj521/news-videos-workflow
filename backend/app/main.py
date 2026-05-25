@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.router import api_router
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="News Videos Workflow", version="0.1.0")
@@ -11,6 +13,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.include_router(api_router)
 
     @app.get("/api/health")
     async def health_check():
