@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:justdubit.github.io)",
+      "PowerShell(python -c \"from PIL import Image; Image.open\\(r'D:\\\\sanyan\\\\projects\\\\news-videos-workflow\\\\flow.bmp'\\).save\\(r'D:\\\\sanyan\\\\projects\\\\news-videos-workflow\\\\flow.png'\\)\")",
+      "WebSearch",
+      "WebFetch(domain:docs.ltx.video)",
+      "WebFetch(domain:ltx.io)"
+    ]
+  }
+}
