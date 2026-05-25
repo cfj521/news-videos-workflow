@@ -9,4 +9,5 @@ node_modules/
 dist/
 .ruff_cache/
 .pytest_cache/
+.pytest_tmp/
 *.db
