@@ -1,0 +1,25 @@
+from datetime import datetime
+from typing import TYPE_CHECKING
+from sqlalchemy import String, Integer, DateTime
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from .base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from .raw_article import RawArticle
+
+
+class PipelineRun(Base, TimestampMixin):
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mode: Mapped[str] = mapped_column(String(20))
+    video_route: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    current_stage: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    time_range: Mapped[str] = mapped_column(String(10), default="7d")
+    max_articles: Mapped[int] = mapped_column(Integer, default=5)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+
+    articles: Mapped[list["RawArticle"]] = relationship(back_populates="run")
