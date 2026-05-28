@@ -30,7 +30,7 @@ def _seed_aihot_source(factory) -> None:
             return
         db.add(NewsSource(
             name="AI HOT", type="api", url="https://aihot.virxact.com/api/public",
-            category="ai", language="zh", priority=1, enabled=False, tier="standard",
+            category="ai", language="zh", priority=1, enabled=True, tier="standard",
             config_json=json.dumps({"provider": "aihot", "method": "items"}),
         ))
         db.commit()

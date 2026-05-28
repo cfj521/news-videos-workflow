@@ -234,11 +234,16 @@ export function SourcesPage() {
     mutate();
   };
 
-  const allEnabled = sources?.every((s) => s.enabled) ?? false;
-  const toggleAll = async () => {
-    if (!sources?.length) return;
-    const newEnabled = !allEnabled;
-    await api.sources.batch({ ids: sources.map((s) => s.id), enabled: newEnabled });
+  // 批量开关仅控制其他组（自定义源）；全部启用时关闭 AI HOT（互斥），关闭则不自动开启 AI HOT
+  const allCustomEnabled = customSources.length > 0 && customSources.every((s) => s.enabled);
+  const toggleAllCustom = async () => {
+    if (!customIds.length) return;
+    if (allCustomEnabled) {
+      await api.sources.batch({ ids: customIds, enabled: false });
+    } else {
+      await api.sources.batch({ ids: customIds, enabled: true });
+      if (aihotSource?.enabled) await api.sources.update(aihotSource.id, { enabled: false });
+    }
     mutate();
   };
 
@@ -255,14 +260,9 @@ export function SourcesPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold tracking-tight">信息源管理</h1>
-        <div className="flex items-center gap-2">
-          <button onClick={toggleAll} className={btnCompact}>
-            {allEnabled ? "全部禁用" : "全部启用"}
-          </button>
-          <button onClick={() => setShowAdd(true)} className={btnPrimary}>
-            + 添加信息源
-          </button>
-        </div>
+        <button onClick={() => setShowAdd(true)} className={btnPrimary}>
+          + 添加信息源
+        </button>
       </div>
 
       {aihotSource && (
@@ -280,7 +280,11 @@ export function SourcesPage() {
               <SortTh label="语言" sortKey="language" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortTh label="优先级" sortKey="priority" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <th className={`text-left px-4 py-3 ${sectionTitleCls}`}>配置</th>
-              <th className={`text-left px-4 py-3 ${sectionTitleCls}`}>启用</th>
+              <th className={`text-left px-4 py-3 ${sectionTitleCls}`}>
+                <button onClick={toggleAllCustom} className={btnCompact} title="仅控制其他源（全部启用将关闭 AI HOT）">
+                  {allCustomEnabled ? "全部禁用" : "全部启用"}
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>

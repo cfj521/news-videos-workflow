@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls } from "../styles";
+import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, selectCls } from "../styles";
 import { Select } from "./Select";
 import { STAGE_LABELS, VISIBLE_STAGES } from "../types";
 
@@ -129,7 +129,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
             <label className={labelCls}>运行模式</label>
-            <Select value={mode} onChange={setMode} options={[
+            <Select value={mode} onChange={(v) => { setMode(v); if (v === "auto") setAutoCollect(true); }} options={[
               { value: "auto", label: "自动" },
               { value: "manual", label: "手动（逐步审核）" },
             ]} />
@@ -145,28 +145,36 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
         <div className="mb-4">
           <label className={labelCls}>采集方式</label>
-          <Select value={autoCollect ? "auto" : "manual"} onChange={(v) => setAutoCollect(v === "auto")} options={[
-            { value: "auto", label: "自动采集" },
-            { value: "manual", label: "不采集（人工导入）" },
-          ]} />
+          {mode === "auto" ? (
+            <div className={`${selectCls} flex items-center justify-between opacity-50 cursor-not-allowed`}>
+              <span className="text-white/90">自动采集</span>
+            </div>
+          ) : (
+            <Select value={autoCollect ? "auto" : "manual"} onChange={(v) => setAutoCollect(v === "auto")} options={[
+              { value: "auto", label: "自动采集" },
+              { value: "manual", label: "不采集（人工导入）" },
+            ]} />
+          )}
         </div>
 
-        <div className={`grid grid-cols-2 gap-3 mb-5 ${!autoCollect ? "opacity-40 pointer-events-none" : ""}`}>
-          <div>
-            <label className={labelCls}>时间范围</label>
-            <Select value={timeRange} onChange={setTimeRange} options={[
-              { value: "1d", label: "最近 1 天" },
-              { value: "3d", label: "最近 3 天" },
-              { value: "7d", label: "最近 7 天" },
-              { value: "15d", label: "最近 15 天" },
-              { value: "1m", label: "最近 1 个月" },
-            ]} />
+        {autoCollect && (
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            <div>
+              <label className={labelCls}>时间范围</label>
+              <Select value={timeRange} onChange={setTimeRange} options={[
+                { value: "1d", label: "最近 1 天" },
+                { value: "3d", label: "最近 3 天" },
+                { value: "7d", label: "最近 7 天" },
+                { value: "15d", label: "最近 15 天" },
+                { value: "1m", label: "最近 1 个月" },
+              ]} />
+            </div>
+            <div>
+              <label className={labelCls}>最大文章数</label>
+              <input type="number" value={maxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
+            </div>
           </div>
-          <div>
-            <label className={labelCls}>最大文章数</label>
-            <input type="number" value={maxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
-          </div>
-        </div>
+        )}
 
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className={btnSecondary}>取消</button>
