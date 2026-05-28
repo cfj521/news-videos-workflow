@@ -79,3 +79,14 @@ def test_delete_last_scene_in_group_blocked(client, tmp_path):
     _seed(tmp_path, 1, SCRIPT, ARTICLES)
     r = client.delete("/api/pipeline/runs/1/scenes/2")
     assert r.status_code == 400
+
+
+def test_delete_scene_legacy_no_group_id(client, tmp_path):
+    legacy = {"title": "T", "description": "d", "tags": [],
+              "scenes": [
+                  {"id": 1, "narration": "n1", "image_prompt": "p1", "motion_prompt": "", "duration_hint": 5},
+                  {"id": 2, "narration": "n2", "image_prompt": "p2", "motion_prompt": "", "duration_hint": 5},
+              ]}
+    _seed(tmp_path, 1, legacy, ARTICLES)
+    r = client.delete("/api/pipeline/runs/1/scenes/1")
+    assert r.status_code == 200  # both are group None → group has 2 → delete allowed

@@ -524,7 +524,7 @@ def delete_scene(run_id: int, scene_id: int):
     target = next((s for s in script["scenes"] if s["id"] == scene_id), None)
     if not target:
         raise HTTPException(status_code=404, detail="Scene not found")
-    same_group = [s for s in script["scenes"] if s["group_id"] == target["group_id"]]
+    same_group = [s for s in script["scenes"] if s.get("group_id") == target.get("group_id")]
     if len(same_group) <= 1:
         raise HTTPException(status_code=400, detail="每组至少保留 1 个分镜")
     script["scenes"] = [s for s in script["scenes"] if s["id"] != scene_id]
