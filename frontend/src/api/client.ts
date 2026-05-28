@@ -30,7 +30,8 @@ export interface ScriptData {
   title: string;
   description: string;
   tags: string[];
-  scenes: { id: number; narration: string; image_prompt: string; motion_prompt?: string; duration_hint?: number }[];
+  groups?: { id: number; title: string; source_index: number }[];
+  scenes: { id: number; group_id?: number; group_title?: string; narration: string; image_prompt: string; motion_prompt?: string; duration_hint?: number }[];
 }
 
 export interface TimelineData {
@@ -86,6 +87,10 @@ export const api = {
       fetchJSON<{ status: string }>(`/pipeline/runs/${runId}/regen-script`, {
         method: "POST",
       }),
+    addScene: (runId: number, groupId: number, requirement: string) =>
+      fetchJSON(`/pipeline/runs/${runId}/scenes`, { method: "POST", body: JSON.stringify({ group_id: groupId, requirement }) }),
+    deleteScene: (runId: number, sceneId: number) =>
+      fetchJSON(`/pipeline/runs/${runId}/scenes/${sceneId}`, { method: "DELETE" }),
     regenPrompt: (runId: number, sceneId: number, narration: string) =>
       fetchJSON<{ status: string; image_prompt: string }>(`/pipeline/runs/${runId}/scenes/${sceneId}/regen-prompt`, {
         method: "POST",
