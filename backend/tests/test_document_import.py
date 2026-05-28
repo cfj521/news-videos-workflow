@@ -63,3 +63,33 @@ async def test_import_url():
     assert art["content"] == "网页正文内容"
     assert art["url"] == "https://example.com/post"
     assert art["source"] == "example.com"
+
+
+class _FakeVisionCfg:
+    provider = "openai"
+    base_url = "https://api.openai.com/v1"
+    model = "gpt-4o"
+    api_key = "sk-test"
+
+
+@pytest.mark.asyncio
+async def test_import_pdf_uses_vision_single_call():
+    fake_pages = [b"\x89PNG-page1", b"\x89PNG-page2"]
+    with patch("app.services.document_import_pdf._render_pdf_pages", return_value=fake_pages) as render, \
+         patch("app.services.document_import_pdf.httpx.AsyncClient") as MockClient:
+        from unittest.mock import MagicMock
+        resp = MagicMock()
+        resp.json.return_value = {"choices": [{"message": {"content": "PDF 提取的正文"}}]}
+        resp.raise_for_status = MagicMock()
+        client = MockClient.return_value
+        client.__aenter__.return_value = client
+        client.post = AsyncMock(return_value=resp)
+
+        art = await import_file(b"%PDF-1.7 fake", "paper.pdf", vision_cfg=_FakeVisionCfg())
+
+    assert art["title"] == "paper"
+    assert art["content"] == "PDF 提取的正文"
+    render.assert_called_once()
+    payload = client.post.call_args[1]["json"]
+    image_blocks = [b for b in payload["messages"][0]["content"] if b.get("type") == "image_url"]
+    assert len(image_blocks) == 2
