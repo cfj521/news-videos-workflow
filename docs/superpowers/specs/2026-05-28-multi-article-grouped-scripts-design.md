@@ -45,9 +45,11 @@
 - **新增** `run_stage2_multi(articles, text_provider, language) -> dict`：
   - **普通/items 文章**：每篇 = 一组。对每篇用 `ROUNDUP_ARTICLE_SYSTEM_PROMPT` 调 LLM（限 1~3 分镜）→ 分镜；分配全局递增 `id` 与 `group_id`，`group_title = article.title`，`groups[].source_index = 该文章下标`。
   - **daily 文章**（`metadata["aihot_method"] == "daily"`）：读 `metadata["daily_sections"]`（结构化，见下）。对每个 section（类目），把 `items` 按顺序切成 **2~4 条/批**（不跨类目）；每批 = 一组（`group_title` = 类目标签，若一个类目拆多批则加序号如「类目 (2)」）。每批一次 LLM 调用，产出该批每条 items 对应 **1 个分镜**（narration + image_prompt + motion_prompt）。`source_index` 指向该 daily 文章下标（0）。
+    - **确定性批分规则**（`_batch_items(n) -> list[int]`，避免尾批仅 1 条）：`n==1→[1]`（单条类目只能 1 条/组）；`n` 能被处理为每批 3 为主：`n%4==1` 时把最后两批凑成 `3+2`（如 5→[3,2]、9→[3,3,3]、13→[4,3,3,3]）；否则贪心取 4 直到余数 ≤4（如 6→[3,3]、7→[4,3]、8→[4,4]）。实现时用纯函数 + 单测覆盖 n=1..10。
+    - LLM 返回分镜数若与该批 items 数不符：以 LLM 实际返回为准入组（不强行补齐/截断），并记 warning。
   - **汇总元数据**：末尾一次 LLM 综合调用，依据所有分镜/文章标题生成汇总 `title`/`description`/`tags`。
   - 分镜 `id` 全局唯一、连续分配；`groups` 按生成顺序。
-- **runner** `_run_inner` 的 Stage2：把 `article = articles[0]; run_stage2(article, …)` 改为 `script = await run_stage2_multi(articles, text_provider, language=cfg.pipeline.default_language)`（用全部文章）。`daily_mode`/`style` 的单篇逻辑由 `run_stage2_multi` 内部按 metadata 分流取代。
+- **runner** `_run_inner` 的 Stage2：把 `article = articles[0]; run_stage2(article, …)` 改为 `script = await run_stage2_multi(articles, text_provider, language=cfg.pipeline.default_language)`（用全部文章）。`daily_mode`/`style` 的单篇逻辑由 `run_stage2_multi` 内部按 metadata 分流取代。**注意**：该块内引用单篇 `article.title` 的 `progress_detail`/日志需改为面向"多文章/组数"（如「S2 生成脚本 — N 篇 / M 组」），避免 `article` 未定义。
 - **regen-script**（`backend/app/api/pipeline.py` 的 `regen_script`）：A 期它调 `run_stage2(articles_raw[0], …)` 单篇。本期改为读**全部** articles.json → 映射为 RawArticleData 列表（复用 `_article_from_dict`，含 `daily_sections`）→ `run_stage2_multi(articles, …)`，与主流程一致；不再取 `[0]` 单篇。
 
 ## daily 结构化持久化（方案 A plumbing）
@@ -71,6 +73,7 @@
 ## 前端 S2 分组 UI（`frontend/src/pages/Dashboard.tsx` 的 `S2Panel`）
 
 - 按 `group_id`（首次出现顺序）把 `script.scenes` 分组；每组渲染一个**组标题头**（`group_title`）。
+- **向后兼容**：旧 run 的 script.json 无 `group_id`/`group_title`/`groups`。分组时对缺失 `group_id` 用兜底（如 `group_id ?? 0`、`group_title ?? "分镜"`），让老脚本落入单一默认组正常渲染，不报错。
 - 组内：现有 `SceneEditor` 逐分镜渲染（旁白/提示词/重配音/重生图保持）；每个 SceneEditor 增加「删除」按钮——调 `DELETE /scenes/{id}`，组内仅剩 1 个时禁用并提示。
 - 每组底部「+ 新增分镜」：弹小对话框填「新分镜要求（选填）」→ `POST /scenes {group_id, requirement}` → `mutate` 刷新；新分镜出现后用户可点其「重新生成图片/配音」。
 - 顶部仍显示汇总 `title`/`description`。
@@ -83,6 +86,11 @@
 AI HOT daily run: [日报(带 daily_sections)] → run_stage2_multi → 按类目 2~4/组、每条1分镜 + 汇总标题 → 扁平 scenes(带 group) → Stage3/4/5
 S2 增删: POST/DELETE /scenes → 改 script.json scenes（每组≥1）→ 重生该分镜图片/配音
 ```
+
+## 边界与成本
+
+- **分镜总数 / Stage3 成本**：普通源受 `max_articles × (1~3)` 约束；daily 受日报 item 数约束（可能 20~30，对应 20~30 张图 + TTS，耗时/费用较高）。本期接受（用户已确认 daily 每条 1 分镜），如需可在 daily 加"取前 N 个 item"上限作为后续；`run_stage2_multi` 的多篇/多批 LLM 调用可用 `asyncio.gather` 并行加速（可选优化）。
+- **regen-script / 删除分镜后的遗留资产**：重生脚本会重排 `id`，原有 `scene_NN_*` 资产与新分镜不再对应（与现状 regen 行为一致）；删除分镜后其磁盘资产文件遗留但 timeline 不再引用——均为预期，无需清理。
 
 ## 测试计划
 
