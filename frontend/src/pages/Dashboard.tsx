@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import useSWR from "swr";
-import { api, type ScriptData, type TimelineData, type ArticleData, type AppSettings } from "../api/client";
+import { api, type ScriptData, type TimelineData, type AppSettings } from "../api/client";
 import {
   btnPrimary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
   sectionTitleCls, inputCls, labelCls, errorTextCls,
   btnActionAudio, btnActionImage, btnActionPrompt, btnActionReroll,
+  dialogOverlayCls, dialogPanelCls,
 } from "../styles";
 import { Select } from "../components/Select";
 import { CreateRunDialog } from "../components/CreateRunDialog";
@@ -145,61 +146,141 @@ function Stepper({ run, onSelect, activeStage }: { run: PipelineRun; onSelect: (
 
 // ─── S1: 搜索整理 ──────────────────────────────────────
 
-function S1Panel({ runId }: { runId: number }) {
-  const { data: articles, mutate } = useSWR<ArticleData[]>(`articles-${runId}`, () => api.runs.articles(runId));
-  const [rerolling, setRerolling] = useState(false);
+type ArticleRec = Record<string, unknown> & { title?: string; content?: string; summary?: string; source?: string; url?: string };
+
+function ArticleDialog({ initial, onSave, onClose }: { initial: ArticleRec | null; onSave: (a: ArticleRec) => void; onClose: () => void; }) {
+  const [title, setTitle] = useState(String(initial?.title ?? ""));
+  const [content, setContent] = useState(String(initial?.content ?? ""));
+  const [summary, setSummary] = useState(String(initial?.summary ?? ""));
+  const [source, setSource] = useState(String(initial?.source ?? ""));
+  const [url, setUrl] = useState(String(initial?.url ?? ""));
+  return (
+    <div className={dialogOverlayCls}>
+      <div className={`${dialogPanelCls} w-[560px]`}>
+        <h2 className="text-lg font-semibold mb-4">{initial ? "编辑文章" : "添加文章"}</h2>
+        <label className={labelCls}>标题</label>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} className={`${inputCls} mb-3`} />
+        <label className={labelCls}>正文</label>
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={8} className={`${inputCls} mb-3 text-[13px]`} />
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div><label className={labelCls}>来源</label><input value={source} onChange={(e) => setSource(e.target.value)} className={inputCls} /></div>
+          <div><label className={labelCls}>原文链接</label><input value={url} onChange={(e) => setUrl(e.target.value)} className={inputCls} /></div>
+        </div>
+        <label className={labelCls}>摘要</label>
+        <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className={`${inputCls} mb-4 text-[13px]`} />
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className={btnCompact}>取消</button>
+          <button onClick={() => onSave({ ...(initial ?? {}), title, content, summary, source, url })} className={btnPrimary}>保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportArticleDialog({ runId, onDone, onClose }: { runId: number; onDone: () => void; onClose: () => void; }) {
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
+  const doFile = async (f: File) => {
+    setLoading(true);
+    try { await api.runs.importArticleFile(runId, f); showToast("已导入", "success"); onDone(); }
+    catch (e) { showToast(e instanceof Error ? e.message : "导入失败", "error"); }
+    finally { setLoading(false); }
+  };
+  const doUrl = async () => {
+    if (!url.trim()) return;
+    setLoading(true);
+    try { await api.runs.importArticleUrl(runId, url.trim()); showToast("已导入", "success"); onDone(); }
+    catch (e) { showToast(e instanceof Error ? e.message : "导入失败", "error"); }
+    finally { setLoading(false); }
+  };
+  return (
+    <div className={dialogOverlayCls}>
+      <div className={`${dialogPanelCls} w-[480px]`}>
+        <h2 className="text-lg font-semibold mb-4">导入文章</h2>
+        <label className={labelCls}>上传文件（.docx / .pdf / .md / .txt）</label>
+        <input type="file" accept=".docx,.pdf,.md,.txt" disabled={loading}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) doFile(f); }}
+          className="mb-1 block w-full text-sm text-white/60" />
+        <p className="text-[11px] text-white/25 mb-4">PDF 走视觉模型解析，可能较慢</p>
+        <label className={labelCls}>或粘贴网页 URL</label>
+        <div className="flex gap-2 mb-4">
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." className={inputCls} />
+          <button onClick={doUrl} disabled={loading} className={btnPrimary}>导入</button>
+        </div>
+        <div className="flex justify-end"><button onClick={onClose} className={btnCompact}>关闭</button></div>
+        {loading && <p className="text-xs text-white/40 mt-2">处理中...</p>}
+      </div>
+    </div>
+  );
+}
+
+function S1Panel({ runId }: { runId: number }) {
+  const { data: articles, mutate } = useSWR<ArticleRec[]>(`articles-${runId}`, () => api.runs.articles(runId) as Promise<ArticleRec[]>);
+  const [rerolling, setRerolling] = useState(false);
+  const [editing, setEditing] = useState<{ idx: number; rec: ArticleRec } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const { showToast } = useToast();
+
+  const save = async (list: ArticleRec[]) => { await api.runs.saveArticles(runId, list); mutate(); };
 
   const handleReroll = async () => {
     setRerolling(true);
-    try {
-      await api.runs.rerollArticles(runId);
-      showToast("重新采集中...", "success");
-      setTimeout(() => { mutate(); setRerolling(false); }, 5000);
-    } catch {
-      showToast("采集失败", "error");
-      setRerolling(false);
-    }
+    try { await api.runs.rerollArticles(runId); showToast("重新采集中...", "success"); setTimeout(() => { mutate(); setRerolling(false); }, 5000); }
+    catch { showToast("采集失败", "error"); setRerolling(false); }
   };
+
+  const list = articles ?? [];
+
+  const onSaveArticle = async (rec: ArticleRec) => {
+    const next = [...list];
+    if (editing) next[editing.idx] = rec; else next.push(rec);
+    await save(next);
+    setEditing(null); setAdding(false);
+  };
+  const onDelete = async (idx: number) => { const next = list.filter((_, i) => i !== idx); await save(next); };
 
   if (!articles) return <p className="text-white/30 text-sm">加载中...</p>;
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <span className="text-sm text-white/40">{articles.length} 篇文章</span>
-        <button onClick={handleReroll} disabled={rerolling} className={btnActionReroll}>
-          {rerolling ? "采集中..." : "重新采集"}
-        </button>
+        <span className="text-sm text-white/40">{list.length} 篇文章</span>
+        <div className="flex gap-2">
+          <button onClick={() => setImporting(true)} className={btnCompact}>导入</button>
+          <button onClick={() => setAdding(true)} className={btnCompact}>+ 添加文章</button>
+          <button onClick={handleReroll} disabled={rerolling} className={btnActionReroll}>{rerolling ? "采集中..." : "重新采集"}</button>
+        </div>
       </div>
-      {articles.length === 0 && <p className="text-white/30 text-sm">暂无采集文章</p>}
+      {list.length === 0 && <p className="text-white/30 text-sm">暂无文章，点「导入」或「添加文章」</p>}
       <div className="space-y-2">
-        {articles.map((a, i) => {
-          const mainLink = a.aggregator_url || a.url;
-          const sourceHost = a.url ? (() => { try { return new URL(a.url).hostname; } catch { return ""; } })() : "";
+        {list.map((a, i) => {
+          const mainLink = String(a.aggregator_url ?? a.url ?? "");
           return (
             <div key={i} className={`${cardCls} p-4`}>
-              <a
-                href={mainLink}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm text-white/80 font-medium hover:text-blue-300 transition underline-offset-2 hover:underline"
-              >
-                {a.title}
-              </a>
-              <div className="text-[11px] text-white/25 mt-1">
-                {a.source}
-                {sourceHost && a.url !== mainLink && (
-                  <> &middot; <a href={a.url} target="_blank" rel="noreferrer" className="hover:text-white/40 transition">{sourceHost}</a></>
-                )}
+              <div className="flex justify-between items-start gap-3">
+                <div className="min-w-0">
+                  {mainLink ? <a href={mainLink} target="_blank" rel="noreferrer" className="text-sm text-white/80 font-medium hover:text-blue-300 transition">{String(a.title ?? "")}</a>
+                    : <span className="text-sm text-white/80 font-medium">{String(a.title ?? "")}</span>}
+                  <div className="text-[11px] text-white/25 mt-1">{String(a.source ?? "")}</div>
+                  {a.summary ? <p className="text-xs text-white/40 mt-2 leading-relaxed">{String(a.summary)}</p> : null}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => setEditing({ idx: i, rec: a })} className={btnCompact}>编辑</button>
+                  <button onClick={() => onDelete(i)} className={btnCompact}>删除</button>
+                </div>
               </div>
-              {a.summary && (
-                <p className="text-xs text-white/40 mt-2 leading-relaxed">{a.summary}</p>
-              )}
             </div>
           );
         })}
       </div>
+      <p className="text-[11px] text-white/25 mt-3">编辑文章后，到"脚本/图片"标签点【重生成脚本】以应用。</p>
+
+      {(adding || editing) && (
+        <ArticleDialog initial={editing?.rec ?? null} onSave={onSaveArticle} onClose={() => { setAdding(false); setEditing(null); }} />
+      )}
+      {importing && <ImportArticleDialog runId={runId} onDone={() => { setImporting(false); mutate(); }} onClose={() => setImporting(false)} />}
     </div>
   );
 }
