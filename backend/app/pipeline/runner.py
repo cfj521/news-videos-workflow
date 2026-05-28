@@ -405,12 +405,14 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 log.info("[S3] TTS %d/%d done (%.1fs)", tts_count, total, time.time() - t)
                 return result
 
+        audio_only = run.video_route == "audio"
         scene_assets = await run_stage3(
             script=script,
             image_provider=TrackedImageProvider(image_provider),
             tts_provider=TrackedTTSProvider(tts_provider),
             assets_dir=str(assets_dir),
             resolution=cfg.video.resolution,
+            audio_only=audio_only,
         )
 
         ok = sum(1 for a in scene_assets if "error" not in a)
@@ -429,7 +431,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
             run = db.get(PipelineRun, run_id)
 
     # ─── Stage 4: 预览 ────────────────────────────────────
-    if 4 in selected:
+    if 4 in selected and run.video_route != "audio":
         t0 = time.time()
         _update(db, run, current_stage=4, progress_detail="S4 生成时间轴...")
         log.info("[S4] Building timeline + preview (route=%s)", run.video_route)
@@ -467,69 +469,91 @@ async def _run_inner(run_id: int, db: Session) -> None:
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
 
-    # ─── Stage 5: 成片渲染 ────────────────────────────────
+    # ─── Stage 5: 合成渲染 ────────────────────────────────
     if 5 in selected:
-        if not timeline:
-            _update(db, run, status="failed", error_message="No timeline for rendering", finished_at=datetime.now(timezone.utc))
-            log.error("No timeline — cannot render")
-            return
-
         t0 = time.time()
-        output_mp4 = str((run_dir / "output.mp4").resolve())
 
-        if run.video_route == "ltx":
-            _update(db, run, current_stage=5, progress_detail="S5 LTX 视频生成中...")
-            log.info("[S5] LTX rendering — output=%s", output_mp4)
+        if run.video_route == "audio":
+            _update(db, run, current_stage=5, progress_detail="S5 合成音频中...")
+            log.info("[S5] Merging audio — %d scenes", len(script.get("scenes", [])))
             try:
-                from app.providers.video.ltx_video import LTXVideoProvider
-                from app.providers.composer.ltx_composer import LTXComposer
-                ltx_video = LTXVideoProvider(
-                    model_dir=cfg.ltx.model_dir, checkpoint=cfg.ltx.checkpoint,
-                    upsampler=cfg.ltx.upsampler, distilled_lora=cfg.ltx.distilled_lora,
-                    lora_strength=cfg.ltx.lora_strength, gemma_dir=cfg.ltx.gemma_dir,
-                    inference_steps=cfg.ltx.inference_steps, cfg_scale=cfg.ltx.cfg_scale,
-                    stg_scale=cfg.ltx.stg_scale, fps=cfg.ltx.fps, use_fp8=cfg.ltx.use_fp8,
-                )
-                ltx_composer = LTXComposer(video_provider=ltx_video)
-                result = await ltx_composer.compose(
-                    timeline_json=timeline, assets_dir=str(assets_dir),
-                    output_path=output_mp4, resolution=cfg.video.resolution,
-                )
-                final_path = result.file_path
-                log.info("[S5] LTX render ok — %s", final_path)
+                final_path = _ffmpeg_merge_audio(script, assets_dir, run_dir)
             except Exception as e:
-                log.warning("[S5] LTX failed: %s — falling back to FFmpeg", e)
-                _update(db, run, progress_detail="S5 LTX 失败，FFmpeg 合成中...")
-                final_path = _ffmpeg_compose(timeline, run_dir, cfg.video.resolution, cfg.video.fps)
+                _update(db, run, status="failed", error_message=f"音频合成失败: {e}", finished_at=datetime.now(timezone.utc))
+                log.exception("[S5] Audio merge failed")
+                return
+            if Path(final_path).exists():
+                size_mb = Path(final_path).stat().st_size / 1024 / 1024
+                _update(db, run, progress_detail=f"S5 合成完成 — {size_mb:.1f} MB ({time.time()-t0:.1f}s)", output_path=final_path)
+                log.info("[S5] Audio merged — %.1f MB", size_mb)
+            else:
+                _update(db, run, status="failed", error_message="音频文件未生成", finished_at=datetime.now(timezone.utc))
+                return
+            if run.mode == "manual":
+                _update(db, run, status="review", progress_detail="S5 合成完成，等待审核")
+                await _wait_for_resume(run_id, db)
+                run = db.get(PipelineRun, run_id)
         else:
-            _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
-            log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
-            composer = HyperframesComposer()
-            try:
-                result = await run_stage5(timeline=timeline, composer=composer, assets_dir=str(assets_dir), output_path=output_mp4, resolution=cfg.video.resolution)
-                final_path = result.file_path
-                log.info("[S5] Hyperframes render ok — %s", final_path)
-            except Exception as e:
-                log.warning("[S5] Hyperframes failed: %s — falling back to FFmpeg", e)
-                _update(db, run, progress_detail="S5 Hyperframes 失败，FFmpeg 合成中...")
-                final_path = _ffmpeg_compose(timeline, run_dir, cfg.video.resolution, cfg.video.fps)
+            if not timeline:
+                _update(db, run, status="failed", error_message="No timeline for rendering", finished_at=datetime.now(timezone.utc))
+                log.error("No timeline — cannot render")
+                return
 
-        if Path(final_path).exists():
-            size_mb = Path(final_path).stat().st_size / 1024 / 1024
-            elapsed = time.time() - t0
-            detail = f"S5 渲染完成 — {size_mb:.1f} MB ({elapsed:.1f}s)"
-            _update(db, run, progress_detail=detail, output_path=final_path)
-            log.info("[S5] Done — %.1f MB in %.1fs", size_mb, elapsed)
-        else:
-            log.error("[S5] Output file not found: %s", final_path)
-            _update(db, run, status="failed", error_message=f"Video output not found: {final_path}", finished_at=datetime.now(timezone.utc))
-            return
+            output_mp4 = str((run_dir / "output.mp4").resolve())
 
-        if run.mode == "manual":
-            _update(db, run, status="review", progress_detail="S5 渲染完成，等待审核")
-            log.info("[S5] Paused for review")
-            await _wait_for_resume(run_id, db)
-            run = db.get(PipelineRun, run_id)
+            if run.video_route == "ltx":
+                _update(db, run, current_stage=5, progress_detail="S5 LTX 视频生成中...")
+                log.info("[S5] LTX rendering — output=%s", output_mp4)
+                try:
+                    from app.providers.video.ltx_video import LTXVideoProvider
+                    from app.providers.composer.ltx_composer import LTXComposer
+                    ltx_video = LTXVideoProvider(
+                        model_dir=cfg.ltx.model_dir, checkpoint=cfg.ltx.checkpoint,
+                        upsampler=cfg.ltx.upsampler, distilled_lora=cfg.ltx.distilled_lora,
+                        lora_strength=cfg.ltx.lora_strength, gemma_dir=cfg.ltx.gemma_dir,
+                        inference_steps=cfg.ltx.inference_steps, cfg_scale=cfg.ltx.cfg_scale,
+                        stg_scale=cfg.ltx.stg_scale, fps=cfg.ltx.fps, use_fp8=cfg.ltx.use_fp8,
+                    )
+                    ltx_composer = LTXComposer(video_provider=ltx_video)
+                    result = await ltx_composer.compose(
+                        timeline_json=timeline, assets_dir=str(assets_dir),
+                        output_path=output_mp4, resolution=cfg.video.resolution,
+                    )
+                    final_path = result.file_path
+                    log.info("[S5] LTX render ok — %s", final_path)
+                except Exception as e:
+                    log.warning("[S5] LTX failed: %s — falling back to FFmpeg", e)
+                    _update(db, run, progress_detail="S5 LTX 失败，FFmpeg 合成中...")
+                    final_path = _ffmpeg_compose(timeline, run_dir, cfg.video.resolution, cfg.video.fps)
+            else:
+                _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
+                log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
+                composer = HyperframesComposer()
+                try:
+                    result = await run_stage5(timeline=timeline, composer=composer, assets_dir=str(assets_dir), output_path=output_mp4, resolution=cfg.video.resolution)
+                    final_path = result.file_path
+                    log.info("[S5] Hyperframes render ok — %s", final_path)
+                except Exception as e:
+                    log.warning("[S5] Hyperframes failed: %s — falling back to FFmpeg", e)
+                    _update(db, run, progress_detail="S5 Hyperframes 失败，FFmpeg 合成中...")
+                    final_path = _ffmpeg_compose(timeline, run_dir, cfg.video.resolution, cfg.video.fps)
+
+            if Path(final_path).exists():
+                size_mb = Path(final_path).stat().st_size / 1024 / 1024
+                elapsed = time.time() - t0
+                detail = f"S5 渲染完成 — {size_mb:.1f} MB ({elapsed:.1f}s)"
+                _update(db, run, progress_detail=detail, output_path=final_path)
+                log.info("[S5] Done — %.1f MB in %.1fs", size_mb, elapsed)
+            else:
+                log.error("[S5] Output file not found: %s", final_path)
+                _update(db, run, status="failed", error_message=f"Video output not found: {final_path}", finished_at=datetime.now(timezone.utc))
+                return
+
+            if run.mode == "manual":
+                _update(db, run, status="review", progress_detail="S5 渲染完成，等待审核")
+                log.info("[S5] Paused for review")
+                await _wait_for_resume(run_id, db)
+                run = db.get(PipelineRun, run_id)
 
     # ─── Stage 6: 发布 ────────────────────────────────────
     if 6 in selected:
