@@ -36,6 +36,11 @@ const IMAGE_PRESETS: Record<string, ProviderPreset> = {
   dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["wanx-v1", "wanx2.1-t2i-turbo"] },
 };
 
+const VISION_PRESETS: Record<string, ProviderPreset> = {
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini"] },
+  dashscope: { label: "阿里云 (Qwen-VL)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen-vl-max", "qwen-vl-plus"] },
+};
+
 const TTS_PRESETS: Record<string, ProviderPreset> = {
   "edge-tts": { label: "Edge TTS", baseUrl: "", models: [], needsKey: false },
   "openai-tts": { label: "OpenAI TTS", baseUrl: "https://api.openai.com/v1", models: ["tts-1-hd", "tts-1"], needsKey: true },
@@ -237,6 +242,7 @@ const SUMMARY_PRESETS: Record<string, ProviderPreset> = {
 const EMPTY_SETTINGS: AppSettings = {
   text: { provider: "claude", base_url: "https://api.anthropic.com", model: "claude-sonnet-4-6", api_key: "" },
   image: { provider: "openai", base_url: "https://api.openai.com/v1", model: "gpt-image-1", api_key: "" },
+  vision: { provider: "openai", base_url: "https://api.openai.com/v1", model: "gpt-4o", api_key: "" },
   tts: { provider: "edge-tts", base_url: "", api_key: "", model: "", voice: "zh-CN-XiaoxiaoNeural", speed: 1.0 },
   summary: { enabled: true, provider: "", base_url: "", model: "", api_key: "", max_length: 150 },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
@@ -347,6 +353,7 @@ export function SettingsPage() {
 
       <ProviderSection title="文本模型" desc="用于脚本生成的 AI 文本模型" presets={TEXT_PRESETS} config={settings.text} onChange={(p) => patch("text", p)} />
       <ProviderSection title="图片模型" desc="用于场景配图的 AI 图片模型" presets={IMAGE_PRESETS} config={settings.image} onChange={(p) => patch("image", p)} />
+      <ProviderSection title="文档解析模型" desc="导入 PDF 时用的视觉模型（多模态）" presets={VISION_PRESETS} config={settings.vision} onChange={(p) => patch("vision", p)} />
 
       <Section title="语音合成" desc="视频旁白的文字转语音服务">
         <Field label="服务商">
