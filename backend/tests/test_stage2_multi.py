@@ -65,3 +65,16 @@ async def test_multi_daily_groups_by_category():
     assert all(g["source_index"] == 0 for g in script["groups"])
     assert len(script["scenes"]) == 7
     assert [s["id"] for s in script["scenes"]] == list(range(1, 8))
+
+
+@pytest.mark.asyncio
+async def test_multi_falls_back_on_bad_json():
+    tp = AsyncMock()
+    tp.generate.side_effect = [
+        "这不是JSON",  # article scenes — malformed
+        json.dumps({"title": "汇总", "description": "d", "tags": []}),  # summary
+    ]
+    arts = [RawArticleData(title="文章1", content="c1", source_url="u", source_name="s")]
+    script = await run_stage2_multi(arts, tp)
+    assert len(script["scenes"]) == 1
+    assert script["scenes"][0]["narration"] == "文章1"  # fallback to title

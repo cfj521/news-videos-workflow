@@ -141,7 +141,11 @@ def _batch_items(n: int) -> list[int]:
 async def _gen_article_scenes(article, tp) -> list[dict]:
     prompt = f"标题：{article.title}\n来源：{article.source_name}\n内容：\n{(article.content or article.title)[:2000]}"
     resp = await tp.generate(prompt=prompt, system_prompt=ROUNDUP_ARTICLE_SYSTEM_PROMPT)
-    scenes = _parse_json(resp).get("scenes", [])
+    try:
+        scenes = _parse_json(resp).get("scenes", [])
+    except Exception:
+        log.warning("[S2] parse article scenes failed for '%s'", article.title)
+        scenes = []
     if not scenes:
         scenes = [{"narration": article.title, "image_prompt": article.title, "motion_prompt": "", "duration_hint": 5}]
     return scenes[:3]
@@ -150,7 +154,14 @@ async def _gen_article_scenes(article, tp) -> list[dict]:
 async def _gen_daily_batch_scenes(items: list[dict], tp) -> list[dict]:
     lines = [f"{i + 1}. 「{it.get('title', '')}」{it.get('summary', '')}" for i, it in enumerate(items)]
     resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=DAILY_BATCH_SYSTEM_PROMPT)
-    return _parse_json(resp).get("scenes", [])
+    try:
+        scenes = _parse_json(resp).get("scenes", [])
+    except Exception:
+        log.warning("[S2] parse daily batch scenes failed")
+        scenes = []
+    if not scenes:
+        scenes = [{"narration": it.get("title", ""), "image_prompt": it.get("title", ""), "motion_prompt": "", "duration_hint": 5} for it in items]
+    return scenes
 
 
 async def _gen_summary_meta(titles: list[str], tp) -> dict:
