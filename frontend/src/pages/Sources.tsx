@@ -4,12 +4,36 @@ import { api } from "../api/client";
 import { btnPrimary, btnCompact, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls } from "../styles";
 import { AddSourceDialog } from "../components/AddSourceDialog";
 import { EditSourceDialog } from "../components/EditSourceDialog";
+import { Select } from "../components/Select";
 import type { NewsSource } from "../types";
 
 // ── Sort helpers ────────────────────────────────────────
 
 type SortKey = "name" | "type" | "category" | "language" | "priority";
 type SortDir = "asc" | "desc";
+
+// ── AI HOT helpers ──────────────────────────────────────
+
+function isAihotSource(s: NewsSource): boolean {
+  if (s.config_json) {
+    try { if ((JSON.parse(s.config_json) as { provider?: string }).provider === "aihot") return true; } catch { /* ignore */ }
+  }
+  return s.url.includes("aihot.virxact.com");
+}
+
+function parseConfig(json: string | null): Record<string, unknown> {
+  if (!json) return {};
+  try { return JSON.parse(json) as Record<string, unknown>; } catch { return {}; }
+}
+
+const AIHOT_CATEGORIES = [
+  { value: "", label: "全部分类" },
+  { value: "ai-models", label: "模型" },
+  { value: "ai-products", label: "产品" },
+  { value: "industry", label: "行业" },
+  { value: "paper", label: "论文" },
+  { value: "tip", label: "技巧" },
+];
 
 function sortSources(sources: NewsSource[], key: SortKey, dir: SortDir): NewsSource[] {
   const sorted = [...sources];
@@ -109,6 +133,67 @@ function SortTh({ label, sortKey, currentKey, currentDir, onSort }: {
   );
 }
 
+// ── AI HOT Group Card ────────────────────────────────────
+
+function AIHotGroupCard({ source, customIds, onChange }: {
+  source: NewsSource;
+  customIds: number[];
+  onChange: () => void;
+}) {
+  const cfg = parseConfig(source.config_json);
+  const method = (cfg.method as string) ?? "items";
+  const category = (cfg.category as string) ?? "";
+
+  const setConfig = async (patch: Record<string, unknown>) => {
+    await api.sources.update(source.id, { config_json: JSON.stringify({ ...cfg, ...patch }) });
+    onChange();
+  };
+
+  const toggleGroup = async () => {
+    if (source.enabled) {
+      await api.sources.update(source.id, { enabled: false });
+    } else {
+      if (customIds.length) await api.sources.batch({ ids: customIds, enabled: false });
+      await api.sources.update(source.id, { enabled: true });
+    }
+    onChange();
+  };
+
+  return (
+    <div className={`${cardCls} p-5 mb-4`}>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-semibold">AI HOT 聚合</h2>
+          <p className="text-xs text-white/30 mt-0.5">聚合精选 AI 资讯 · 启用后与自定义源互斥</p>
+        </div>
+        <button onClick={toggleGroup} className={toggleCls(source.enabled)}>
+          <span className={toggleThumbCls(source.enabled)} />
+        </button>
+      </div>
+      <div className="flex items-center gap-2 mb-3">
+        {(["items", "daily"] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => setConfig({ method: m })}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+              method === m
+                ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
+                : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white/60"
+            }`}
+          >
+            {m === "items" ? "动态" : "日报"}
+          </button>
+        ))}
+      </div>
+      {method === "items" && (
+        <div className="w-48">
+          <Select value={category} onChange={(v) => setConfig({ category: v })} options={AIHOT_CATEGORIES} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ────────────────────────────────────────────────
 
 export function SourcesPage() {
@@ -125,9 +210,17 @@ export function SourcesPage() {
 
   const sorted = sources ? sortSources(sources, sortKey, sortDir) : [];
 
+  const aihotSource = sources?.find(isAihotSource);
+  const customSources = sorted.filter((s) => !isAihotSource(s));
+  const customIds = (sources ?? []).filter((s) => !isAihotSource(s)).map((s) => s.id);
+
   const toggleSource = async (e: React.MouseEvent, source: NewsSource) => {
     e.stopPropagation();
-    await api.sources.update(source.id, { enabled: !source.enabled });
+    const enabling = !source.enabled;
+    await api.sources.update(source.id, { enabled: enabling });
+    if (enabling && aihotSource?.enabled) {
+      await api.sources.update(aihotSource.id, { enabled: false });
+    }
     mutate();
   };
 
@@ -154,7 +247,7 @@ export function SourcesPage() {
     mutate();
   };
 
-  const { overIdx, onDragStart, onDragOver, onDrop, onDragEnd } = useDragReorder(sorted, handleReorder);
+  const { overIdx, onDragStart, onDragOver, onDrop, onDragEnd } = useDragReorder(customSources, handleReorder);
 
   const pinnedCount = sources?.filter((s) => s.pinned).length ?? 0;
 
@@ -172,6 +265,10 @@ export function SourcesPage() {
         </div>
       </div>
 
+      {aihotSource && (
+        <AIHotGroupCard source={aihotSource} customIds={customIds} onChange={mutate} />
+      )}
+
       <div className={`${cardCls} overflow-hidden`}>
         <table className="w-full text-sm">
           <thead>
@@ -187,7 +284,7 @@ export function SourcesPage() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((source, idx) => (
+            {customSources.map((source, idx) => (
               <tr
                 key={source.id}
                 draggable
@@ -235,7 +332,7 @@ export function SourcesPage() {
                 </td>
               </tr>
             ))}
-            {sorted.length === 0 && (
+            {customSources.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-16 text-center">
                   <p className="text-white/30 text-sm">暂无信息源</p>
