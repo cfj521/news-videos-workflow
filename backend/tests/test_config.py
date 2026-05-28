@@ -36,3 +36,12 @@ def test_data_dir_creation(tmp_path):
     settings.ensure_data_dirs()
     assert (tmp_path / "data" / "runs").is_dir()
     assert (tmp_path / "data" / "history").is_dir()
+
+
+def test_pipeline_cfg_has_no_legacy_toggles():
+    from app.config import PipelineCfg
+    cfg = PipelineCfg()
+    assert not hasattr(cfg, "enable_dedup")
+    assert not hasattr(cfg, "enable_scoring")
+    assert not hasattr(cfg, "enable_summary")
+    assert hasattr(cfg, "dedup_lookback")  # 保留

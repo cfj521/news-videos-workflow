@@ -65,9 +65,6 @@ class PipelineCfg(BaseModel):
     default_video_route: str = "hyperframes"
     default_language: str = "zh"
     dedup_lookback: str = "30d"
-    enable_summary: bool = True
-    enable_dedup: bool = True
-    enable_scoring: bool = True
 
 
 class LTXCfg(BaseModel):
