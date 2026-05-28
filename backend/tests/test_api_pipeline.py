@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -31,7 +33,9 @@ def client():
             session.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    return TestClient(app)
+    # 阻止创建 run 时触发真实后台流水线（会跑网络/卡住），测试只验证接口行为
+    with patch("app.api.pipeline._run_pipeline_bg"):
+        yield TestClient(app)
 
 
 def test_create_pipeline_run(client):

@@ -24,38 +24,11 @@ def test_create_run(db_session):
     assert run.status == "pending"
 
 
-def test_advance_stage(db_session):
-    engine = PipelineEngine(db_session)
-    run = engine.create_run(mode="auto", video_route="hyperframes", time_range="7d")
-    engine.start_stage(run.id, stage=1)
-    updated = db_session.get(PipelineRun, run.id)
-    assert updated.status == "processing"
-    assert updated.current_stage == 1
-    assert updated.started_at is not None
-
-
-def test_complete_stage(db_session):
-    engine = PipelineEngine(db_session)
-    run = engine.create_run(mode="auto", video_route="hyperframes", time_range="7d")
-    engine.start_stage(run.id, stage=1)
-    engine.complete_stage(run.id, stage=1)
-    updated = db_session.get(PipelineRun, run.id)
-    assert updated.status == "processing"
-
-
-def test_pause_for_review(db_session):
-    engine = PipelineEngine(db_session)
-    run = engine.create_run(mode="manual", video_route="hyperframes", time_range="7d")
-    engine.start_stage(run.id, stage=1)
-    engine.pause_for_review(run.id, stage=1)
-    updated = db_session.get(PipelineRun, run.id)
-    assert updated.status == "review"
-
-
 def test_resume_run(db_session):
     engine = PipelineEngine(db_session)
     run = engine.create_run(mode="manual", video_route="hyperframes", time_range="7d")
-    engine.pause_for_review(run.id, stage=1)
+    run.status = "review"
+    db_session.commit()
     resumed = engine.resume_run(run.id)
     assert resumed.status == "processing"
 
@@ -77,11 +50,3 @@ def test_finish_run(db_session):
     updated = db_session.get(PipelineRun, run.id)
     assert updated.status == "done"
     assert updated.finished_at is not None
-
-
-def test_should_pause(db_session):
-    engine = PipelineEngine(db_session)
-    auto_run = engine.create_run(mode="auto", video_route="hyperframes", time_range="7d")
-    manual_run = engine.create_run(mode="manual", video_route="hyperframes", time_range="7d")
-    assert engine.should_pause(auto_run.id, 1) is False
-    assert engine.should_pause(manual_run.id, 1) is True

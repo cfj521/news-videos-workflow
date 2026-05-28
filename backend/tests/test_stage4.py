@@ -21,7 +21,7 @@ def test_stage4_generates_timeline():
         ],
     }
 
-    timeline = run_stage4(script=script, scene_assets=scene_assets)
+    timeline = run_stage4(script=script, scene_assets=scene_assets, scene_gap_ms=0)
 
     assert timeline["total_duration_ms"] == 12000
     assert len(timeline["entries"]) == 2
@@ -41,7 +41,7 @@ def test_stage4_uses_audio_duration_over_hint():
     ]
     script = {"scenes": [{"id": 1, "narration": "Text", "duration_hint": 5}]}
 
-    timeline = run_stage4(script=script, scene_assets=scene_assets)
+    timeline = run_stage4(script=script, scene_assets=scene_assets, scene_gap_ms=0)
     assert timeline["entries"][0]["end_ms"] == 8000
 
 
@@ -61,7 +61,7 @@ def test_stage4_skips_errored_scenes():
         ],
     }
 
-    timeline = run_stage4(script=script, scene_assets=scene_assets)
+    timeline = run_stage4(script=script, scene_assets=scene_assets, scene_gap_ms=0)
     assert len(timeline["entries"]) == 1
     assert timeline["total_duration_ms"] == 5000
 
@@ -69,8 +69,10 @@ def test_stage4_skips_errored_scenes():
 def test_generate_srt():
     timeline = {
         "entries": [
-            {"scene_id": 1, "start_ms": 0, "end_ms": 5000, "subtitle_text": "第一段"},
-            {"scene_id": 2, "start_ms": 5000, "end_ms": 10000, "subtitle_text": "第二段"},
+            {"scene_id": 1, "start_ms": 0, "end_ms": 5000, "subtitle_text": "第一段",
+             "subtitle_lines": [{"text": "第一段", "start_ms": 0, "end_ms": 5000}]},
+            {"scene_id": 2, "start_ms": 5000, "end_ms": 10000, "subtitle_text": "第二段",
+             "subtitle_lines": [{"text": "第二段", "start_ms": 0, "end_ms": 5000}]},
         ],
     }
     srt = generate_srt(timeline)

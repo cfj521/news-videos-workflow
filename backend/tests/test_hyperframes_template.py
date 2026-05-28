@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.providers.composer.hyperframes_composer import HyperframesComposer
 
 
@@ -13,6 +15,7 @@ def test_render_html_template():
                 "audio_path": "assets/scene_01_audio.mp3",
                 "audio_duration_ms": 5000,
                 "subtitle_text": "第一段旁白文本",
+                "subtitle_lines": [{"text": "第一段旁白文本", "start_ms": 0, "end_ms": 5000}],
             },
             {
                 "scene_id": 2,
@@ -27,7 +30,7 @@ def test_render_html_template():
         "total_duration_ms": 11000,
     }
 
-    html = composer._render_html(timeline, resolution="1080x1920")
+    html = composer._render_html(timeline, resolution="1080x1920", run_dir=Path("."))
 
     assert 'data-composition-id="main"' in html
     assert 'data-width="1080"' in html
@@ -57,7 +60,7 @@ def test_render_html_single_scene():
         "total_duration_ms": 5000,
     }
 
-    html = composer._render_html(timeline, resolution="1920x1080")
+    html = composer._render_html(timeline, resolution="1920x1080", run_dir=Path("."))
     assert 'data-width="1920"' in html
     assert 'data-height="1080"' in html
     assert "autoAlpha: 0" not in html  # first scene should NOT have hide toggle

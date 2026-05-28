@@ -6,7 +6,7 @@ def test_config_loads_defaults():
     assert settings.pipeline.default_max_articles == 5
     assert settings.pipeline.default_video_route == "hyperframes"
     assert settings.pipeline.default_language == "zh"
-    assert settings.DATABASE_URL == "sqlite:///./data/news_videos.db"
+    assert settings.DATABASE_URL == "sqlite:///../data/news_videos.db"
     assert settings.text.provider == "claude"
     assert settings.text.model == "claude-sonnet-4-6"
     assert settings.image.provider == "openai"
