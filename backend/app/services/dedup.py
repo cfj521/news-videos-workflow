@@ -171,7 +171,7 @@ class DedupService:
         dup_content = 0
 
         for idx, article in enumerate(articles):
-            fp = self._fingerprint(article.title)
+            fp = self.fingerprint(article.title)
 
             # Layer 1: history
             if fp in history_fps or fp in seen_fps:
@@ -235,5 +235,5 @@ class DedupService:
                 return True
         return False
 
-    def _fingerprint(self, text: str) -> str:
+    def fingerprint(self, text: str) -> str:
         return hashlib.md5(text.lower().strip().encode()).hexdigest()
