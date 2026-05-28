@@ -3,12 +3,14 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
+from pydantic import BaseModel as _PydBase
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db, get_session_factory
+from app.services.document_import import import_file, import_url
 from app.config import get_settings
 from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
@@ -88,6 +90,62 @@ def get_articles(run_id: int):
     if not path.exists():
         return []
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _write_articles(run_id: int, items: list) -> None:
+    rd = _run_dir(run_id)
+    rd.mkdir(parents=True, exist_ok=True)
+    (rd / "articles.json").write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _read_articles(run_id: int) -> list:
+    path = _run_dir(run_id) / "articles.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@router.put("/runs/{run_id}/articles")
+def put_articles(run_id: int, items: list[dict]):
+    for it in items:
+        if not (str(it.get("title", "")).strip() or str(it.get("content", "")).strip()):
+            raise HTTPException(status_code=400, detail="每篇文章至少需要标题或正文")
+    _write_articles(run_id, items)
+    return items
+
+
+class _ImportUrlBody(_PydBase):
+    url: str
+
+
+@router.post("/runs/{run_id}/articles/import/url")
+async def import_article_url(run_id: int, body: _ImportUrlBody):
+    try:
+        art = await import_url(body.url)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"URL 导入失败: {e}")
+    items = _read_articles(run_id)
+    items.append(art)
+    _write_articles(run_id, items)
+    return items
+
+
+@router.post("/runs/{run_id}/articles/import/file")
+async def import_article_file(run_id: int, file: UploadFile = File(...)):
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件超过 20MB")
+    cfg = get_settings()
+    try:
+        art = await import_file(data, file.filename or "", cfg.vision)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"解析失败: {e}")
+    items = _read_articles(run_id)
+    items.append(art)
+    _write_articles(run_id, items)
+    return items
 
 
 @router.get("/runs/{run_id}/script")
