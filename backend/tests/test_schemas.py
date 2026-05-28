@@ -39,3 +39,9 @@ def test_timeline_entry():
         subtitle_text="旁白文本",
     )
     assert entry.end_ms - entry.start_ms == 5000
+
+
+def test_pipeline_create_auto_collect_default():
+    from app.schemas.pipeline import PipelineRunCreate
+    assert PipelineRunCreate().auto_collect is True
+    assert PipelineRunCreate(auto_collect=False).auto_collect is False

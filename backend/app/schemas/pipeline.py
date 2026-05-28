@@ -10,6 +10,7 @@ class PipelineRunCreate(BaseModel):
     max_articles: int = 5
     selected_stages: list[int] = [1, 2, 3, 4, 5]
     publish_platforms: list[str] = []
+    auto_collect: bool = True
 
 
 class PipelineRunRead(BaseModel):
@@ -28,6 +29,7 @@ class PipelineRunRead(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     error_message: str | None
+    auto_collect: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
