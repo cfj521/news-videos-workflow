@@ -223,7 +223,10 @@ function S1Panel({ runId }: { runId: number }) {
   const [importing, setImporting] = useState(false);
   const { showToast } = useToast();
 
-  const save = async (list: ArticleRec[]) => { await api.runs.saveArticles(runId, list); mutate(); };
+  const save = async (list: ArticleRec[]): Promise<boolean> => {
+    try { await api.runs.saveArticles(runId, list); mutate(); return true; }
+    catch (e) { showToast(e instanceof Error ? e.message : "保存失败", "error"); return false; }
+  };
 
   const handleReroll = async () => {
     setRerolling(true);
@@ -236,10 +239,9 @@ function S1Panel({ runId }: { runId: number }) {
   const onSaveArticle = async (rec: ArticleRec) => {
     const next = [...list];
     if (editing) next[editing.idx] = rec; else next.push(rec);
-    await save(next);
-    setEditing(null); setAdding(false);
+    if (await save(next)) { setEditing(null); setAdding(false); }
   };
-  const onDelete = async (idx: number) => { const next = list.filter((_, i) => i !== idx); await save(next); };
+  const onDelete = async (idx: number) => { await save(list.filter((_, i) => i !== idx)); };
 
   if (!articles) return <p className="text-white/30 text-sm">加载中...</p>;
 
