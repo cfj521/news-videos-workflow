@@ -32,24 +32,59 @@ SCRIPT_SYSTEM_PROMPT = """你是一个专业的新闻视频分镜脚本编写者
   ]
 }"""
 
+DAILY_DIGEST_SYSTEM_PROMPT = """你是一个专业的 AI 资讯日报播报脚本编写者。根据下面整理好的「今日 AI 日报」生成一个汇总播报视频分镜脚本。
+
+输出要求：
+1. 纯 JSON 格式，不要包含 markdown 标记
+2. 旁白文案用口语化中文，像新闻主播在播报当日 AI 资讯汇总
+3. 第一个分镜根据日报开场语作总览引入，最后一个分镜作总结
+4. 中间每条重要资讯一个分镜，按重要性挑选，**总分镜数不超过 10 个**
+5. 每个分镜 4-8 秒
+6. image_prompt 用英文，描述静态画面的构图、色调、风格
+7. motion_prompt 用英文，描述镜头运动方向
+
+输出 JSON 结构：
+{
+  "title": "视频标题（中文，吸引眼球）",
+  "description": "视频简介（中文，1-2句话）",
+  "tags": ["标签1", "标签2"],
+  "scenes": [
+    {
+      "id": 1,
+      "narration": "旁白文本（中文）",
+      "image_prompt": "Scene description in English",
+      "motion_prompt": "Camera slowly zooms in",
+      "duration_hint": 5
+    }
+  ]
+}"""
+
 
 async def run_stage2(
     article: RawArticleData,
     text_provider: TextProvider,
     language: str = "zh",
+    style: str = "single",
 ) -> dict:
-    log.info("Generating script for: '%s' (source: %s, %d chars)", article.title, article.source_name, len(article.content))
+    log.info("Generating script (style=%s) for: '%s' (%d chars)", style, article.title, len(article.content))
     t0 = time.time()
 
-    prompt = f"""请为以下新闻生成视频分镜脚本：
+    if style == "daily":
+        system_prompt = DAILY_DIGEST_SYSTEM_PROMPT
+        content_limit = 8000
+    else:
+        system_prompt = SCRIPT_SYSTEM_PROMPT
+        content_limit = 3000
+
+    prompt = f"""请为以下内容生成视频分镜脚本：
 
 标题：{article.title}
 来源：{article.source_name}
 原文：
-{article.content[:3000]}
+{article.content[:content_limit]}
 """
 
-    response = await text_provider.generate(prompt=prompt, system_prompt=SCRIPT_SYSTEM_PROMPT)
+    response = await text_provider.generate(prompt=prompt, system_prompt=system_prompt)
     log.debug("Raw response: %d chars", len(response))
 
     cleaned = response.strip()

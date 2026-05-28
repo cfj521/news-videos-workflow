@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.pipeline.stage2_script import SCRIPT_SYSTEM_PROMPT, run_stage2
+from app.pipeline.stage2_script import DAILY_DIGEST_SYSTEM_PROMPT, SCRIPT_SYSTEM_PROMPT, run_stage2
 from app.providers.base import RawArticleData
 
 SAMPLE_SCRIPT_JSON = json.dumps(
@@ -73,3 +73,28 @@ async def test_stage2_calls_provider_with_article():
 
 def test_system_prompt_exists():
     assert "分镜" in SCRIPT_SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_stage2_daily_uses_digest_prompt():
+    mock_text = AsyncMock()
+    mock_text.generate.return_value = SAMPLE_SCRIPT_JSON
+
+    article = RawArticleData(
+        title="今日 AI 日报",
+        content="日报正文内容。" * 800,  # 远超 3000 字，验证放宽截断
+        source_url="https://aihot.virxact.com",
+        source_name="AI HOT 日报",
+        metadata={"source_group": "aihot", "aihot_method": "daily"},
+    )
+
+    await run_stage2(article=article, text_provider=mock_text, style="daily")
+
+    kwargs = mock_text.generate.call_args[1]
+    assert kwargs["system_prompt"] == DAILY_DIGEST_SYSTEM_PROMPT
+    assert len(kwargs["prompt"]) > 4000  # 截断上限放宽到 8000
+
+
+def test_daily_digest_prompt_exists():
+    assert "日报" in DAILY_DIGEST_SYSTEM_PROMPT
+    assert "分镜" in DAILY_DIGEST_SYSTEM_PROMPT
