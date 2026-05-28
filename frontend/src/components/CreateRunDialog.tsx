@@ -30,6 +30,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [mode, setMode] = useState("auto");
   const [timeRange, setTimeRange] = useState("7d");
   const [maxArticles, setMaxArticles] = useState(5);
+  const [autoCollect, setAutoCollect] = useState(true);
   const [videoRoute, setVideoRoute] = useState("hyperframes");
   const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5]));
   const [platforms, setPlatforms] = useState<Set<string>>(new Set());
@@ -73,6 +74,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         max_articles: maxArticles,
         selected_stages: toBackendStages(selectedVisual),
         publish_platforms: Array.from(platforms),
+        auto_collect: autoCollect,
       });
       onCreated();
     } finally { setLoading(false); }
@@ -141,7 +143,15 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="mb-4">
+          <label className={labelCls}>采集方式</label>
+          <Select value={autoCollect ? "auto" : "manual"} onChange={(v) => setAutoCollect(v === "auto")} options={[
+            { value: "auto", label: "自动采集" },
+            { value: "manual", label: "不采集（人工导入）" },
+          ]} />
+        </div>
+
+        <div className={`grid grid-cols-2 gap-3 mb-5 ${!autoCollect ? "opacity-40 pointer-events-none" : ""}`}>
           <div>
             <label className={labelCls}>时间范围</label>
             <Select value={timeRange} onChange={setTimeRange} options={[
