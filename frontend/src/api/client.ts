@@ -16,6 +16,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 export interface AppSettings {
   text: { provider: string; base_url: string; model: string; api_key: string };
   image: { provider: string; base_url: string; model: string; api_key: string };
+  vision: { provider: string; base_url: string; model: string; api_key: string };
   tts: { provider: string; base_url: string; api_key: string; model: string; voice: string; speed: number };
   summary: { enabled: boolean; provider: string; base_url: string; model: string; api_key: string; max_length: number };
   collectors: { tavily_key: string; brave_key: string; serper_key: string };
@@ -57,6 +58,7 @@ export const api = {
       max_articles?: number;
       selected_stages?: number[];
       publish_platforms?: string[];
+      auto_collect?: boolean;
     }) =>
       fetchJSON<PipelineRun>("/pipeline/runs", {
         method: "POST",
@@ -93,6 +95,20 @@ export const api = {
       fetchJSON<{ status: string }>(`/pipeline/runs/${runId}/reroll-articles`, {
         method: "POST",
       }),
+    saveArticles: (runId: number, items: unknown[]) =>
+      fetchJSON(`/pipeline/runs/${runId}/articles`, { method: "PUT", body: JSON.stringify(items) }),
+    importArticleUrl: (runId: number, url: string) =>
+      fetchJSON(`/pipeline/runs/${runId}/articles/import/url`, { method: "POST", body: JSON.stringify({ url }) }),
+    importArticleFile: async (runId: number, file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/pipeline/runs/${runId}/articles/import/file`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => ({}))).detail;
+        throw new Error(`API error: ${res.status} ${detail ?? res.statusText}`);
+      }
+      return res.json();
+    },
     triggerRender: (runId: number) =>
       fetchJSON<{ status: string }>(`/pipeline/runs/${runId}/render`, {
         method: "POST",
