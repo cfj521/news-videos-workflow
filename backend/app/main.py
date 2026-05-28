@@ -8,6 +8,26 @@ from app.logging import setup_global_logger
 from app.models.base import Base
 
 
+def _seed_aihot_source(factory) -> None:
+    import json
+
+    from app.models.news_source import NewsSource
+
+    db = factory()
+    try:
+        exists = db.query(NewsSource).filter(NewsSource.url.like("%aihot.virxact.com%")).first()
+        if exists:
+            return
+        db.add(NewsSource(
+            name="AI HOT", type="api", url="https://aihot.virxact.com/api/public",
+            category="ai", language="zh", priority=1, enabled=False, tier="standard",
+            config_json=json.dumps({"provider": "aihot", "method": "items"}),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="News Videos Workflow", version="0.1.0")
 
@@ -26,6 +46,7 @@ def create_app() -> FastAPI:
         get_settings().ensure_data_dirs()
         factory = get_session_factory()
         Base.metadata.create_all(bind=factory.kw["bind"])
+        _seed_aihot_source(factory)
 
     @app.get("/api/health")
     async def health_check():
