@@ -289,17 +289,56 @@ function S1Panel({ runId }: { runId: number }) {
 
 // ─── S2: 脚本/图片生成 ─────────────────────────────────
 
+function AddSceneDialog({ runId, groupId, onDone, onClose }: { runId: number; groupId: number; onDone: () => void; onClose: () => void; }) {
+  const [requirement, setRequirement] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
+  const submit = async () => {
+    setLoading(true);
+    try { await api.runs.addScene(runId, groupId, requirement); showToast("已新增分镜", "success"); onDone(); }
+    catch (e) { showToast(e instanceof Error ? e.message : "新增失败", "error"); }
+    finally { setLoading(false); }
+  };
+  return (
+    <div className={dialogOverlayCls}>
+      <div className={`${dialogPanelCls} w-[480px]`}>
+        <h2 className="text-lg font-semibold mb-3">新增分镜</h2>
+        <label className={labelCls}>这个分镜想讲什么（选填）</label>
+        <textarea value={requirement} onChange={(e) => setRequirement(e.target.value)} rows={3} className={`${inputCls} mb-4 text-[13px]`} placeholder="例如：强调它对开发者的影响" />
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className={btnCompact}>取消</button>
+          <button onClick={submit} disabled={loading} className={btnPrimary}>{loading ? "生成中..." : "生成"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function S2Panel({ runId }: { runId: number }) {
   const { data: script, mutate: mutateScript } = useSWR<ScriptData>(`script-${runId}`, () => api.runs.script(runId).catch(() => null as unknown as ScriptData));
   const { data: timeline } = useSWR<TimelineData>(`timeline-${runId}`, () => api.runs.timeline(runId).catch(() => null as unknown as TimelineData));
   const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
-
   const [imgSize, setImgSize] = useState("");
-  useEffect(() => {
-    if (settings && !imgSize) setImgSize(settings.video.resolution);
-  }, [settings, imgSize]);
+  const [addGroup, setAddGroup] = useState<number | null>(null);
+  const { showToast } = useToast();
+  useEffect(() => { if (settings && !imgSize) setImgSize(settings.video.resolution); }, [settings, imgSize]);
 
   if (!script) return <p className="text-white/30 text-sm">暂无脚本</p>;
+
+  const scenes = script.scenes ?? [];
+  const order: number[] = [];
+  const byGroup = new Map<number, typeof scenes>();
+  for (const sc of scenes) {
+    const gid = sc.group_id ?? 0;
+    if (!byGroup.has(gid)) { byGroup.set(gid, []); order.push(gid); }
+    byGroup.get(gid)!.push(sc);
+  }
+  const groupTitle = (gid: number) => script.groups?.find((g) => g.id === gid)?.title ?? byGroup.get(gid)?.[0]?.group_title ?? "分镜";
+
+  const onDelete = async (sceneId: number) => {
+    try { await api.runs.deleteScene(runId, sceneId); mutateScript(); }
+    catch (e) { showToast(e instanceof Error ? e.message : "删除失败", "error"); }
+  };
 
   return (
     <div>
@@ -313,21 +352,38 @@ function S2Panel({ runId }: { runId: number }) {
           <PresetInput value={imgSize} onChange={setImgSize} presets={RES_PRESETS} className="w-40" />
         </div>
       </div>
-      <div className="space-y-3">
-        {script.scenes.map((scene) => {
-          const entry = timeline?.entries?.find((e) => e.scene_id === scene.id);
-          const durS = entry ? ((entry.end_ms - entry.start_ms) / 1000).toFixed(1) : null;
-          return (
-            <SceneEditor key={scene.id} runId={runId} scene={scene} durationS={durS} mutateScript={mutateScript} imgSize={imgSize} />
-          );
-        })}
-      </div>
+
+      {order.map((gid) => {
+        const groupScenes = byGroup.get(gid)!;
+        return (
+          <div key={gid} className="mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className={sectionTitleCls}>{groupTitle(gid)}</h4>
+              <button onClick={() => setAddGroup(gid)} className={btnCompact}>+ 新增分镜</button>
+            </div>
+            <div className="space-y-3">
+              {groupScenes.map((scene) => {
+                const entry = timeline?.entries?.find((e) => e.scene_id === scene.id);
+                const durS = entry ? ((entry.end_ms - entry.start_ms) / 1000).toFixed(1) : null;
+                return (
+                  <SceneEditor key={scene.id} runId={runId} scene={scene} durationS={durS} mutateScript={mutateScript} imgSize={imgSize}
+                    onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {addGroup !== null && (
+        <AddSceneDialog runId={runId} groupId={addGroup} onDone={() => { setAddGroup(null); mutateScript(); }} onClose={() => setAddGroup(null)} />
+      )}
     </div>
   );
 }
 
-function SceneEditor({ runId, scene, durationS, mutateScript, imgSize }: {
-  runId: number; scene: ScriptData["scenes"][0]; durationS: string | null; mutateScript: () => void; imgSize: string;
+function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete, canDelete }: {
+  runId: number; scene: ScriptData["scenes"][0]; durationS: string | null; mutateScript: () => void; imgSize: string; onDelete?: () => void; canDelete?: boolean;
 }) {
   const [narration, setNarration] = useState(scene.narration);
   const [prompt, setPrompt] = useState(scene.image_prompt);
@@ -381,6 +437,9 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize }: {
           <div className="flex justify-between items-center">
             <span className="text-xs text-white/30 font-mono">场景 {sid}</span>
             {durationS && <span className="text-xs text-white/25 font-mono">{durationS}s</span>}
+            {onDelete && (
+              <button onClick={onDelete} disabled={!canDelete} className={btnCompact} title={canDelete ? "删除分镜" : "每组至少保留 1 个"}>删除</button>
+            )}
           </div>
 
           <div>
