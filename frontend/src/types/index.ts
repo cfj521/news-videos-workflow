@@ -45,6 +45,12 @@ export const STAGE_LABELS: Record<number, string> = {
 
 export const VISIBLE_STAGES = [1, 2, 4, 5, 6] as const;
 
+export const VIDEO_ROUTE_LABELS: Record<string, string> = {
+  hyperframes: "Hyperframes",
+  ltx: "LTX 2.3",
+  audio: "纯语音",
+};
+
 export interface PublishTarget {
   id: number;
   name: string;

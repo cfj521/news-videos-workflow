@@ -890,7 +890,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   );
 }
 
-// ─── S5: 成片渲染 ──────────────────────────────────────
+// ─── S5: 合成渲染 ──────────────────────────────────────
 
 function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const [rendering, setRendering] = useState(false);

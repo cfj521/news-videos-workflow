@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { api } from "../api/client";
 import { STATUS_CHIP, cardCls, chipCls, sectionTitleCls, errorTextCls, btnPrimary } from "../styles";
 import { StageIndicator } from "../components/StageIndicator";
-import { STAGE_LABELS, type PipelineRun, type StageNumber } from "../types";
+import { STAGE_LABELS, VIDEO_ROUTE_LABELS, type PipelineRun, type StageNumber } from "../types";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "等待中",
@@ -84,7 +84,7 @@ export function RunDetailPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
         {([
           ["运行模式", run.mode],
-          ["视频路线", run.video_route],
+          ["音视频路线", VIDEO_ROUTE_LABELS[run.video_route] ?? run.video_route],
           ["时间范围", run.time_range],
           ["最大文章数", String(run.max_articles)],
         ] as const).map(([label, value]) => (

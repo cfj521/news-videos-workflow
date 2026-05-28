@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { PipelineRun } from "../types";
+import { VIDEO_ROUTE_LABELS } from "../types";
 import { STATUS_CHIP, cardCls, chipCls } from "../styles";
 import { StageIndicator } from "./StageIndicator";
 
@@ -34,7 +35,7 @@ export function RunCard({ run }: { run: PipelineRun }) {
       )}
       <div className="mt-3 flex gap-2 flex-wrap text-xs text-white/30">
         <span className="px-2 py-0.5 rounded bg-white/[0.04]">{run.mode}</span>
-        <span className="px-2 py-0.5 rounded bg-white/[0.04]">{run.video_route}</span>
+        <span className="px-2 py-0.5 rounded bg-white/[0.04]">{VIDEO_ROUTE_LABELS[run.video_route] ?? run.video_route}</span>
         <span className="px-2 py-0.5 rounded bg-white/[0.04]">{run.time_range}</span>
         <span className="px-2 py-0.5 rounded bg-white/[0.04]">{stageCount} 个阶段</span>
       </div>
