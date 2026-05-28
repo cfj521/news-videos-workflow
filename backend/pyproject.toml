@@ -38,3 +38,5 @@ select = ["E", "F", "I", "N", "W"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 tmp_path_retention_policy = "none"
+# 用仓库内可写目录作 tmp_path 基址，避免系统 %TEMP% 下陈旧/受限目录导致 PermissionError
+addopts = "--basetemp=.pytest_tmp"
