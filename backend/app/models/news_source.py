@@ -16,4 +16,5 @@ class NewsSource(Base, TimestampMixin):
     priority: Mapped[int] = mapped_column(Integer, default=5)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     tier: Mapped[str] = mapped_column(String(20), default="free")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     config_json: Mapped[str | None] = mapped_column(Text, nullable=True)

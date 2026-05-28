@@ -13,6 +13,9 @@ class RawArticleData:
     author: str | None = None
     category: str = "general"
     language: str = "en"
+    aggregator_url: str = ""
+    summary: str = ""
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass

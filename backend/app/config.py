@@ -1,8 +1,13 @@
-from enum import Enum
-from functools import lru_cache
-from pathlib import Path
+from __future__ import annotations
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel
+
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 
 
 class TimeRange(str, Enum):
@@ -18,38 +23,143 @@ class VideoRoute(str, Enum):
     LTX = "ltx"
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+class ProviderCfg(BaseModel):
+    provider: str = ""
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""
 
-    DATABASE_URL: str = "sqlite:///./data/news_videos.db"
-    REDIS_URL: str = "redis://localhost:6379/0"
-    DATA_DIR: str = "./data"
 
-    ANTHROPIC_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
-    TAVILY_API_KEY: str = ""
-    BRAVE_SEARCH_API_KEY: str = ""
-    SERPER_API_KEY: str = ""
+class TTSCfg(BaseModel):
+    provider: str = "edge-tts"
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+    voice: str = "zh-CN-XiaoxiaoNeural"
+    speed: float = 1.0
 
-    YOUTUBE_CLIENT_ID: str = ""
-    YOUTUBE_CLIENT_SECRET: str = ""
 
-    DEFAULT_TIME_RANGE: str = "7d"
-    DEFAULT_MAX_ARTICLES: int = 5
-    DEFAULT_VIDEO_ROUTE: str = "hyperframes"
-    DEFAULT_LANGUAGE: str = "zh"
-    DEDUP_LOOKBACK: str = "30d"
+class CollectorsCfg(BaseModel):
+    tavily_key: str = ""
+    brave_key: str = ""
+    serper_key: str = ""
+
+
+class YouTubeCfg(BaseModel):
+    client_id: str = ""
+    client_secret: str = ""
+
+
+class SummaryCfg(BaseModel):
+    enabled: bool = True
+    provider: str = ""
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""
+    max_length: int = 150
+
+
+class PipelineCfg(BaseModel):
+    default_time_range: str = "7d"
+    default_max_articles: int = 5
+    default_video_route: str = "hyperframes"
+    default_language: str = "zh"
+    dedup_lookback: str = "30d"
+    enable_summary: bool = True
+    enable_dedup: bool = True
+    enable_scoring: bool = True
+
+
+class LTXCfg(BaseModel):
+    model_dir: str = ""
+    checkpoint: str = "ltx-2.3-22b-distilled-1.1.safetensors"
+    upsampler: str = "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    distilled_lora: str = "ltx-2.3-22b-distilled-lora-384.safetensors"
+    lora_strength: float = 0.6
+    gemma_dir: str = ""
+    inference_steps: int = 8
+    cfg_scale: float = 3.0
+    stg_scale: float = 1.0
+    fps: float = 25.0
+    use_fp8: bool = True
+
+
+class VideoCfg(BaseModel):
+    resolution: str = "1080x1920"
+    aspect_ratio: str = "9:16"
+    fps: str = "30"
+    scene_gap_ms: int = 500
+    transition: str = "crossfade"
+
+
+class InfraCfg(BaseModel):
+    database_url: str = "sqlite:///../data/news_videos.db"
+    redis_url: str = "redis://localhost:6379/0"
+    data_dir: str = "../data"
+
+
+class Settings(BaseModel):
+    infra: InfraCfg = InfraCfg()
+    text: ProviderCfg = ProviderCfg(provider="claude", base_url="https://api.anthropic.com", model="claude-sonnet-4-6")
+    image: ProviderCfg = ProviderCfg(provider="openai", base_url="https://api.openai.com/v1", model="gpt-image-1")
+    tts: TTSCfg = TTSCfg()
+    summary: SummaryCfg = SummaryCfg()
+    collectors: CollectorsCfg = CollectorsCfg()
+    youtube: YouTubeCfg = YouTubeCfg()
+    pipeline: PipelineCfg = PipelineCfg()
+    video: VideoCfg = VideoCfg()
+    ltx: LTXCfg = LTXCfg()
 
     def ensure_data_dirs(self) -> None:
-        base = Path(self.DATA_DIR)
+        base = Path(self.infra.data_dir)
         (base / "runs").mkdir(parents=True, exist_ok=True)
         (base / "history").mkdir(parents=True, exist_ok=True)
 
+    # --- 兼容旧属性 ---
+    @property
+    def DATABASE_URL(self) -> str:
+        return self.infra.database_url
 
-@lru_cache
+    @property
+    def DATA_DIR(self) -> str:
+        return self.infra.data_dir
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
+def _save_yaml(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+
+_settings: Settings | None = None
+
+
 def get_settings() -> Settings:
-    return Settings()
+    global _settings
+    if _settings is None:
+        raw = _load_yaml(CONFIG_PATH)
+        _settings = Settings(**raw)
+        import logging
+        logging.getLogger("nv.config").info("Loaded config from %s", CONFIG_PATH)
+    return _settings
+
+
+def save_settings(settings: Settings) -> None:
+    global _settings
+    _settings = settings
+    _save_yaml(CONFIG_PATH, settings.model_dump())
+    import logging
+    logging.getLogger("nv.config").info("Saved config to %s", CONFIG_PATH)
+
+
+def reload_settings() -> Settings:
+    global _settings
+    _settings = None
+    return get_settings()

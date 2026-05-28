@@ -3,8 +3,10 @@ __pycache__/
 .venv/
 *.egg-info/
 .env
+config.yaml
 data/runs/
 data/history/
+data/logs/
 node_modules/
 dist/
 .ruff_cache/

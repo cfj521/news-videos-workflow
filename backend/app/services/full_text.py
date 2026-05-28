@@ -1,7 +1,12 @@
 import re
+import time
 from html.parser import HTMLParser
 
 import httpx
+
+from app.logging import get_logger
+
+log = get_logger("service.full_text")
 
 
 class _TextExtractor(HTMLParser):
@@ -31,20 +36,22 @@ class _TextExtractor(HTMLParser):
 
 class FullTextFetcher:
     async def fetch(self, url: str) -> str:
+        log.debug("Fetching full text: %s", url)
+        t0 = time.time()
         async with httpx.AsyncClient(
-            timeout=30,
-            follow_redirects=True,
+            timeout=30, follow_redirects=True,
             headers={"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"},
         ) as client:
             resp = await client.get(url)
             resp.raise_for_status()
 
-        return self._extract_content(resp.text)
+        text = self._extract_content(resp.text)
+        log.info("Fetched %d chars from %s in %.1fs", len(text), url, time.time() - t0)
+        return text
 
     def _extract_content(self, html: str) -> str:
         article_match = re.search(r"<article[^>]*>(.*?)</article>", html, re.DOTALL | re.IGNORECASE)
         target_html = article_match.group(1) if article_match else html
-
         extractor = _TextExtractor()
         extractor.feed(target_html)
         return extractor.get_text()

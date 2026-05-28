@@ -1,1 +1,81 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-surface: oklch(0.145 0.01 260);
+  --color-surface-raised: oklch(0.17 0.01 260);
+}
+
+html {
+  color-scheme: dark;
+  scrollbar-gutter: stable;
+}
+
+body {
+  background: var(--color-surface);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+
+/* fade-in for toasts */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.2s ease-out; }
+
+/* pulse-soft for active stage */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
+/* dialog backdrop */
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-backdrop { animation: backdrop-in 0.15s ease-out; }
+.animate-dialog { animation: dialog-in 0.2s ease-out; }
+
+/* Scrubber range input */
+.scrubber { -webkit-appearance: none; appearance: none; background: transparent; }
+.scrubber::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.08);
+}
+.scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #60a5fa; border: 2px solid #0f0f1a;
+  margin-top: -4px; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.scrubber::-webkit-slider-thumb:hover { transform: scale(1.2); }
+.scrubber::-moz-range-track {
+  height: 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.08); border: none;
+}
+.scrubber::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #60a5fa; border: 2px solid #0f0f1a;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.scrubber::-moz-range-progress {
+  height: 6px; border-radius: 3px;
+  background: #3b82f6;
+}

@@ -11,6 +11,7 @@ class NewsSourceCreate(BaseModel):
     language: str = "en"
     priority: int = 5
     enabled: bool = True
+    pinned: bool = False
     tier: str = "free"
     config_json: str | None = None
 
@@ -24,6 +25,7 @@ class NewsSourceRead(BaseModel):
     language: str
     priority: int
     enabled: bool
+    pinned: bool
     tier: str
     config_json: str | None
     created_at: datetime
@@ -33,6 +35,11 @@ class NewsSourceRead(BaseModel):
 
 class NewsSourceUpdate(BaseModel):
     name: str | None = None
+    type: str | None = None
+    url: str | None = None
+    category: str | None = None
+    language: str | None = None
     enabled: bool | None = None
     priority: int | None = None
+    pinned: bool | None = None
     config_json: str | None = None

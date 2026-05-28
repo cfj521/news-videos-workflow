@@ -6,6 +6,11 @@ export interface PipelineRun {
   current_stage: number | null;
   time_range: string;
   max_articles: number;
+  selected_stages: string;
+  publish_platforms: string;
+  progress_detail: string | null;
+  preview_path: string | null;
+  output_path: string | null;
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;
@@ -21,6 +26,7 @@ export interface NewsSource {
   language: string;
   priority: number;
   enabled: boolean;
+  pinned: boolean;
   tier: string;
   config_json: string | null;
   created_at: string;
@@ -28,11 +34,38 @@ export interface NewsSource {
 
 export type StageNumber = 1 | 2 | 3 | 4 | 5 | 6;
 
-export const STAGE_LABELS: Record<StageNumber, string> = {
-  1: "获取和处理",
-  2: "文案和分镜",
+export const STAGE_LABELS: Record<number, string> = {
+  1: "搜索整理",
+  2: "脚本/图片生成",
   3: "素材生成",
-  4: "校验和调整",
-  5: "合成与输出",
+  4: "预览",
+  5: "成片渲染",
   6: "发布",
+};
+
+export const VISIBLE_STAGES = [1, 2, 4, 5, 6] as const;
+
+export interface PublishTarget {
+  id: number;
+  name: string;
+  platform: "youtube" | "instagram" | "bilibili" | "douyin" | "kuaishou";
+  enabled: boolean;
+  config_json: string | null;
+  created_at: string;
+}
+
+export const PLATFORM_LABELS: Record<string, string> = {
+  youtube: "YouTube",
+  instagram: "Instagram Reels",
+  bilibili: "Bilibili",
+  douyin: "抖音",
+  kuaishou: "快手",
+};
+
+export const BACKEND_STAGE_MAP: Record<number, number[]> = {
+  1: [1],
+  2: [2, 3],
+  4: [4],
+  5: [5],
+  6: [6],
 };

@@ -1,6 +1,10 @@
 import json
+import time
 
+from app.logging import get_logger
 from app.providers.base import RawArticleData, TextProvider
+
+log = get_logger("stage2")
 
 SCRIPT_SYSTEM_PROMPT = """你是一个专业的新闻视频分镜脚本编写者。根据新闻原文生成一个视频分镜脚本。
 
@@ -34,6 +38,9 @@ async def run_stage2(
     text_provider: TextProvider,
     language: str = "zh",
 ) -> dict:
+    log.info("Generating script for: '%s' (source: %s, %d chars)", article.title, article.source_name, len(article.content))
+    t0 = time.time()
+
     prompt = f"""请为以下新闻生成视频分镜脚本：
 
 标题：{article.title}
@@ -42,14 +49,20 @@ async def run_stage2(
 {article.content[:3000]}
 """
 
-    response = await text_provider.generate(
-        prompt=prompt,
-        system_prompt=SCRIPT_SYSTEM_PROMPT,
-    )
+    response = await text_provider.generate(prompt=prompt, system_prompt=SCRIPT_SYSTEM_PROMPT)
+    log.debug("Raw response: %d chars", len(response))
 
     cleaned = response.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[1]
         cleaned = cleaned.rsplit("```", 1)[0]
 
-    return json.loads(cleaned)
+    try:
+        result = json.loads(cleaned)
+    except json.JSONDecodeError:
+        log.error("Failed to parse script JSON — raw response:\n%s", cleaned[:500])
+        raise
+
+    scene_count = len(result.get("scenes", []))
+    log.info("Script generated: '%s' — %d scenes in %.1fs", result.get("title", "?"), scene_count, time.time() - t0)
+    return result

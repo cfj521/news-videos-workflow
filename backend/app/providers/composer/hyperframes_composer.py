@@ -1,128 +1,113 @@
 import subprocess
+import time
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+from app.logging import get_logger
 from app.providers.base import ComposerProvider, VideoResult
+
+log = get_logger("composer.hyperframes")
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
 class HyperframesComposer(ComposerProvider):
-    async def compose(
-        self,
-        timeline_json: dict,
-        assets_dir: str,
-        output_path: str,
-        resolution: str = "1080x1920",
-    ) -> VideoResult:
-        html = self._render_html(timeline_json, resolution)
+    async def compose(self, timeline_json: dict, assets_dir: str, output_path: str, resolution: str = "1080x1920") -> VideoResult:
+        run_dir = Path(assets_dir).parent
+        log.info("compose() entries=%d resolution=%s run_dir=%s", len(timeline_json.get("entries", [])), resolution, run_dir)
+        t0 = time.time()
 
-        project_dir = Path(assets_dir).parent / "hyperframes_project"
-        project_dir.mkdir(parents=True, exist_ok=True)
-        index_html = project_dir / "index.html"
-        index_html.write_text(html, encoding="utf-8")
+        html = self._render_html(timeline_json, resolution, run_dir)
+        (run_dir / "index.html").write_text(html, encoding="utf-8")
+        log.info("index.html written to %s", run_dir)
 
-        self._link_assets(assets_dir, project_dir)
+        abs_output = str(Path(output_path).resolve())
+        abs_thumb = abs_output.replace(".mp4", "_thumb.jpg")
 
+        log.info("Running npx hyperframes render → %s", abs_output)
         result = subprocess.run(
-            [
-                "npx",
-                "hyperframes",
-                "render",
-                "--output",
-                output_path,
-                "--fps",
-                "30",
-                "--quality",
-                "standard",
-            ],
-            cwd=str(project_dir),
-            capture_output=True,
-            text=True,
-            timeout=300,
+            ["npx", "hyperframes", "render", "--output", abs_output, "--fps", "30", "--quality", "standard"],
+            cwd=str(run_dir), capture_output=True, timeout=600, shell=True,
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"Hyperframes render failed: {result.stderr}")
+            stderr = ""
+            try:
+                stderr = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else (result.stderr or "")
+            except Exception:
+                stderr = str(result.stderr)
+            log.error("Hyperframes render failed (code %d): %s", result.returncode, stderr[:500])
+            raise RuntimeError(f"Hyperframes render failed: {stderr[:500]}")
 
-        thumbnail_path = output_path.replace(".mp4", "_thumb.jpg")
-        self._extract_thumbnail(output_path, thumbnail_path)
+        elapsed = time.time() - t0
+        log.info("Hyperframes render done in %.1fs", elapsed)
+
+        self._extract_thumbnail(abs_output, abs_thumb)
 
         return VideoResult(
-            file_path=output_path,
-            thumbnail_path=thumbnail_path if Path(thumbnail_path).exists() else None,
+            file_path=abs_output,
+            thumbnail_path=abs_thumb if Path(abs_thumb).exists() else None,
             duration_ms=timeline_json.get("total_duration_ms", 0),
             resolution=resolution,
         )
 
-    def _render_html(self, timeline: dict, resolution: str) -> str:
+    def _render_html(self, timeline: dict, resolution: str, run_dir: Path, transition: str = "crossfade") -> str:
         parts = resolution.split("x")
         width, height = int(parts[0]), int(parts[1])
-        total_ms = timeline["total_duration_ms"]
-        total_s = total_ms / 1000
+        total_s = timeline["total_duration_ms"] / 1000
 
         entries = []
         prev_scene_ids = []
         for i, entry in enumerate(timeline["entries"]):
-            if i > 0:
-                prev_scene_ids.append(timeline["entries"][i - 1]["scene_id"])
-            else:
-                prev_scene_ids.append(None)
+            prev_scene_ids.append(timeline["entries"][i - 1]["scene_id"] if i > 0 else None)
 
-            entries.append(
-                {
-                    "scene_id": entry["scene_id"],
-                    "start_s": round(entry["start_ms"] / 1000, 3),
-                    "end_s": round(entry["end_ms"] / 1000, 3),
-                    "duration_s": round((entry["end_ms"] - entry["start_ms"]) / 1000, 3),
-                    "image_path": entry["image_path"],
-                    "audio_path": entry["audio_path"],
-                    "audio_duration_s": round(entry.get("audio_duration_ms", 0) / 1000, 3),
-                    "subtitle_text": entry.get("subtitle_text", ""),
-                }
-            )
+            img_abs = entry["image_path"]
+            audio_abs = entry["audio_path"]
+            try:
+                img_rel = str(Path(img_abs).relative_to(run_dir)).replace("\\", "/")
+            except ValueError:
+                img_rel = Path(img_abs).name
+            try:
+                audio_rel = str(Path(audio_abs).relative_to(run_dir)).replace("\\", "/")
+            except ValueError:
+                audio_rel = Path(audio_abs).name
+
+            sub_lines = entry.get("subtitle_lines", [])
+            scene_start_s = round(entry["start_ms"] / 1000, 3)
+            template_lines = []
+            for sl in sub_lines:
+                template_lines.append({
+                    "text": sl["text"],
+                    "start_s": round(sl["start_ms"] / 1000, 3),
+                    "end_s": round(sl["end_ms"] / 1000, 3),
+                })
+
+            entries.append({
+                "scene_id": entry["scene_id"],
+                "start_s": scene_start_s,
+                "end_s": round(entry["end_ms"] / 1000, 3),
+                "duration_s": round((entry["end_ms"] - entry["start_ms"]) / 1000, 3),
+                "image_path": img_rel,
+                "audio_path": audio_rel,
+                "audio_duration_s": round(entry.get("audio_duration_ms", 0) / 1000, 3),
+                "subtitle_text": entry.get("subtitle_text", ""),
+                "subtitle_lines": template_lines,
+            })
 
         env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
         template = env.get_template("composition.html.j2")
-        return template.render(
-            width=width,
-            height=height,
-            total_duration_s=round(total_s, 3),
-            entries=entries,
-            prev_scene_ids=prev_scene_ids,
-        )
-
-    def _link_assets(self, assets_dir: str, project_dir: Path) -> None:
-        assets_link = project_dir / "assets"
-        if not assets_link.exists():
-            assets_src = Path(assets_dir).resolve()
-            try:
-                assets_link.symlink_to(assets_src)
-            except OSError:
-                import shutil
-
-                if assets_src.exists():
-                    shutil.copytree(str(assets_src), str(assets_link))
+        return template.render(width=width, height=height, total_duration_s=round(total_s, 3), entries=entries, prev_scene_ids=prev_scene_ids, transition=transition)
 
     def _extract_thumbnail(self, video_path: str, thumb_path: str) -> None:
         try:
             subprocess.run(
-                [
-                    "ffmpeg",
-                    "-i",
-                    video_path,
-                    "-ss",
-                    "1",
-                    "-vframes",
-                    "1",
-                    "-q:v",
-                    "2",
-                    thumb_path,
-                    "-y",
-                ],
-                capture_output=True,
-                timeout=30,
+                ["ffmpeg", "-i", video_path, "-ss", "1", "-vframes", "1", "-q:v", "2", thumb_path, "-y"],
+                capture_output=True, timeout=30, shell=True,
             )
+            if Path(thumb_path).exists():
+                log.info("Thumbnail extracted → %s", thumb_path)
+            else:
+                log.warning("Thumbnail extraction produced no output")
         except Exception:
-            pass
+            log.warning("Thumbnail extraction failed", exc_info=True)

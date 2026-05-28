@@ -1,44 +1,84 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import useSWR from "swr";
 import { api } from "../api/client";
+import { btnPrimary, btnCompact, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls } from "../styles";
 import { AddSourceDialog } from "../components/AddSourceDialog";
 import { EditSourceDialog } from "../components/EditSourceDialog";
 import type { NewsSource } from "../types";
 
-const TYPE_COLORS: Record<string, string> = {
-  rss: "bg-green-900 text-green-300",
-  api: "bg-blue-900 text-blue-300",
-  search: "bg-purple-900 text-purple-300",
-  scrape: "bg-orange-900 text-orange-300",
-};
+// ── Sort helpers ────────────────────────────────────────
+
+type SortKey = "name" | "type" | "category" | "language" | "priority";
+type SortDir = "asc" | "desc";
+
+function sortSources(sources: NewsSource[], key: SortKey, dir: SortDir): NewsSource[] {
+  const sorted = [...sources];
+  sorted.sort((a, b) => {
+    // Pinned items always on top
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    const av = a[key], bv = b[key];
+    if (typeof av === "number" && typeof bv === "number") return dir === "asc" ? av - bv : bv - av;
+    return dir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+  });
+  return sorted;
+}
+
+// ── Drag & drop ─────────────────────────────────────────
+
+function useDragReorder(items: NewsSource[], onReorder: (ids: number[], priorityMap: Record<number, number>) => void) {
+  const dragIdx = useRef<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+
+  const onDragStart = useCallback((idx: number) => { dragIdx.current = idx; }, []);
+
+  const onDragOver = useCallback((e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    setOverIdx(idx);
+  }, []);
+
+  const onDrop = useCallback((dropIdx: number) => {
+    const fromIdx = dragIdx.current;
+    dragIdx.current = null;
+    setOverIdx(null);
+    if (fromIdx === null || fromIdx === dropIdx) return;
+
+    const reordered = [...items];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(dropIdx, 0, moved);
+
+    const priorityMap: Record<number, number> = {};
+    reordered.forEach((s, i) => { priorityMap[s.id] = i + 1; });
+    onReorder(reordered.map((s) => s.id), priorityMap);
+  }, [items, onReorder]);
+
+  const onDragEnd = useCallback(() => { dragIdx.current = null; setOverIdx(null); }, []);
+
+  return { overIdx, onDragStart, onDragOver, onDrop, onDragEnd };
+}
+
+// ── Config preview ──────────────────────────────────────
 
 function ConfigPreview({ json }: { json: string | null }) {
   const [expanded, setExpanded] = useState(false);
-  if (!json) return <span className="text-gray-600 text-xs">—</span>;
+  if (!json) return <span className="text-white/20 text-xs">--</span>;
 
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch {
-    parsed = json;
-  }
-
-  const preview = json.slice(0, 40) + (json.length > 40 ? "…" : "");
+  try { parsed = JSON.parse(json); } catch { parsed = json; }
+  const preview = json.slice(0, 35) + (json.length > 35 ? "..." : "");
 
   return (
     <div>
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setExpanded((v) => !v);
-        }}
-        className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1"
+        onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+        className="text-xs text-white/30 hover:text-white/50 flex items-center gap-1.5 transition"
       >
-        <span>{expanded ? "▾" : "▸"}</span>
+        <svg className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 16 16" fill="currentColor">
+          <path d="M6.5 3.5l5 4.5-5 4.5V3.5z" />
+        </svg>
         <span className="font-mono">{preview}</span>
       </button>
       {expanded && (
-        <pre className="mt-1 text-xs bg-gray-800 rounded p-2 text-gray-300 font-mono overflow-x-auto max-w-xs">
+        <pre className={`mt-2 text-xs ${cardCls} p-3 text-white/50 font-mono overflow-x-auto max-w-xs`}>
           {JSON.stringify(parsed, null, 2)}
         </pre>
       )}
@@ -46,13 +86,44 @@ function ConfigPreview({ json }: { json: string | null }) {
   );
 }
 
-export function SourcesPage() {
-  const { data: sources, mutate } = useSWR<NewsSource[]>(
-    "sources",
-    api.sources.list
+// ── Sort header ─────────────────────────────────────────
+
+function SortTh({ label, sortKey, currentKey, currentDir, onSort }: {
+  label: string; sortKey: SortKey; currentKey: SortKey; currentDir: SortDir; onSort: (k: SortKey) => void;
+}) {
+  const active = currentKey === sortKey;
+  return (
+    <th
+      className={`text-left px-4 py-3 ${sectionTitleCls} cursor-pointer select-none hover:text-white/60 transition`}
+      onClick={() => onSort(sortKey)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active && (
+          <svg className={`w-3 h-3 ${currentDir === "desc" ? "rotate-180" : ""}`} viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 4l4 6H4z" />
+          </svg>
+        )}
+      </span>
+    </th>
   );
+}
+
+// ── Page ────────────────────────────────────────────────
+
+export function SourcesPage() {
+  const { data: sources, mutate } = useSWR<NewsSource[]>("sources", api.sources.list);
   const [showAdd, setShowAdd] = useState(false);
   const [editSource, setEditSource] = useState<NewsSource | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("priority");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const sorted = sources ? sortSources(sources, sortKey, sortDir) : [];
 
   const toggleSource = async (e: React.MouseEvent, source: NewsSource) => {
     e.stopPropagation();
@@ -60,90 +131,115 @@ export function SourcesPage() {
     mutate();
   };
 
+  const togglePin = async (e: React.MouseEvent, source: NewsSource) => {
+    e.stopPropagation();
+    if (!source.pinned) {
+      const pinnedCount = sources?.filter((s) => s.pinned).length ?? 0;
+      if (pinnedCount >= 3) return;
+    }
+    await api.sources.update(source.id, { pinned: !source.pinned });
+    mutate();
+  };
+
+  const allEnabled = sources?.every((s) => s.enabled) ?? false;
+  const toggleAll = async () => {
+    if (!sources?.length) return;
+    const newEnabled = !allEnabled;
+    await api.sources.batch({ ids: sources.map((s) => s.id), enabled: newEnabled });
+    mutate();
+  };
+
+  const handleReorder = async (ids: number[], priorityMap: Record<number, number>) => {
+    await api.sources.batch({ ids, priority_map: priorityMap });
+    mutate();
+  };
+
+  const { overIdx, onDragStart, onDragOver, onDrop, onDragEnd } = useDragReorder(sorted, handleReorder);
+
+  const pinnedCount = sources?.filter((s) => s.pinned).length ?? 0;
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">News Sources</h1>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium"
-        >
-          + Add Source
-        </button>
+        <h1 className="text-2xl font-bold tracking-tight">信息源管理</h1>
+        <div className="flex items-center gap-2">
+          <button onClick={toggleAll} className={btnCompact}>
+            {allEnabled ? "全部禁用" : "全部启用"}
+          </button>
+          <button onClick={() => setShowAdd(true)} className={btnPrimary}>
+            + 添加信息源
+          </button>
+        </div>
       </div>
 
-      <div className="border border-gray-800 rounded-lg overflow-hidden">
+      <div className={`${cardCls} overflow-hidden`}>
         <table className="w-full text-sm">
-          <thead className="bg-gray-900">
-            <tr>
-              <th className="text-left px-4 py-3 text-gray-400 font-medium">
-                Name
-              </th>
-              <th className="text-left px-4 py-3 text-gray-400 font-medium">
-                Type
-              </th>
-              <th className="text-left px-4 py-3 text-gray-400 font-medium">
-                Category
-              </th>
-              <th className="text-left px-4 py-3 text-gray-400 font-medium">
-                Lang
-              </th>
-              <th className="text-left px-4 py-3 text-gray-400 font-medium">
-                Priority
-              </th>
-              <th className="text-left px-4 py-3 text-gray-400 font-medium">
-                Config
-              </th>
-              <th className="text-left px-4 py-3 text-gray-400 font-medium">
-                Enabled
-              </th>
+          <thead>
+            <tr className="bg-white/[0.03]">
+              <th className={`w-8 px-2 py-3 ${sectionTitleCls}`} />
+              <SortTh label="名称" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortTh label="类型" sortKey="type" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortTh label="分类" sortKey="category" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortTh label="语言" sortKey="language" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <SortTh label="优先级" sortKey="priority" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              <th className={`text-left px-4 py-3 ${sectionTitleCls}`}>配置</th>
+              <th className={`text-left px-4 py-3 ${sectionTitleCls}`}>启用</th>
             </tr>
           </thead>
           <tbody>
-            {sources?.map((source) => (
+            {sorted.map((source, idx) => (
               <tr
                 key={source.id}
+                draggable
+                onDragStart={() => onDragStart(idx)}
+                onDragOver={(e) => onDragOver(e, idx)}
+                onDrop={() => onDrop(idx)}
+                onDragEnd={onDragEnd}
                 onClick={() => setEditSource(source)}
-                className="border-t border-gray-800 hover:bg-gray-900/50 cursor-pointer"
+                className={`border-t border-white/[0.04] hover:bg-white/[0.03] cursor-pointer transition ${
+                  overIdx === idx ? "border-t-2 !border-t-blue-500/50" : ""
+                } ${source.pinned ? "bg-white/[0.02]" : ""}`}
               >
+                <td className="w-8 px-2 py-3 text-center">
+                  <button
+                    onClick={(e) => togglePin(e, source)}
+                    title={source.pinned ? "取消置顶" : pinnedCount >= 3 ? "置顶已满 (最多3条)" : "置顶"}
+                    className={`p-1.5 rounded transition ${source.pinned ? "text-amber-400 hover:text-amber-300" : "text-white/15 hover:text-white/30 hover:bg-white/[0.04]"} ${!source.pinned && pinnedCount >= 3 ? "opacity-30 cursor-not-allowed" : ""}`}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="4" y1="3" x2="20" y2="3" />
+                      <line x1="12" y1="21" x2="12" y2="7" />
+                      <polyline points="6 13 12 7 18 13" />
+                    </svg>
+                  </button>
+                </td>
                 <td className="px-4 py-3">
-                  <div className="font-medium">{source.name}</div>
-                  <div className="text-xs text-gray-500 truncate max-w-xs">
-                    {source.url}
+                  <div>
+                    <div className="font-medium text-white/80">{source.name}</div>
+                    <div className="text-xs text-white/20 truncate max-w-xs mt-0.5">{source.url}</div>
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`px-2 py-0.5 rounded text-xs ${TYPE_COLORS[source.type] ?? "bg-gray-800"}`}
-                  >
+                  <span className={`${chipCls} ${TYPE_CHIP[source.type] ?? "bg-white/[0.06] text-white/40"}`}>
                     {source.type}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-400">{source.category}</td>
-                <td className="px-4 py-3 text-gray-400">{source.language}</td>
-                <td className="px-4 py-3 text-gray-400">{source.priority}</td>
+                <td className="px-4 py-3 text-white/40">{source.category}</td>
+                <td className="px-4 py-3 text-white/40">{source.language}</td>
+                <td className="px-4 py-3 text-white/40">{source.priority}</td>
+                <td className="px-4 py-3"><ConfigPreview json={source.config_json} /></td>
                 <td className="px-4 py-3">
-                  <ConfigPreview json={source.config_json} />
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    onClick={(e) => toggleSource(e, source)}
-                    className={`w-10 h-5 rounded-full relative transition-colors ${source.enabled ? "bg-green-600" : "bg-gray-700"}`}
-                  >
-                    <span
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${source.enabled ? "left-5" : "left-0.5"}`}
-                    />
+                  <button onClick={(e) => toggleSource(e, source)} className={toggleCls(source.enabled)}>
+                    <span className={toggleThumbCls(source.enabled)} />
                   </button>
                 </td>
               </tr>
             ))}
-            {sources?.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
-                <td
-                  colSpan={7}
-                  className="px-4 py-10 text-center text-gray-500"
-                >
-                  No sources yet. Add one to get started.
+                <td colSpan={8} className="px-4 py-16 text-center">
+                  <p className="text-white/30 text-sm">暂无信息源</p>
+                  <p className="text-white/20 text-xs mt-1">点击上方按钮添加</p>
                 </td>
               </tr>
             )}
@@ -153,21 +249,14 @@ export function SourcesPage() {
 
       {showAdd && (
         <AddSourceDialog
-          onCreated={() => {
-            setShowAdd(false);
-            mutate();
-          }}
+          onCreated={() => { setShowAdd(false); mutate(); }}
           onClose={() => setShowAdd(false)}
         />
       )}
-
       {editSource && (
         <EditSourceDialog
           source={editSource}
-          onUpdated={() => {
-            setEditSource(null);
-            mutate();
-          }}
+          onUpdated={() => { setEditSource(null); mutate(); }}
           onClose={() => setEditSource(null)}
         />
       )}

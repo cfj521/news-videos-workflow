@@ -1,58 +1,66 @@
 import { useState } from "react";
-import useSWR from "swr";
 import { api } from "../api/client";
-import type { NewsSource } from "../types";
+import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls } from "../styles";
+import { Select } from "./Select";
+import { STAGE_LABELS, VISIBLE_STAGES } from "../types";
 
 interface Props {
   onCreated: () => void;
   onClose: () => void;
 }
 
-const selectCls =
-  "w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500";
-const inputCls =
-  "w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500";
+const VISUAL_DEPS: Record<number, number[]> = { 2: [1], 4: [1, 2], 5: [1, 2, 4], 6: [1, 2, 4, 5] };
+
+function toBackendStages(visual: Set<number>): number[] {
+  const backend: number[] = [];
+  for (const vs of visual) {
+    if (vs === 2) { backend.push(2, 3); }
+    else { backend.push(vs); }
+  }
+  return [...new Set(backend)].sort();
+}
+
+const PLATFORMS = [
+  { value: "youtube", label: "YouTube" },
+  { value: "bilibili", label: "Bilibili" },
+  { value: "douyin", label: "抖音" },
+];
 
 export function CreateRunDialog({ onCreated, onClose }: Props) {
-  const [mode, setMode] = useState("manual");
+  const [mode, setMode] = useState("auto");
   const [timeRange, setTimeRange] = useState("7d");
   const [maxArticles, setMaxArticles] = useState(5);
-  const [videoRoute, setVideoRoute] = useState<"hyperframes" | "ltx">(
-    "hyperframes"
-  );
-  const [language, setLanguage] = useState<"zh" | "en">("zh");
+  const [videoRoute, setVideoRoute] = useState("hyperframes");
+  const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5]));
+  const [platforms, setPlatforms] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
-  const { data: sources } = useSWR<NewsSource[]>("sources", api.sources.list);
-  const enabledSources = sources?.filter((s) => s.enabled) ?? [];
-
-  // Default: all enabled sources selected
-  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<number>>(
-    () => new Set(enabledSources.map((s) => s.id))
-  );
-
-  // Sync selections when sources load
-  const [syncedOnce, setSyncedOnce] = useState(false);
-  if (enabledSources.length > 0 && !syncedOnce) {
-    setSelectedSourceIds(new Set(enabledSources.map((s) => s.id)));
-    setSyncedOnce(true);
-  }
-
-  const toggleSource = (id: number) => {
-    setSelectedSourceIds((prev) => {
+  const toggleStage = (s: number) => {
+    setSelectedVisual((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(s)) {
+        next.delete(s);
+        for (const [dep, requires] of Object.entries(VISUAL_DEPS)) {
+          if (requires.includes(s)) next.delete(Number(dep));
+        }
+      } else {
+        next.add(s);
+        const deps = VISUAL_DEPS[s] ?? [];
+        for (const d of deps) next.add(d);
+      }
       return next;
     });
   };
 
-  const toggleAll = () => {
-    if (selectedSourceIds.size === enabledSources.length) {
-      setSelectedSourceIds(new Set());
-    } else {
-      setSelectedSourceIds(new Set(enabledSources.map((s) => s.id)));
-    }
+  const togglePlatform = (p: string) => {
+    setPlatforms((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p); else next.add(p);
+      if (next.size > 0) {
+        setSelectedVisual(new Set(VISIBLE_STAGES));
+      }
+      return next;
+    });
   };
 
   const handleSubmit = async () => {
@@ -63,129 +71,97 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         video_route: videoRoute,
         time_range: timeRange,
         max_articles: maxArticles,
+        selected_stages: toBackendStages(selectedVisual),
+        publish_platforms: Array.from(platforms),
       });
       onCreated();
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[460px] max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-4">New Pipeline Run</h2>
+    <div className={dialogOverlayCls}>
+      <div className={`${dialogPanelCls} w-[500px]`}>
+        <h2 className="text-lg font-semibold mb-5">新建任务</h2>
 
-        <label className="block text-sm text-gray-400 mb-1">Mode</label>
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value)}
-          className={`${selectCls} mb-3`}
-        >
-          <option value="manual">Manual (with review)</option>
-          <option value="auto">Auto (no review)</option>
-        </select>
+        <label className={labelCls}>执行阶段</label>
+        <div className="rounded-lg border border-white/[0.06] mb-4 overflow-hidden">
+          {VISIBLE_STAGES.map((s) => (
+            <label
+              key={s}
+              className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] cursor-pointer border-b border-white/[0.04] last:border-0 transition"
+            >
+              <input
+                type="checkbox"
+                checked={selectedVisual.has(s)}
+                onChange={() => toggleStage(s)}
+                className="w-3.5 h-3.5 rounded accent-blue-500"
+              />
+              <span className="text-xs text-white/25 font-mono w-5">S{s}</span>
+              <span className="text-sm text-white/70 flex-1">{STAGE_LABELS[s]}</span>
+            </label>
+          ))}
+        </div>
 
-        <label className="block text-sm text-gray-400 mb-1">Video Route</label>
-        <select
-          value={videoRoute}
-          onChange={(e) =>
-            setVideoRoute(e.target.value as "hyperframes" | "ltx")
-          }
-          className={`${selectCls} mb-3`}
-        >
-          <option value="hyperframes">Hyperframes (MVP)</option>
-          <option value="ltx">LTX 2.3</option>
-        </select>
-
-        <label className="block text-sm text-gray-400 mb-1">Language</label>
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value as "zh" | "en")}
-          className={`${selectCls} mb-3`}
-        >
-          <option value="zh">Chinese (zh)</option>
-          <option value="en">English (en)</option>
-        </select>
-
-        <label className="block text-sm text-gray-400 mb-1">Time Range</label>
-        <select
-          value={timeRange}
-          onChange={(e) => setTimeRange(e.target.value)}
-          className={`${selectCls} mb-3`}
-        >
-          <option value="1d">Last 1 day</option>
-          <option value="3d">Last 3 days</option>
-          <option value="7d">Last 7 days</option>
-          <option value="15d">Last 15 days</option>
-          <option value="1m">Last month</option>
-        </select>
-
-        <label className="block text-sm text-gray-400 mb-1">Max Articles</label>
-        <input
-          type="number"
-          value={maxArticles}
-          onChange={(e) => setMaxArticles(Number(e.target.value))}
-          min={1}
-          max={20}
-          className={`${inputCls} mb-3`}
-        />
-
-        {/* Source selection */}
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-2">
-            <label className="text-sm text-gray-400">Sources</label>
-            {enabledSources.length > 0 && (
-              <button
-                type="button"
-                onClick={toggleAll}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                {selectedSourceIds.size === enabledSources.length
-                  ? "Deselect all"
-                  : "Select all"}
-              </button>
-            )}
-          </div>
-          {enabledSources.length === 0 ? (
-            <p className="text-xs text-gray-500 italic">
-              No enabled sources. Add some in the Sources page.
-            </p>
-          ) : (
-            <div className="border border-gray-700 rounded max-h-36 overflow-y-auto">
-              {enabledSources.map((source) => (
-                <label
-                  key={source.id}
-                  className="flex items-center gap-3 px-3 py-2 hover:bg-gray-800 cursor-pointer border-b border-gray-800 last:border-0"
+        {selectedVisual.has(6) && (
+          <>
+            <label className={labelCls}>发布平台</label>
+            <div className="flex gap-2 mb-4">
+              {PLATFORMS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => togglePlatform(p.value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
+                    platforms.has(p.value)
+                      ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
+                      : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white/60"
+                  }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedSourceIds.has(source.id)}
-                    onChange={() => toggleSource(source.id)}
-                    className="w-4 h-4 rounded accent-blue-500"
-                  />
-                  <span className="text-sm text-gray-200 flex-1">
-                    {source.name}
-                  </span>
-                  <span className="text-xs text-gray-500">{source.type}</span>
-                </label>
+                  {p.label}
+                </button>
               ))}
             </div>
-          )}
+          </>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className={labelCls}>运行模式</label>
+            <Select value={mode} onChange={setMode} options={[
+              { value: "auto", label: "自动" },
+              { value: "manual", label: "手动（逐步审核）" },
+            ]} />
+          </div>
+          <div>
+            <label className={labelCls}>视频路线</label>
+            <Select value={videoRoute} onChange={setVideoRoute} options={[
+              { value: "hyperframes", label: "Hyperframes" },
+              { value: "ltx", label: "LTX 2.3" },
+            ]} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div>
+            <label className={labelCls}>时间范围</label>
+            <Select value={timeRange} onChange={setTimeRange} options={[
+              { value: "1d", label: "最近 1 天" },
+              { value: "3d", label: "最近 3 天" },
+              { value: "7d", label: "最近 7 天" },
+              { value: "15d", label: "最近 15 天" },
+              { value: "1m", label: "最近 1 个月" },
+            ]} />
+          </div>
+          <div>
+            <label className={labelCls}>最大文章数</label>
+            <input type="number" value={maxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
+          </div>
         </div>
 
         <div className="flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded font-medium disabled:opacity-50"
-          >
-            {loading ? "Creating..." : "Create"}
+          <button onClick={onClose} className={btnSecondary}>取消</button>
+          <button onClick={handleSubmit} disabled={loading || selectedVisual.size === 0} className={btnPrimary}>
+            {loading ? "创建中..." : "创建"}
           </button>
         </div>
       </div>

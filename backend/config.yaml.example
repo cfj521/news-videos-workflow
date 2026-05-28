@@ -1,0 +1,44 @@
+infra:
+  database_url: sqlite:///../data/news_videos.db
+  redis_url: redis://localhost:6379/0
+  data_dir: ../data
+
+text:
+  provider: claude
+  base_url: https://api.anthropic.com
+  model: claude-sonnet-4-6
+  api_key: ""
+
+image:
+  provider: openai
+  base_url: https://api.openai.com/v1
+  model: gpt-image-1
+  api_key: ""
+
+tts:
+  provider: edge-tts
+  base_url: ""
+  api_key: ""
+  model: ""
+  voice: zh-CN-XiaoxiaoNeural
+  speed: 1.0
+
+collectors:
+  tavily_key: ""
+  brave_key: ""
+  serper_key: ""
+
+youtube:
+  client_id: ""
+  client_secret: ""
+
+pipeline:
+  default_time_range: 7d
+  default_max_articles: 5
+  default_video_route: hyperframes
+  default_language: zh
+  dedup_lookback: 30d
+
+video:
+  resolution: 1080x1920
+  fps: "30"

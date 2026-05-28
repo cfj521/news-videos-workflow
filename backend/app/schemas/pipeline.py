@@ -8,6 +8,8 @@ class PipelineRunCreate(BaseModel):
     video_route: str = "hyperframes"
     time_range: str = "7d"
     max_articles: int = 5
+    selected_stages: list[int] = [1, 2, 3, 4, 5]
+    publish_platforms: list[str] = []
 
 
 class PipelineRunRead(BaseModel):
@@ -18,6 +20,11 @@ class PipelineRunRead(BaseModel):
     current_stage: int | None
     time_range: str
     max_articles: int
+    selected_stages: str
+    publish_platforms: str
+    progress_detail: str | None
+    preview_path: str | None
+    output_path: str | None
     started_at: datetime | None
     finished_at: datetime | None
     error_message: str | None

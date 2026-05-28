@@ -1,142 +1,108 @@
 import { useState } from "react";
 import { api } from "../api/client";
+import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, errorTextCls } from "../styles";
+import { Select } from "./Select";
 
 interface Props {
   onCreated: () => void;
   onClose: () => void;
 }
 
-const inputCls =
-  "w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500";
-const selectCls =
-  "w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500";
-const labelCls = "block text-sm text-gray-400 mb-1";
+const needsApiKey = (t: string) => t === "search" || t === "api";
 
 export function AddSourceDialog({ onCreated, onClose }: Props) {
   const [name, setName] = useState("");
-  const [type, setType] = useState<"rss" | "api" | "search" | "scrape">("rss");
+  const [type, setType] = useState("rss");
   const [url, setUrl] = useState("");
   const [category, setCategory] = useState("general");
   const [language, setLanguage] = useState("zh");
   const [priority, setPriority] = useState(5);
+  const [apiKey, setApiKey] = useState("");
   const [configJson, setConfigJson] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = async () => {
-    if (!name.trim() || !url.trim()) {
-      setError("Name and URL are required.");
-      return;
-    }
+  const buildConfigJson = () => {
+    let cfg: Record<string, unknown> = {};
     if (configJson.trim()) {
-      try {
-        JSON.parse(configJson);
-      } catch {
-        setError("Config JSON is not valid JSON.");
-        return;
-      }
+      try { cfg = JSON.parse(configJson); } catch { return configJson; }
+    }
+    if (apiKey.trim()) cfg.api_key = apiKey.trim();
+    return Object.keys(cfg).length > 0 ? JSON.stringify(cfg) : null;
+  };
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !url.trim()) { setError("名称和 URL 为必填项"); return; }
+    if (configJson.trim()) {
+      try { JSON.parse(configJson); } catch { setError("配置 JSON 格式无效"); return; }
     }
     setError("");
     setLoading(true);
     try {
-      await api.sources.create({
-        name,
-        type,
-        url,
-        category,
-        language,
-        priority,
-        enabled: true,
-        tier: "standard",
-        config_json: configJson.trim() || null,
-      });
+      await api.sources.create({ name, type: type as "rss" | "api" | "search" | "scrape", url, category, language, priority, enabled: true, tier: "standard", config_json: buildConfigJson() });
       onCreated();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create source.");
-    } finally {
-      setLoading(false);
-    }
+      setError(e instanceof Error ? e.message : "创建信息源失败");
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-4">Add News Source</h2>
+    <div className={dialogOverlayCls}>
+      <div className={`${dialogPanelCls} w-[480px]`}>
+        <h2 className="text-lg font-semibold mb-5">添加信息源</h2>
 
-        <label className={labelCls}>Name</label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. TechCrunch RSS"
-          className={`${inputCls} mb-3`}
-        />
+        <label className={labelCls}>名称</label>
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="例如 TechCrunch RSS" className={`${inputCls} mb-4`} />
 
-        <label className={labelCls}>Type</label>
-        <select
-          value={type}
-          onChange={(e) => setType(e.target.value as typeof type)}
-          className={`${selectCls} mb-3`}
-        >
-          <option value="rss">RSS</option>
-          <option value="api">API</option>
-          <option value="search">Search</option>
-          <option value="scrape">Scrape</option>
-        </select>
+        <label className={labelCls}>类型</label>
+        <Select value={type} onChange={setType} className="mb-4" options={[
+          { value: "rss", label: "RSS" },
+          { value: "api", label: "API" },
+          { value: "search", label: "Search" },
+          { value: "scrape", label: "Scrape" },
+        ]} />
 
         <label className={labelCls}>URL</label>
-        <input
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://..."
-          className={`${inputCls} mb-3`}
-        />
+        <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." className={`${inputCls} mb-4`} />
 
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className={labelCls}>Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className={selectCls}
-            >
-              <option value="tech">Tech</option>
-              <option value="ai">AI</option>
-              <option value="general">General</option>
-            </select>
+            <label className={labelCls}>分类</label>
+            <Select value={category} onChange={setCategory} options={[
+              { value: "tech", label: "科技" },
+              { value: "ai", label: "AI" },
+              { value: "general", label: "综合" },
+            ]} />
           </div>
           <div>
-            <label className={labelCls}>Language</label>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className={selectCls}
-            >
-              <option value="zh">Chinese (zh)</option>
-              <option value="en">English (en)</option>
-            </select>
+            <label className={labelCls}>语言</label>
+            <Select value={language} onChange={setLanguage} options={[
+              { value: "zh", label: "中文 (zh)" },
+              { value: "en", label: "English (en)" },
+            ]} />
           </div>
         </div>
 
-        <label className={labelCls}>Priority (1–10)</label>
-        <input
-          type="number"
-          value={priority}
-          onChange={(e) => setPriority(Number(e.target.value))}
-          min={1}
-          max={10}
-          className={`${inputCls} mb-3`}
-        />
+        <label className={labelCls}>优先级 (1-10)</label>
+        <input type="number" value={priority} onChange={(e) => setPriority(Number(e.target.value))} min={1} max={10} className={`${inputCls} mb-4`} />
+
+        {needsApiKey(type) && (
+          <>
+            <label className={labelCls}>API Key</label>
+            <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-... / tvly-... / BSA..." className={`${inputCls} mb-4 font-mono text-[13px]`} />
+          </>
+        )}
 
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="text-xs text-gray-500 hover:text-gray-300 mb-2 flex items-center gap-1"
+          className="text-xs text-white/30 hover:text-white/50 mb-2 flex items-center gap-1.5 transition"
         >
-          <span>{showAdvanced ? "▾" : "▸"}</span>
-          Advanced Config (JSON)
+          <svg className={`w-3 h-3 transition-transform ${showAdvanced ? "rotate-90" : ""}`} viewBox="0 0 16 16" fill="currentColor">
+            <path d="M6.5 3.5l5 4.5-5 4.5V3.5z" />
+          </svg>
+          高级配置 (JSON)
         </button>
         {showAdvanced && (
           <textarea
@@ -144,25 +110,16 @@ export function AddSourceDialog({ onCreated, onClose }: Props) {
             onChange={(e) => setConfigJson(e.target.value)}
             rows={4}
             placeholder='{"key": "value"}'
-            className={`${inputCls} mb-3 font-mono text-xs`}
+            className={`${inputCls} mb-4 font-mono text-xs`}
           />
         )}
 
-        {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+        {error && <p className={`${errorTextCls} mb-4`}>{error}</p>}
 
         <div className="flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded font-medium disabled:opacity-50"
-          >
-            {loading ? "Adding..." : "Add Source"}
+          <button onClick={onClose} className={btnSecondary}>取消</button>
+          <button onClick={handleSubmit} disabled={loading} className={btnPrimary}>
+            {loading ? "添加中..." : "添加信息源"}
           </button>
         </div>
       </div>

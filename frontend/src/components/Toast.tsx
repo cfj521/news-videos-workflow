@@ -18,6 +18,12 @@ export function useToast() {
   return useContext(ToastContext);
 }
 
+const TYPE_STYLES: Record<ToastMessage["type"], string> = {
+  success: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300",
+  error: "bg-red-500/10 border-red-500/20 text-red-300",
+  info: "bg-white/[0.06] border-white/[0.08] text-white/80",
+};
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -29,14 +35,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, 3000);
     },
-    []
+    [],
   );
-
-  const TYPE_STYLES: Record<ToastMessage["type"], string> = {
-    success: "bg-green-800 border-green-600 text-green-100",
-    error: "bg-red-800 border-red-600 text-red-100",
-    info: "bg-gray-800 border-gray-600 text-gray-100",
-  };
 
   return (
     <ToastContext.Provider value={{ showToast }}>
@@ -45,7 +45,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`px-4 py-3 rounded-lg border text-sm shadow-lg transition-all animate-fade-in ${TYPE_STYLES[toast.type]}`}
+            className={`px-4 py-3 rounded-xl border text-sm shadow-2xl backdrop-blur-lg animate-fade-up ${TYPE_STYLES[toast.type]}`}
           >
             {toast.text}
           </div>

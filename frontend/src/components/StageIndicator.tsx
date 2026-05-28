@@ -9,35 +9,28 @@ export function StageIndicator({ currentStage, status }: Props) {
   const stages: StageNumber[] = [1, 2, 3, 4, 5, 6];
 
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1.5">
       {stages.map((s) => {
-        let color = "bg-gray-700";
+        let cls = "bg-white/[0.08]";
+
         if (status === "failed") {
-          color =
-            s === currentStage
-              ? "bg-red-500"
-              : s < (currentStage ?? 0)
-                ? "bg-green-600"
-                : "bg-gray-700";
+          if (s === currentStage) cls = "bg-red-400";
+          else if (s < (currentStage ?? 0)) cls = "bg-emerald-400";
         } else if (status === "done") {
-          color = "bg-green-600";
+          cls = "bg-emerald-400";
         } else if (status === "review") {
-          color =
-            s === currentStage
-              ? "bg-yellow-500"
-              : s < (currentStage ?? 0)
-                ? "bg-green-600"
-                : "bg-gray-700";
+          if (s === currentStage) cls = "bg-amber-400";
+          else if (s < (currentStage ?? 0)) cls = "bg-emerald-400";
         } else if (s === currentStage) {
-          color = "bg-blue-500 animate-pulse";
+          cls = "bg-blue-400 animate-pulse-soft";
         } else if (s < (currentStage ?? 0)) {
-          color = "bg-green-600";
+          cls = "bg-emerald-400";
         }
 
         return (
           <div
             key={s}
-            className={`w-8 h-2 rounded-full ${color}`}
+            className={`h-1.5 flex-1 rounded-full transition-colors ${cls}`}
             title={STAGE_LABELS[s]}
           />
         );
