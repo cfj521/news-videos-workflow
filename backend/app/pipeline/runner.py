@@ -193,12 +193,18 @@ def _save_articles(articles, run_dir):
             "content": a.content or "",
             "summary": a.summary,
             "aihot_method": a.metadata.get("aihot_method"),
+            "daily_sections": a.metadata.get("daily_sections"),
         })
     (run_dir / "articles.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _article_from_dict(d: dict):
     from app.providers.base import RawArticleData
+    metadata = {}
+    if d.get("aihot_method"):
+        metadata["aihot_method"] = d["aihot_method"]
+    if d.get("daily_sections"):
+        metadata["daily_sections"] = d["daily_sections"]
     return RawArticleData(
         title=d.get("title", ""),
         content=d.get("content", ""),
@@ -206,7 +212,7 @@ def _article_from_dict(d: dict):
         source_name=d.get("source", ""),
         summary=d.get("summary", ""),
         aggregator_url=d.get("aggregator_url", ""),
-        metadata={"aihot_method": d["aihot_method"]} if d.get("aihot_method") else {},
+        metadata=metadata,
     )
 
 

@@ -30,3 +30,17 @@ def test_load_articles_missing_returns_empty(tmp_path):
 def test_load_articles_non_list_returns_empty(tmp_path):
     (tmp_path / "articles.json").write_text("null", encoding="utf-8")
     assert _load_articles(tmp_path) == []
+
+
+def test_save_and_reload_preserves_daily_sections(tmp_path):
+    import json
+    from app.providers.base import RawArticleData
+    from app.pipeline.runner import _save_articles, _load_articles
+    secs = [{"label": "模型", "items": [{"title": "A", "summary": "sa", "sourceUrl": "u", "sourceName": "s"}]}]
+    art = RawArticleData(title="日报", content="c", source_url="https://aihot.virxact.com", source_name="AI HOT 日报",
+                         metadata={"source_group": "aihot", "aihot_method": "daily", "daily_sections": secs})
+    _save_articles([art], tmp_path)
+    raw = json.loads((tmp_path / "articles.json").read_text(encoding="utf-8"))
+    assert raw[0]["daily_sections"] == secs
+    reloaded = _load_articles(tmp_path)
+    assert reloaded[0].metadata["daily_sections"] == secs

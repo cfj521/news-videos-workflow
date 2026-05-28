@@ -88,3 +88,14 @@ async def test_aihot_daily_404_returns_empty():
         _mock_client(mock_cls, {}, status_code=404)
         articles = await collector.collect(source_config={"method": "daily"}, time_range="7d")
     assert articles == []
+
+
+@pytest.mark.asyncio
+async def test_aihot_daily_keeps_sections_in_metadata():
+    collector = AIHotCollector()
+    with patch("app.providers.collector.aihot.httpx.AsyncClient") as mock_cls:
+        _mock_client(mock_cls, DAILY_RESPONSE)
+        articles = await collector.collect(source_config={"method": "daily"}, time_range="7d")
+    secs = articles[0].metadata["daily_sections"]
+    assert [s["label"] for s in secs] == ["模型发布/更新", "行业动态"]
+    assert secs[0]["items"][0]["title"] == "模型A"

@@ -99,7 +99,8 @@ class AIHotCollector(CollectorProvider):
             category="ai",
             summary=lead_para,
             aggregator_url="https://aihot.virxact.com",
-            metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": date},
+            metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": date,
+                      "daily_sections": report.get("sections", [])},
         )
         log.info("Collected AI Hot daily (%s, %d chars) in %.1fs", date, len(content), _time.time() - t0)
         return [article]
