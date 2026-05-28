@@ -629,3 +629,33 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) ->
     cmd = ["ffmpeg", "-y", *inputs, "-filter_complex", fc, "-map", "[outv]", "-map", "[outa]", "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-shortest", output_path]
     subprocess.run(cmd, capture_output=True, timeout=300, shell=True)
     return output_path
+
+
+def _ffmpeg_merge_audio(script: dict, assets_dir, run_dir) -> str:
+    """按 script 分镜顺序合并逐条音频为单个 MP3。"""
+    import subprocess
+    from pathlib import Path
+
+    assets_dir = Path(assets_dir)
+    run_dir = Path(run_dir)
+    output_path = str((run_dir / "output.mp3").resolve())
+
+    paths = []
+    for scene in script.get("scenes", []):
+        p = assets_dir / f"scene_{scene['id']:02d}_audio.mp3"
+        if p.exists():
+            paths.append(p.resolve())
+
+    if not paths:
+        raise RuntimeError("No audio to merge")
+
+    list_file = run_dir / "audio_concat.txt"
+    list_file.write_text("".join(f"file '{p.as_posix()}'\n" for p in paths), encoding="utf-8")
+
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
+         "-c:a", "libmp3lame", "-q:a", "2", output_path],
+        check=True, capture_output=True,
+    )
+    get_logger("runner").info("Merged %d audio clips → %s", len(paths), output_path)
+    return output_path
