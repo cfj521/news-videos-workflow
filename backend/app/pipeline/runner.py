@@ -197,6 +197,30 @@ def _save_articles(articles, run_dir):
     (run_dir / "articles.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _article_from_dict(d: dict):
+    from app.providers.base import RawArticleData
+    return RawArticleData(
+        title=d.get("title", ""),
+        content=d.get("content", ""),
+        source_url=d.get("url", ""),
+        source_name=d.get("source", ""),
+        summary=d.get("summary", ""),
+        aggregator_url=d.get("aggregator_url", ""),
+        metadata={"aihot_method": d["aihot_method"]} if d.get("aihot_method") else {},
+    )
+
+
+def _load_articles(run_dir: Path) -> list:
+    p = run_dir / "articles.json"
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    return [_article_from_dict(d) for d in data]
+
+
 def _update(db: Session, run: PipelineRun, **kwargs) -> None:
     for k, v in kwargs.items():
         setattr(run, k, v)
@@ -248,44 +272,52 @@ async def _run_inner(run_id: int, db: Session) -> None:
     # ─── Stage 1: 搜索整理 ─────────────────────────────────
     if 1 in selected:
         t0 = time.time()
-        _update(db, run, current_stage=1, progress_detail="S1 采集新闻中...")
-        log.info("[S1] Collecting news — time_range=%s max=%d", run.time_range, run.max_articles)
-
         from app.models.news_source import NewsSource
-        db_sources = db.query(NewsSource).filter(NewsSource.enabled == True).all()
-        if db_sources:
-            source_configs, collectors = build_collectors_from_db(db_sources)
-            log.info("[S1] Using %d DB sources: %s", len(source_configs), [s["name"] for s in source_configs])
-        else:
-            source_configs, collectors = build_collectors(cfg)
-            log.info("[S1] No DB sources, using defaults")
 
-        daily_mode = any(sc.get("method") == "daily" for sc in source_configs)
-
-        articles = await run_stage1(
-            sources=source_configs, collectors=collectors,
-            time_range=run.time_range, max_articles=run.max_articles,
-        )
-
-        for i, a in enumerate(articles, 1):
-            log.info("[S1]   [%d] %s (%s)", i, a.title, a.source_name)
-
-        if articles and articles[0].metadata.get("source_group") != "aihot":
-            _update(db, run, progress_detail=f"S1 生成摘要中 (0/{len(articles)})...")
-            await _summarize_articles(articles, cfg, run, db, log)
-
-        elapsed = time.time() - t0
-        detail = f"S1 完成 — {len(articles)} 篇文章 ({elapsed:.1f}s)"
-        _update(db, run, progress_detail=detail)
-        log.info("[S1] Done — %d articles in %.1fs", len(articles), elapsed)
-
-        _save_articles(articles, run_dir)
-
-        if run.mode == "manual":
-            _update(db, run, status="review", progress_detail=f"S1 采集完成 ({len(articles)} 篇)，等待审核")
-            log.info("[S1] Paused for review")
+        if not run.auto_collect:
+            _save_articles([], run_dir)
+            _update(db, run, current_stage=1, status="review", progress_detail="等待人工导入文章…")
+            log.info("[S1] auto_collect off — waiting for manual import")
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
+        else:
+            _update(db, run, current_stage=1, progress_detail="S1 采集新闻中...")
+            log.info("[S1] Collecting news — time_range=%s max=%d", run.time_range, run.max_articles)
+            db_sources = db.query(NewsSource).filter(NewsSource.enabled == True).all()
+            if db_sources:
+                source_configs, collectors = build_collectors_from_db(db_sources)
+                log.info("[S1] Using %d DB sources: %s", len(source_configs), [s["name"] for s in source_configs])
+            else:
+                source_configs, collectors = build_collectors(cfg)
+                log.info("[S1] No DB sources, using defaults")
+            daily_mode = any(sc.get("method") == "daily" for sc in source_configs)
+            articles = await run_stage1(
+                sources=source_configs, collectors=collectors,
+                time_range=run.time_range, max_articles=run.max_articles,
+            )
+            for i, a in enumerate(articles, 1):
+                log.info("[S1]   [%d] %s (%s)", i, a.title, a.source_name)
+            if articles and articles[0].metadata.get("source_group") != "aihot":
+                _update(db, run, progress_detail=f"S1 生成摘要中 (0/{len(articles)})...")
+                await _summarize_articles(articles, cfg, run, db, log)
+            elapsed = time.time() - t0
+            _update(db, run, progress_detail=f"S1 完成 — {len(articles)} 篇文章 ({elapsed:.1f}s)")
+            log.info("[S1] Done — %d articles in %.1fs", len(articles), elapsed)
+            _save_articles(articles, run_dir)
+            if run.mode == "manual":
+                _update(db, run, status="review", progress_detail=f"S1 采集完成 ({len(articles)} 篇)，等待审核")
+                log.info("[S1] Paused for review")
+                await _wait_for_resume(run_id, db)
+                run = db.get(PipelineRun, run_id)
+
+        # resume 后从 articles.json 重载，让人工导入/编辑生效
+        articles = _load_articles(run_dir)
+        # 人工导入模式：必须 ≥1 篇才放行，否则回到 review 继续等
+        while not run.auto_collect and not articles:
+            _update(db, run, status="review", progress_detail="请先导入至少 1 篇文章")
+            await _wait_for_resume(run_id, db)
+            run = db.get(PipelineRun, run_id)
+            articles = _load_articles(run_dir)
 
     if not articles:
         msg = "今日 AI 日报尚未生成，请稍后再试或切换为动态(items)模式" if daily_mode else "No articles collected"

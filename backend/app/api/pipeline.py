@@ -15,7 +15,7 @@ from app.config import get_settings
 from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
-from app.pipeline.runner import execute_pipeline, build_collectors, build_collectors_from_db, _build_text_provider, _update
+from app.pipeline.runner import execute_pipeline, build_collectors, build_collectors_from_db, _build_text_provider, _update, _article_from_dict
 from app.providers.tts.edge_tts_provider import EdgeTTSProvider
 from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
 
@@ -176,16 +176,8 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
 
     from app.providers.base import RawArticleData
     articles_raw = json.loads(articles_path.read_text(encoding="utf-8"))
-    first = articles_raw[0]
-    aihot_method = first.get("aihot_method")
-    article = RawArticleData(
-        title=first["title"],
-        content=first.get("content", ""),
-        source_url=first.get("url", ""),
-        source_name=first.get("source", ""),
-        metadata={"aihot_method": aihot_method} if aihot_method else {},
-    )
-    style = "daily" if aihot_method == "daily" else "single"
+    article = _article_from_dict(articles_raw[0])
+    style = "daily" if article.metadata.get("aihot_method") == "daily" else "single"
 
     cfg = get_settings()
     if cfg.text.provider == "claude":
