@@ -218,6 +218,8 @@ def _load_articles(run_dir: Path) -> list:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return []
+    if not isinstance(data, list):
+        return []
     return [_article_from_dict(d) for d in data]
 
 

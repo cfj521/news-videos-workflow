@@ -25,3 +25,8 @@ def test_load_articles_reads_file(tmp_path):
 
 def test_load_articles_missing_returns_empty(tmp_path):
     assert _load_articles(tmp_path) == []
+
+
+def test_load_articles_non_list_returns_empty(tmp_path):
+    (tmp_path / "articles.json").write_text("null", encoding="utf-8")
+    assert _load_articles(tmp_path) == []
