@@ -54,3 +54,37 @@ async def test_stage1_filters_blocked_content():
 
     titles = [a.title for a in result]
     assert "Bad Article" not in titles
+
+
+def _aihot_article(title: str, method: str = "items", content: str = "AI 资讯内容") -> RawArticleData:
+    return RawArticleData(
+        title=title, content=content,
+        source_url=f"https://aihot.virxact.com/{title}", source_name="AI HOT",
+        metadata={"source_group": "aihot", "aihot_method": method},
+    )
+
+
+@pytest.mark.asyncio
+async def test_stage1_aihot_items_skips_dedup():
+    mock_collector = AsyncMock()
+    mock_collector.collect.return_value = [
+        _aihot_article("dup"), _aihot_article("dup"), _aihot_article("a2"),
+    ]
+    result = await run_stage1(
+        sources=[{"name": "AI HOT", "type": "aihot", "url": "https://aihot.virxact.com/api/public"}],
+        collectors={"aihot": mock_collector}, time_range="7d", max_articles=5,
+    )
+    # 跳过去重：重复标题保留
+    assert len(result) == 3
+
+
+@pytest.mark.asyncio
+async def test_stage1_aihot_daily_single_passthrough():
+    mock_collector = AsyncMock()
+    mock_collector.collect.return_value = [_aihot_article("日报", method="daily")]
+    result = await run_stage1(
+        sources=[{"name": "AI HOT", "type": "aihot", "url": "https://aihot.virxact.com/api/public"}],
+        collectors={"aihot": mock_collector}, time_range="7d", max_articles=5,
+    )
+    assert len(result) == 1
+    assert result[0].metadata["aihot_method"] == "daily"
