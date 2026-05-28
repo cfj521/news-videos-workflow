@@ -99,6 +99,7 @@ class Settings(BaseModel):
     infra: InfraCfg = InfraCfg()
     text: ProviderCfg = ProviderCfg(provider="claude", base_url="https://api.anthropic.com", model="claude-sonnet-4-6")
     image: ProviderCfg = ProviderCfg(provider="openai", base_url="https://api.openai.com/v1", model="gpt-image-1")
+    vision: ProviderCfg = ProviderCfg(provider="openai", base_url="https://api.openai.com/v1", model="gpt-4o")
     tts: TTSCfg = TTSCfg()
     summary: SummaryCfg = SummaryCfg()
     collectors: CollectorsCfg = CollectorsCfg()

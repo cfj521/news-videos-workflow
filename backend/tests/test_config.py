@@ -45,3 +45,11 @@ def test_pipeline_cfg_has_no_legacy_toggles():
     assert not hasattr(cfg, "enable_scoring")
     assert not hasattr(cfg, "enable_summary")
     assert hasattr(cfg, "dedup_lookback")  # 保留
+
+
+def test_vision_cfg_defaults():
+    from app.config import Settings
+    s = Settings()
+    assert s.vision.provider == "openai"
+    assert s.vision.model == "gpt-4o"
+    assert s.vision.base_url == "https://api.openai.com/v1"
