@@ -556,11 +556,15 @@ async def trigger_render(run_id: int, background_tasks: BackgroundTasks, db: Ses
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     rd = _run_dir(run_id)
-    if not (rd / "timeline.json").exists():
+    is_audio = run.video_route == "audio"
+    if is_audio:
+        if not (rd / "script.json").exists():
+            raise HTTPException(status_code=400, detail="No script — run stage 2 first")
+    elif not (rd / "timeline.json").exists():
         raise HTTPException(status_code=400, detail="No timeline — run stage 4 first")
     run.current_stage = 5
     run.status = "processing"
-    run.progress_detail = "S5 渲染启动中..."
+    run.progress_detail = "S5 合成启动中..." if is_audio else "S5 渲染启动中..."
     run.output_path = None
     db.commit()
     session_factory = get_session_factory()
@@ -586,12 +590,17 @@ async def _render_video_async(run_id: int, session_factory):
 
         if run.video_route == "audio":
             from app.pipeline.runner import _ffmpeg_merge_audio
-            _update(db, run, progress_detail="重新合成音频中...")
-            script = json.loads((rd / "script.json").read_text(encoding="utf-8"))
-            final_path = _ffmpeg_merge_audio(script, rd / "assets", rd)
+            _update(db, run, progress_detail="S5 合成音频中...")
+            try:
+                script = json.loads((rd / "script.json").read_text(encoding="utf-8"))
+                final_path = _ffmpeg_merge_audio(script, rd / "assets", rd)
+            except Exception as e:
+                _update(db, run, status="failed", error_message=f"音频合成失败: {e}", finished_at=datetime.now(timezone.utc))
+                log.exception("Audio re-merge failed for run #%d", run_id)
+                return
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
-                _update(db, run, progress_detail=f"S5 合成完成 — {size_mb:.1f} MB", output_path=final_path)
+                _update(db, run, status="done", progress_detail=f"S5 合成完成 — {size_mb:.1f} MB", output_path=final_path, finished_at=datetime.now(timezone.utc))
             else:
                 _update(db, run, status="failed", error_message="音频文件未生成", finished_at=datetime.now(timezone.utc))
             return
