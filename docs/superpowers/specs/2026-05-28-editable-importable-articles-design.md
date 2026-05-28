@@ -19,7 +19,11 @@ Phase A 的独立价值：让用户完全掌控喂给脚本生成的文章内容
 ## 数据模型与持久化
 
 - `articles.json`（每个 run 目录下）是该 run 文章清单的**唯一真源**，结构维持现状：dict 列表，字段含 `title`、`url`、`aggregator_url`、`source`、`content`、`summary`、`aihot_method`。
-- **可编辑字段**：`title`、`content`（喂脚本的关键）、`summary`、`source`、`url`。其余内部字段（`aggregator_url`、`aihot_method`）不在编辑面，但前端整份回传时原样保留。
+- **可编辑字段**：`title`、`content`（喂脚本的关键）、`summary`、`source`、`url`。
+- **内部字段必须保活**：`aggregator_url`、`aihot_method` 等不在编辑面，但**必须随整份列表原样回传**。当前 `ArticleData`（client.ts）不含 `aihot_method`，若直接按该类型回传会丢字段、破坏 daily 检测。
+  - 对策：前端把每篇文章当作**透传记录**保存——保留 GET 拿到的原始对象，编辑时只覆盖被改字段（`{...原始, ...编辑}`），PUT 回传完整对象；`ArticleData` 增加可选 `aihot_method?` 以显式带上。
+  - 后端 PUT 直接写入收到的数组（不做基于 index 的服务端合并，因无 id）；校验每篇至少有 `title` 或 `content`。
+  - 测试须断言：含 `aihot_method` 的文章经一次 PUT 往返后该字段仍在。
 - 采用「前端管列表 + 整体覆盖保存」（方案 A1）：无需给文章加 id。
 
 ### 新增/变更的后端接口（`backend/app/api/pipeline.py`）
@@ -38,24 +42,26 @@ Phase A 的独立价值：让用户完全掌控喂给脚本生成的文章内容
 
 单一职责：把"上传文件 / URL"解析成一篇文章 dict `{title, content, summary:"", source, url}`。
 
+**懒加载**：`python-docx` / `pymupdf` 在各自解析函数**内部 import**（不在模块顶层），缺库时只让对应格式报错、不拖垮应用启动（参考现有 scraping collector 的懒加载/try-except 模式）。
+
 | 来源 | 解析方式 | 依赖 |
 |---|---|---|
 | `.docx` | `python-docx` 读所有段落文本拼接 | 新增 `python-docx` |
 | `.md` / `.txt` | 按 UTF-8 直接读文本（md 保留原文） | 无 |
-| `.pdf` | **视觉模型**：`PyMuPDF` 把每页渲染为 PNG → 以 OpenAI 兼容视觉对话（image 输入）发给配置的视觉模型，提示「提取正文为纯文本」，逐页拼接 | 新增 `pymupdf` |
+| `.pdf` | **视觉模型**：`PyMuPDF` 把每页渲染为 PNG → 以 OpenAI 兼容视觉对话发给配置的视觉模型，提示「提取正文为纯文本」。**优先一次调用塞入所有页图片**（多个 image 块），而非逐页 N 次调用，降低时延/成本 | 新增 `pymupdf` |
 | URL | 复用 `FullTextFetcher`（httpx + HTML 抽取），并新增 `<title>` 提取 | 无 |
 
 **标题派生**：docx → 首个非空段落；md → 首个 `# ` 标题；URL → `<title>`；pdf/txt 或取不到 → 文件名 / 域名。
 **字段映射**：`content`=解析正文；`source`=文件名或 URL 域名；`url`=导入的 URL（文件导入留空）；`summary`=空。
 
-**PDF 视觉解析控成本**：限制页数（如 ≤20 页，超出截断并告警）与单页图片分辨率（如 150 DPI）。
+**PDF 视觉解析控成本/时延**：限制页数（如 ≤20 页，超出截断并告警）与单页图片分辨率（如 150 DPI）。import 端点同步执行，前端导入对话框须显式 loading 态；若实测耗时常超 HTTP 超时，则把 PDF 导入改为后台任务 + 轮询（实现时按实测决定，接口保持幂等可重试）。
 
 ## 视觉模型配置（与文本/图片模型解耦）
 
 - `backend/app/config.py`：新增 `vision: ProviderCfg`（`provider`/`base_url`/`model`/`api_key`），`Settings` 加该字段。默认 `provider="openai"`、`model="gpt-4o"`、`base_url="https://api.openai.com/v1"`。
 - PDF 解析调用 OpenAI 兼容的 `chat/completions`（`messages` 含 `image_url` 块，base64 data URL）。本期按 **OpenAI 兼容图片输入**实现（覆盖 gpt-4o / Qwen-VL 等）。
 - `frontend/src/api/client.ts`：`AppSettings` 加 `vision` 类型。
-- `frontend/src/pages/Settings.tsx`：加「文档解析模型」一节（沿用 `ProviderSection` 组件），预设给 OpenAI / DashScope(Qwen-VL) 等视觉模型。
+- `frontend/src/pages/Settings.tsx`：加「文档解析模型」一节（沿用 `ProviderSection` 组件），预设给 OpenAI / DashScope(Qwen-VL) 等视觉模型；并在 `EMPTY_SETTINGS` 补 `vision` 默认值（与后端默认一致）。
 
 ## 创建任务：可选「不采集，纯等待人工导入」
 
@@ -68,7 +74,8 @@ Phase A 的独立价值：让用户完全掌控喂给脚本生成的文章内容
 - `auto_collect=True`：维持现状（Stage1 自动采集）。
 - `auto_collect=False`：Stage1 跳过采集 → 写空 `articles.json` → `status="review"`、`progress_detail="等待人工导入文章…"` → `_wait_for_resume`，**不因空文章判失败**。（无论 `mode` 是 auto 还是 manual，不采集都会在 S1 暂停等待导入。）
 - **S1 review 暂停并 resume 后，从 `articles.json` 重新加载文章**再进入后续阶段（让人工导入/编辑生效；现状用内存旧列表会忽略编辑）。适用于所有进入 S1 review 的情况（含 auto 采集后手动编辑）。
-- **resume 守卫**：resume 后若 `articles.json` 仍为空 → 不进 S2，保持 `review` 并提示"请先导入至少 1 篇文章"。
+  - 需一个 `articles.json dict → RawArticleData` 映射（注意字段名：`url→source_url`、`source→source_name`，`aihot_method` 放入 `metadata`），与 regen-script 端点重建文章的逻辑保持一致，可抽公共 helper 复用。
+- **resume 守卫**：resume 后重载 `articles.json`，若仍为空 → **不进 S2**：把 `status` 重新置 `review`、`progress_detail="请先导入至少 1 篇文章"`，并重新进入 `_wait_for_resume` 等待（不判失败、不无限快转）。
 
 ### 前端 CreateRunDialog（`frontend/src/components/CreateRunDialog.tsx`）
 - 加「采集方式」单选：`自动采集`（默认）/ `不采集（人工导入）`，对应 `auto_collect`。
