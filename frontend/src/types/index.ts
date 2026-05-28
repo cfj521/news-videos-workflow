@@ -48,7 +48,7 @@ export const VISIBLE_STAGES = [1, 2, 4, 5, 6] as const;
 export interface PublishTarget {
   id: number;
   name: string;
-  platform: "youtube" | "instagram" | "bilibili" | "douyin" | "kuaishou";
+  platform: "youtube" | "instagram" | "bilibili" | "douyin" | "kuaishou" | "ximalaya" | "xiaoyuzhou" | "netease_music" | "apple_podcasts";
   enabled: boolean;
   config_json: string | null;
   created_at: string;
