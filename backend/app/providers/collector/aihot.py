@@ -64,5 +64,42 @@ class AIHotCollector(CollectorProvider):
         return articles
 
     async def _collect_daily(self, source_config: dict) -> list[RawArticleData]:
-        # 在 Task 2 实现
-        raise NotImplementedError
+        t0 = _time.time()
+        async with httpx.AsyncClient(timeout=30, headers=_HEADERS) as client:
+            resp = await client.get(f"{API}/daily")
+            if resp.status_code == 404:
+                log.warning("AI Hot daily report not available (404)")
+                return []
+            resp.raise_for_status()
+        report = resp.json()
+
+        date = report.get("date", "")
+        lead = report.get("lead") or {}
+        lead_title = lead.get("title") or f"今日 AI 日报 {date}"
+        lead_para = lead.get("leadParagraph", "")
+
+        lines: list[str] = [lead_para, ""]
+        for section in report.get("sections", []):
+            lines.append(f"【{section.get('label', '')}】")
+            for it in section.get("items", []):
+                lines.append(f"「{it.get('title', '')}」{it.get('summary', '')}")
+            lines.append("")
+        flashes = report.get("flashes", [])
+        if flashes:
+            lines.append("【快讯】")
+            for f in flashes:
+                lines.append(f"· {f.get('title', '')}（{f.get('sourceName', '')}）")
+        content = "\n".join(lines).strip()
+
+        article = RawArticleData(
+            title=lead_title,
+            content=content,
+            source_url="https://aihot.virxact.com",
+            source_name="AI HOT 日报",
+            category="ai",
+            summary=lead_para,
+            aggregator_url="https://aihot.virxact.com",
+            metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": date},
+        )
+        log.info("Collected AI Hot daily (%s, %d chars) in %.1fs", date, len(content), _time.time() - t0)
+        return [article]

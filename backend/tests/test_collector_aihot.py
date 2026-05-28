@@ -45,3 +45,46 @@ async def test_aihot_items_returns_tagged_articles():
     params = client.get.call_args[1]["params"]
     assert params["category"] == "ai-models"
     assert params["mode"] == "selected"
+
+
+DAILY_RESPONSE = {
+    "date": "2026-05-28", "generatedAt": "2026-05-28T12:00:00.000Z",
+    "windowStart": "2026-05-27T12:00:00.000Z", "windowEnd": "2026-05-28T12:00:00.000Z",
+    "lead": {"title": "今日 AI 看点", "leadParagraph": "今天有几条重磅消息。"},
+    "sections": [
+        {"label": "模型发布/更新", "items": [
+            {"title": "模型A", "summary": "模型A摘要", "sourceUrl": "https://x.com/m1", "sourceName": "S1"}]},
+        {"label": "行业动态", "items": [
+            {"title": "行业B", "summary": "行业B摘要", "sourceUrl": "https://x.com/i1", "sourceName": "S2"}]},
+    ],
+    "flashes": [{"title": "快讯C", "sourceName": "S3", "sourceUrl": "https://x.com/f1",
+                 "publishedAt": "2026-05-28T11:00:00.000Z"}],
+}
+
+
+@pytest.mark.asyncio
+async def test_aihot_daily_renders_single_article():
+    collector = AIHotCollector()
+    with patch("app.providers.collector.aihot.httpx.AsyncClient") as mock_cls:
+        _mock_client(mock_cls, DAILY_RESPONSE)
+        articles = await collector.collect(
+            source_config={"method": "daily", "name": "AI HOT"}, time_range="7d",
+        )
+    assert len(articles) == 1
+    a = articles[0]
+    assert a.title == "今日 AI 看点"
+    assert a.metadata["source_group"] == "aihot"
+    assert a.metadata["aihot_method"] == "daily"
+    assert a.metadata["report_date"] == "2026-05-28"
+    assert "模型A摘要" in a.content
+    assert "行业B摘要" in a.content
+    assert "快讯C" in a.content
+
+
+@pytest.mark.asyncio
+async def test_aihot_daily_404_returns_empty():
+    collector = AIHotCollector()
+    with patch("app.providers.collector.aihot.httpx.AsyncClient") as mock_cls:
+        _mock_client(mock_cls, {}, status_code=404)
+        articles = await collector.collect(source_config={"method": "daily"}, time_range="7d")
+    assert articles == []
