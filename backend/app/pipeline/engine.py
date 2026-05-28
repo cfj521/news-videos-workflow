@@ -21,6 +21,7 @@ class PipelineEngine:
         max_articles: int = 5,
         selected_stages: list[int] | None = None,
         publish_platforms: list[str] | None = None,
+        auto_collect: bool = True,
     ) -> PipelineRun:
         stages = selected_stages or [1, 2, 3, 4, 5]
         platforms = publish_platforms or []
@@ -29,6 +30,7 @@ class PipelineEngine:
             max_articles=max_articles,
             selected_stages=json.dumps(stages),
             publish_platforms=json.dumps(platforms),
+            auto_collect=auto_collect,
         )
         self.db.add(run)
         self.db.commit()

@@ -50,3 +50,11 @@ def test_finish_run(db_session):
     updated = db_session.get(PipelineRun, run.id)
     assert updated.status == "done"
     assert updated.finished_at is not None
+
+
+def test_create_run_persists_auto_collect(db_session):
+    engine = PipelineEngine(db_session)
+    run = engine.create_run(mode="auto", auto_collect=False)
+    assert run.auto_collect is False
+    run2 = engine.create_run(mode="auto")
+    assert run2.auto_collect is True

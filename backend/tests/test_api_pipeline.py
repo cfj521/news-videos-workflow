@@ -110,3 +110,9 @@ def test_update_source(client):
     response = client.patch(f"/api/sources/{source_id}", json={"enabled": False})
     assert response.status_code == 200
     assert response.json()["enabled"] is False
+
+
+def test_create_run_auto_collect_false(client):
+    r = client.post("/api/pipeline/runs", json={"time_range": "7d", "auto_collect": False})
+    assert r.status_code == 201
+    assert r.json()["auto_collect"] is False

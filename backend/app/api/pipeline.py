@@ -36,6 +36,7 @@ def create_run(body: PipelineRunCreate, background_tasks: BackgroundTasks, db: S
         mode=body.mode, video_route=body.video_route, time_range=body.time_range,
         max_articles=body.max_articles, selected_stages=body.selected_stages,
         publish_platforms=body.publish_platforms,
+        auto_collect=body.auto_collect,
     )
     session_factory = get_session_factory()
     background_tasks.add_task(_run_pipeline_bg, run.id, session_factory)
@@ -122,6 +123,8 @@ class _ImportUrlBody(_PydBase):
 async def import_article_url(run_id: int, body: _ImportUrlBody):
     try:
         art = await import_url(body.url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"URL 导入失败: {e}")
     items = _read_articles(run_id)
