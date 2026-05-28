@@ -100,6 +100,10 @@ function PresetInput({ value, onChange, presets, className }: {
 function Stepper({ run, onSelect, activeStage }: { run: PipelineRun; onSelect: (s: number) => void; activeStage: number }) {
   const selected: number[] = (() => { try { return JSON.parse(run.selected_stages); } catch { return []; } })();
 
+  const audioOnly = run.video_route === "audio";
+  const stages = audioOnly ? VISIBLE_STAGES.filter((s) => s !== 4) : VISIBLE_STAGES;
+  const labelOf = (s: number) => (audioOnly && s === 2 ? "脚本/语音生成" : STAGE_LABELS[s]);
+
   const statusOf = (vs: number) => {
     const bs = BACKEND_STAGE_MAP[vs];
     if (!bs.some((s) => selected.includes(s))) return "skipped";
@@ -121,7 +125,7 @@ function Stepper({ run, onSelect, activeStage }: { run: PipelineRun; onSelect: (
 
   return (
     <div className="flex items-center gap-1 mb-6">
-      {VISIBLE_STAGES.map((s, i) => {
+      {stages.map((s, i) => {
         const ss = statusOf(s);
         const isActive = s === activeStage;
         const clickable = ss !== "skipped";
@@ -134,9 +138,9 @@ function Stepper({ run, onSelect, activeStage }: { run: PipelineRun; onSelect: (
               } ${!clickable ? "opacity-30 cursor-default" : "cursor-pointer"}`}
             >
               <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotCls[ss]}`} />
-              <span className="text-xs text-white/60 truncate">{STAGE_LABELS[s]}</span>
+              <span className="text-xs text-white/60 truncate">{labelOf(s)}</span>
             </button>
-            {i < VISIBLE_STAGES.length - 1 && <div className="w-4 h-px bg-white/[0.08] shrink-0" />}
+            {i < stages.length - 1 && <div className="w-4 h-px bg-white/[0.08] shrink-0" />}
           </div>
         );
       })}
@@ -314,7 +318,7 @@ function AddSceneDialog({ runId, groupId, onDone, onClose }: { runId: number; gr
   );
 }
 
-function S2Panel({ runId }: { runId: number }) {
+function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
   const { data: script, mutate: mutateScript } = useSWR<ScriptData>(`script-${runId}`, () => api.runs.script(runId).catch(() => null as unknown as ScriptData));
   const { data: timeline } = useSWR<TimelineData>(`timeline-${runId}`, () => api.runs.timeline(runId).catch(() => null as unknown as TimelineData));
   const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
@@ -347,10 +351,12 @@ function S2Panel({ runId }: { runId: number }) {
           <h3 className="text-base font-medium truncate">{script.title}</h3>
           <p className="text-xs text-white/30 mt-0.5">{script.description}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0 ml-4">
-          <label className="text-[11px] text-white/30 whitespace-nowrap">图片尺寸</label>
-          <PresetInput value={imgSize} onChange={setImgSize} presets={RES_PRESETS} className="w-40" />
-        </div>
+        {!audioOnly && (
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            <label className="text-[11px] text-white/30 whitespace-nowrap">图片尺寸</label>
+            <PresetInput value={imgSize} onChange={setImgSize} presets={RES_PRESETS} className="w-40" />
+          </div>
+        )}
       </div>
 
       {order.map((gid) => {
@@ -367,7 +373,7 @@ function S2Panel({ runId }: { runId: number }) {
                 const durS = entry ? ((entry.end_ms - entry.start_ms) / 1000).toFixed(1) : null;
                 return (
                   <SceneEditor key={scene.id} runId={runId} scene={scene} durationS={durS} mutateScript={mutateScript} imgSize={imgSize}
-                    onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} />
+                    onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} audioOnly={audioOnly} />
                 );
               })}
             </div>
@@ -382,8 +388,8 @@ function S2Panel({ runId }: { runId: number }) {
   );
 }
 
-function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete, canDelete }: {
-  runId: number; scene: ScriptData["scenes"][0]; durationS: string | null; mutateScript: () => void; imgSize: string; onDelete?: () => void; canDelete?: boolean;
+function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete, canDelete, audioOnly }: {
+  runId: number; scene: ScriptData["scenes"][0]; durationS: string | null; mutateScript: () => void; imgSize: string; onDelete?: () => void; canDelete?: boolean; audioOnly?: boolean;
 }) {
   const [narration, setNarration] = useState(scene.narration);
   const [prompt, setPrompt] = useState(scene.image_prompt);
@@ -430,8 +436,10 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
     <div className={`${cardCls} p-4`}>
       <div className="flex gap-4">
         <div className="w-[200px] shrink-0">
-          <img src={imgTs ? `${imgSrc}?t=${imgTs}` : imgSrc} className="w-full rounded-lg bg-white/[0.02]" onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
-          <audio controls src={audioTs ? `${audioSrc}?t=${audioTs}` : audioSrc} className="w-full mt-2" />
+          {!audioOnly && (
+            <img src={imgTs ? `${imgSrc}?t=${imgTs}` : imgSrc} className="w-full rounded-lg bg-white/[0.02]" onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
+          )}
+          <audio controls src={audioTs ? `${audioSrc}?t=${audioTs}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-2"}`} />
         </div>
         <div className="flex-1 space-y-3 min-w-0">
           <div className="flex justify-between items-center">
@@ -452,18 +460,20 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
             </div>
           </div>
 
-          <div>
-            <div className="text-[11px] text-white/30 mb-1">图片提示词</div>
-            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} className={`${inputCls} text-[13px] text-white/50`} />
-            <div className="flex gap-2 mt-1.5">
-              <button onClick={handleRegenPrompt} disabled={regenPromptLoading} className={btnActionPrompt}>
-                {regenPromptLoading ? "生成中..." : "重生成提示词"}
-              </button>
-              <button onClick={handleRegenImage} disabled={regenImgLoading} className={btnActionImage}>
-                {regenImgLoading ? "生成中..." : "重新生成图片"}
-              </button>
+          {!audioOnly && (
+            <div>
+              <div className="text-[11px] text-white/30 mb-1">图片提示词</div>
+              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} className={`${inputCls} text-[13px] text-white/50`} />
+              <div className="flex gap-2 mt-1.5">
+                <button onClick={handleRegenPrompt} disabled={regenPromptLoading} className={btnActionPrompt}>
+                  {regenPromptLoading ? "生成中..." : "重生成提示词"}
+                </button>
+                <button onClick={handleRegenImage} disabled={regenImgLoading} className={btnActionImage}>
+                  {regenImgLoading ? "生成中..." : "重新生成图片"}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -885,16 +895,13 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
 function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const [rendering, setRendering] = useState(false);
   const { showToast } = useToast();
+  const audioOnly = run.video_route === "audio";
+  const actionLabel = audioOnly ? "合成" : "渲染";
 
   const handleRender = async () => {
     setRendering(true);
-    try {
-      await api.runs.triggerRender(runId);
-      showToast("开始渲染...", "success");
-    } catch {
-      showToast("渲染启动失败", "error");
-      setRendering(false);
-    }
+    try { await api.runs.triggerRender(runId); showToast(`开始${actionLabel}...`, "success"); }
+    catch { showToast(`${actionLabel}启动失败`, "error"); setRendering(false); }
   };
 
   if (!run.output_path) {
@@ -903,15 +910,13 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       <div className={`${cardCls} p-8 text-center`}>
         {isRendering ? (
           <div>
-            <div className="text-white/40 text-sm mb-1">渲染中...</div>
+            <div className="text-white/40 text-sm mb-1">{actionLabel}中...</div>
             {run.progress_detail && <div className="text-xs text-white/25">{run.progress_detail}</div>}
           </div>
         ) : (
           <div>
-            <p className="text-white/30 text-sm mb-4">尚未渲染成片</p>
-            <button onClick={handleRender} disabled={rendering} className={btnPrimary}>
-              渲染成片
-            </button>
+            <p className="text-white/30 text-sm mb-4">{audioOnly ? "尚未合成音频" : "尚未渲染成片"}</p>
+            <button onClick={handleRender} disabled={rendering} className={btnPrimary}>{audioOnly ? "合成音频" : "渲染成片"}</button>
           </div>
         )}
       </div>
@@ -920,11 +925,15 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
 
   return (
     <div className={`${cardCls} p-5`}>
-      <video controls className="w-full max-w-2xl mx-auto rounded-lg" src={api.runs.videoUrl(runId)} />
+      {audioOnly ? (
+        <audio controls className="w-full max-w-2xl mx-auto" src={api.runs.videoUrl(runId)} />
+      ) : (
+        <video controls className="w-full max-w-2xl mx-auto rounded-lg" src={api.runs.videoUrl(runId)} />
+      )}
       <div className="flex justify-center gap-3 mt-4">
-        <a href={api.runs.videoUrl(runId)} download className={btnPrimary}>下载 MP4</a>
+        <a href={api.runs.videoUrl(runId)} download className={btnPrimary}>{audioOnly ? "下载 MP3" : "下载 MP4"}</a>
         <button onClick={handleRender} disabled={rendering} className={btnCompact}>
-          {rendering ? "渲染中..." : "重新渲染"}
+          {rendering ? `${actionLabel}中...` : `重新${actionLabel}`}
         </button>
       </div>
     </div>
@@ -953,7 +962,7 @@ function S6Panel({ run }: { run: PipelineRun }) {
 function StagePanel({ stage, runId, run }: { stage: number; runId: number; run: PipelineRun }) {
   switch (stage) {
     case 1: return <S1Panel runId={runId} />;
-    case 2: return <S2Panel runId={runId} />;
+    case 2: return <S2Panel runId={runId} audioOnly={run.video_route === "audio"} />;
     case 4: return <S4Panel runId={runId} run={run} />;
     case 5: return <S5Panel runId={runId} run={run} />;
     case 6: return <S6Panel run={run} />;
