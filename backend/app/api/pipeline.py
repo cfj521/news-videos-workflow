@@ -366,10 +366,9 @@ async def _reroll_articles_async(run_id: int, session_factory):
         articles = await run_stage1(
             sources=source_configs, collectors=collectors,
             time_range=run.time_range, max_articles=run.max_articles,
-            enable_dedup=cfg.pipeline.enable_dedup, enable_scoring=cfg.pipeline.enable_scoring,
         )
-        if cfg.pipeline.enable_summary and articles:
-            runner_update(db, run, progress_detail=f"S1 生成摘要中...")
+        if articles and articles[0].metadata.get("source_group") != "aihot":
+            runner_update(db, run, progress_detail="S1 生成摘要中...")
             await _summarize_articles(articles, cfg, run, db, log)
         rd = _run_dir(run_id)
         rd.mkdir(parents=True, exist_ok=True)
