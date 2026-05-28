@@ -336,16 +336,14 @@ async def _run_inner(run_id: int, db: Session) -> None:
     # ─── Stage 2: 脚本生成 ─────────────────────────────────
     if 2 in selected:
         t0 = time.time()
-        article = articles[0]
-        style = "daily" if article.metadata.get("aihot_method") == "daily" else "single"
-        _update(db, run, current_stage=2, progress_detail=f"S2 生成脚本 — {article.title[:30]}...")
-        log.info("[S2] Generating script for: %s", article.title)
+        _update(db, run, current_stage=2, progress_detail=f"S2 生成脚本 — {len(articles)} 篇文章...")
+        log.info("[S2] Generating multi-article script for %d articles", len(articles))
 
         text_provider = _build_text_provider()
         log.info("[S2] Provider: %s / %s", cfg.text.provider, cfg.text.model)
 
-        script = await run_stage2(article=article, text_provider=text_provider,
-                                  language=cfg.pipeline.default_language, style=style)
+        from app.pipeline.stage2_script import run_stage2_multi
+        script = await run_stage2_multi(articles, text_provider, language=cfg.pipeline.default_language)
 
         (run_dir / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
         scene_count = len(script.get("scenes", []))

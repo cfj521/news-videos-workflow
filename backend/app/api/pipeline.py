@@ -177,10 +177,8 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
     if not articles_path.exists():
         raise HTTPException(status_code=400, detail="No articles")
 
-    from app.providers.base import RawArticleData
     articles_raw = json.loads(articles_path.read_text(encoding="utf-8"))
-    article = _article_from_dict(articles_raw[0])
-    style = "daily" if article.metadata.get("aihot_method") == "daily" else "single"
+    arts = [_article_from_dict(d) for d in articles_raw]
 
     cfg = get_settings()
     if cfg.text.provider == "claude":
@@ -190,9 +188,9 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
         from app.providers.text.openai_text import OpenAITextProvider
         tp = OpenAITextProvider(api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url)
 
-    from app.pipeline.stage2_script import run_stage2
-    log.info("Regenerating script for run #%d", run_id)
-    script = await run_stage2(article=article, text_provider=tp, language=cfg.pipeline.default_language, style=style)
+    from app.pipeline.stage2_script import run_stage2_multi
+    log.info("Regenerating multi-article script for run #%d (%d articles)", run_id, len(arts))
+    script = await run_stage2_multi(arts, tp, language=cfg.pipeline.default_language)
     (rd / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
     return script
 
