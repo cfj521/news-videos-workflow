@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -28,8 +30,18 @@ def _seed_aihot_source(factory) -> None:
         db.close()
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_global_logger()
+    get_settings().ensure_data_dirs()
+    factory = get_session_factory()
+    Base.metadata.create_all(bind=factory.kw["bind"])
+    _seed_aihot_source(factory)
+    yield
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="News Videos Workflow", version="0.1.0")
+    app = FastAPI(title="News Videos Workflow", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -39,14 +51,6 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(api_router)
-
-    @app.on_event("startup")
-    def on_startup():
-        setup_global_logger()
-        get_settings().ensure_data_dirs()
-        factory = get_session_factory()
-        Base.metadata.create_all(bind=factory.kw["bind"])
-        _seed_aihot_source(factory)
 
     @app.get("/api/health")
     async def health_check():
