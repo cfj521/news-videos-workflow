@@ -101,3 +101,113 @@ async def run_stage2(
     scene_count = len(result.get("scenes", []))
     log.info("Script generated: '%s' — %d scenes in %.1fs", result.get("title", "?"), scene_count, time.time() - t0)
     return result
+
+
+ROUNDUP_ARTICLE_SYSTEM_PROMPT = """你是新闻汇总短视频的分镜脚本编写者。下面给你一条资讯，为它生成 1~3 个分镜（内容多/重要则多，简短则 1 个）。
+输出纯 JSON（无 markdown 标记）：
+{"scenes":[{"narration":"口语化中文旁白","image_prompt":"English static scene description","motion_prompt":"English camera motion","duration_hint":5}]}
+要求：旁白像新闻主播口播；image_prompt 用英文描述构图/色调/风格；分镜数不超过 3。"""
+
+DAILY_BATCH_SYSTEM_PROMPT = """你是 AI 资讯日报短视频的分镜脚本编写者。下面给你同一类目下的若干条资讯，请**每条资讯生成 1 个分镜**，顺序与给定一致。
+输出纯 JSON（无 markdown 标记）：
+{"scenes":[{"narration":"...","image_prompt":"...","motion_prompt":"...","duration_hint":5}]}
+分镜数量须等于给定资讯条数。"""
+
+SUMMARY_META_SYSTEM_PROMPT = """你是短视频运营。下面给你一条汇总视频包含的各条资讯标题，生成整条视频的吸睛标题与简介。
+输出纯 JSON（无 markdown 标记）：{"title":"中文标题","description":"1-2句中文简介","tags":["标签1","标签2"]}"""
+
+
+def _parse_json(response: str) -> dict:
+    cleaned = response.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[1]
+        cleaned = cleaned.rsplit("```", 1)[0]
+    return json.loads(cleaned)
+
+
+def _batch_items(n: int) -> list[int]:
+    """把 n 条 items 切成每批 2~4（以 3 为主，无尾批 1）；n==1→[1]。"""
+    if n <= 0:
+        return []
+    sizes: list[int] = []
+    remaining = n
+    while remaining > 4:
+        sizes.append(3)
+        remaining -= 3
+    sizes.append(remaining)
+    return sizes
+
+
+async def _gen_article_scenes(article, tp) -> list[dict]:
+    prompt = f"标题：{article.title}\n来源：{article.source_name}\n内容：\n{(article.content or article.title)[:2000]}"
+    resp = await tp.generate(prompt=prompt, system_prompt=ROUNDUP_ARTICLE_SYSTEM_PROMPT)
+    scenes = _parse_json(resp).get("scenes", [])
+    if not scenes:
+        scenes = [{"narration": article.title, "image_prompt": article.title, "motion_prompt": "", "duration_hint": 5}]
+    return scenes[:3]
+
+
+async def _gen_daily_batch_scenes(items: list[dict], tp) -> list[dict]:
+    lines = [f"{i + 1}. 「{it.get('title', '')}」{it.get('summary', '')}" for i, it in enumerate(items)]
+    resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=DAILY_BATCH_SYSTEM_PROMPT)
+    return _parse_json(resp).get("scenes", [])
+
+
+async def _gen_summary_meta(titles: list[str], tp) -> dict:
+    resp = await tp.generate(prompt="各条资讯标题：\n" + "\n".join(f"- {t}" for t in titles), system_prompt=SUMMARY_META_SYSTEM_PROMPT)
+    try:
+        m = _parse_json(resp)
+    except Exception:
+        m = {}
+    return {"title": m.get("title", "资讯汇总"), "description": m.get("description", ""), "tags": m.get("tags", [])}
+
+
+async def run_stage2_multi(articles: list, text_provider, language: str = "zh") -> dict:
+    scenes: list[dict] = []
+    groups: list[dict] = []
+    next_id = 1
+    next_gid = 1
+    titles: list[str] = []
+
+    for idx, article in enumerate(articles):
+        sections = article.metadata.get("daily_sections")
+        if article.metadata.get("aihot_method") == "daily" and sections:
+            for section in sections:
+                label = section.get("label", "")
+                items = section.get("items", [])
+                sizes = _batch_items(len(items))
+                multi = len(sizes) > 1
+                start = 0
+                for bi, size in enumerate(sizes):
+                    batch = items[start:start + size]
+                    start += size
+                    gid = next_gid
+                    next_gid += 1
+                    gtitle = label if not multi else f"{label} ({bi + 1})"
+                    batch_scenes = await _gen_daily_batch_scenes(batch, text_provider)
+                    if len(batch_scenes) != len(batch):
+                        log.warning("[S2] daily batch returned %d scenes for %d items", len(batch_scenes), len(batch))
+                    for sc in batch_scenes:
+                        sc["id"] = next_id
+                        next_id += 1
+                        sc["group_id"] = gid
+                        sc["group_title"] = gtitle
+                        scenes.append(sc)
+                    groups.append({"id": gid, "title": gtitle, "source_index": idx})
+                    titles.extend(it.get("title", "") for it in batch)
+        else:
+            gid = next_gid
+            next_gid += 1
+            art_scenes = await _gen_article_scenes(article, text_provider)
+            for sc in art_scenes:
+                sc["id"] = next_id
+                next_id += 1
+                sc["group_id"] = gid
+                sc["group_title"] = article.title
+                scenes.append(sc)
+            groups.append({"id": gid, "title": article.title, "source_index": idx})
+            titles.append(article.title)
+
+    meta = await _gen_summary_meta(titles, text_provider)
+    log.info("[S2] multi script: %d groups, %d scenes", len(groups), len(scenes))
+    return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"], "groups": groups, "scenes": scenes}
