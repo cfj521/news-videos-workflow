@@ -106,6 +106,14 @@ def _resolve_collector_type(src) -> str:
 
 def build_collectors_from_db(db_sources: list) -> tuple[list[dict], dict]:
     _ensure_collector_registry()
+
+    # 互斥兜底：AI HOT 源与普通源同时 enabled 时，只保留 AI HOT 组
+    aihot_sources = [s for s in db_sources if _resolve_collector_type(s) == "aihot"]
+    if aihot_sources and len(aihot_sources) != len(db_sources):
+        get_logger("runner").warning(
+            "Both AI HOT and regular sources enabled — using AI HOT only (mutual exclusion)")
+        db_sources = aihot_sources
+
     source_configs: list[dict] = []
     collectors: dict = {}
 
@@ -231,6 +239,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
     _update(db, run, status="processing", started_at=datetime.now(timezone.utc))
 
     articles = []
+    daily_mode = False
     script = None
     scene_assets = []
     timeline = None
@@ -250,16 +259,17 @@ async def _run_inner(run_id: int, db: Session) -> None:
             source_configs, collectors = build_collectors(cfg)
             log.info("[S1] No DB sources, using defaults")
 
+        daily_mode = any(sc.get("method") == "daily" for sc in source_configs)
+
         articles = await run_stage1(
             sources=source_configs, collectors=collectors,
             time_range=run.time_range, max_articles=run.max_articles,
-            enable_dedup=cfg.pipeline.enable_dedup, enable_scoring=cfg.pipeline.enable_scoring,
         )
 
         for i, a in enumerate(articles, 1):
             log.info("[S1]   [%d] %s (%s)", i, a.title, a.source_name)
 
-        if cfg.pipeline.enable_summary and articles:
+        if articles and articles[0].metadata.get("source_group") != "aihot":
             _update(db, run, progress_detail=f"S1 生成摘要中 (0/{len(articles)})...")
             await _summarize_articles(articles, cfg, run, db, log)
 
@@ -277,21 +287,24 @@ async def _run_inner(run_id: int, db: Session) -> None:
             run = db.get(PipelineRun, run_id)
 
     if not articles:
-        _update(db, run, status="failed", error_message="No articles collected", finished_at=datetime.now(timezone.utc))
-        log.error("No articles — aborting")
+        msg = "今日 AI 日报尚未生成，请稍后再试或切换为动态(items)模式" if daily_mode else "No articles collected"
+        _update(db, run, status="failed", error_message=msg, finished_at=datetime.now(timezone.utc))
+        log.error(msg)
         return
 
     # ─── Stage 2: 脚本生成 ─────────────────────────────────
     if 2 in selected:
         t0 = time.time()
         article = articles[0]
+        style = "daily" if article.metadata.get("aihot_method") == "daily" else "single"
         _update(db, run, current_stage=2, progress_detail=f"S2 生成脚本 — {article.title[:30]}...")
         log.info("[S2] Generating script for: %s", article.title)
 
         text_provider = _build_text_provider()
         log.info("[S2] Provider: %s / %s", cfg.text.provider, cfg.text.model)
 
-        script = await run_stage2(article=article, text_provider=text_provider, language=cfg.pipeline.default_language)
+        script = await run_stage2(article=article, text_provider=text_provider,
+                                  language=cfg.pipeline.default_language, style=style)
 
         (run_dir / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
         scene_count = len(script.get("scenes", []))
