@@ -187,9 +187,9 @@ const PLATFORM_CHIP: Record<string, string> = {
   bilibili: "bg-blue-500/15 text-blue-300",
   douyin: "bg-cyan-500/15 text-cyan-300",
   kuaishou: "bg-orange-500/15 text-orange-300",
-  ximalaya: "bg-red-500/15 text-red-300",
+  ximalaya: "bg-orange-500/15 text-orange-300",
   xiaoyuzhou: "bg-purple-500/15 text-purple-300",
-  netease_music: "bg-red-500/15 text-red-300",
+  netease_music: "bg-rose-500/15 text-rose-300",
   apple_podcasts: "bg-violet-500/15 text-violet-300",
 };
 
