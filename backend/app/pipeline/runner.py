@@ -22,7 +22,6 @@ from app.providers.image.openai_image import OpenAIImageProvider
 from app.providers.tts.edge_tts_provider import EdgeTTSProvider
 
 from app.pipeline.stage1_collect import run_stage1
-from app.pipeline.stage2_script import run_stage2
 from app.pipeline.stage3_assets import run_stage3
 from app.pipeline.stage4_timeline import run_stage4
 from app.pipeline.stage5_compose import run_stage5
