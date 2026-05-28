@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { api } from "../api/client";
 import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, selectCls } from "../styles";
 import { Select } from "./Select";
-import { STAGE_LABELS, VISIBLE_STAGES } from "../types";
-import { PLATFORM_LABELS, PLATFORM_MEDIA } from "../types";
+import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA } from "../types";
 
 interface Props {
   onCreated: () => void;
@@ -34,24 +33,18 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [loading, setLoading] = useState(false);
 
   const audioOnly = videoRoute === "audio";
-  const platformOptions = audioOnly
-    ? ALL_PLATFORMS.filter((p) => PLATFORM_MEDIA[p.value] !== "video")
-    : ALL_PLATFORMS.filter((p) => PLATFORM_MEDIA[p.value] !== "audio");
+  const excludedMedia = audioOnly ? "video" : "audio";
+  const platformOptions = ALL_PLATFORMS.filter((p) => PLATFORM_MEDIA[p.value] !== excludedMedia);
+  const dialogStages = audioOnly ? VISIBLE_STAGES.filter((s) => s !== 4) : VISIBLE_STAGES;
+  const stageLabel = (s: number) => (audioOnly && s === 2 ? "脚本/语音生成" : STAGE_LABELS[s]);
 
-  useEffect(() => {
-    if (audioOnly) setSelectedVisual((prev) => {
-      if (!prev.has(4)) return prev;
-      const next = new Set(prev); next.delete(4); return next;
-    });
-  }, [audioOnly]);
-
-  useEffect(() => {
-    setPlatforms((prev) => {
-      const allowed = new Set(platformOptions.map((p) => p.value));
-      const next = new Set([...prev].filter((p) => allowed.has(p)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [audioOnly]);
+  // 把 audio 路线的约束在读取时应用，避免用 effect 同步 state（React 推荐做法）
+  const effectiveVisual = audioOnly && selectedVisual.has(4)
+    ? new Set([...selectedVisual].filter((s) => s !== 4))
+    : selectedVisual;
+  const effectivePlatforms = new Set(
+    [...platforms].filter((p) => PLATFORM_MEDIA[p] !== excludedMedia)
+  );
 
   const toggleStage = (s: number) => {
     setSelectedVisual((prev) => {
@@ -89,16 +82,13 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         video_route: videoRoute,
         time_range: timeRange,
         max_articles: maxArticles,
-        selected_stages: toBackendStages(selectedVisual),
-        publish_platforms: Array.from(platforms),
+        selected_stages: toBackendStages(effectiveVisual),
+        publish_platforms: Array.from(effectivePlatforms),
         auto_collect: autoCollect,
       });
       onCreated();
     } finally { setLoading(false); }
   };
-
-  const dialogStages = audioOnly ? VISIBLE_STAGES.filter((s) => s !== 4) : VISIBLE_STAGES;
-  const stageLabel = (s: number) => (audioOnly && s === 2 ? "脚本/语音生成" : STAGE_LABELS[s]);
 
   return (
     <div className={dialogOverlayCls}>
@@ -114,7 +104,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
             >
               <input
                 type="checkbox"
-                checked={selectedVisual.has(s)}
+                checked={effectiveVisual.has(s)}
                 onChange={() => toggleStage(s)}
                 className="w-3.5 h-3.5 rounded accent-blue-500"
               />
@@ -124,7 +114,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           ))}
         </div>
 
-        {selectedVisual.has(6) && (
+        {effectiveVisual.has(6) && (
           <>
             <label className={labelCls}>发布平台</label>
             <div className="flex gap-2 mb-4">
@@ -134,7 +124,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
                   type="button"
                   onClick={() => togglePlatform(p.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
-                    platforms.has(p.value)
+                    effectivePlatforms.has(p.value)
                       ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
                       : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white/60"
                   }`}
@@ -199,7 +189,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className={btnSecondary}>取消</button>
-          <button onClick={handleSubmit} disabled={loading || selectedVisual.size === 0} className={btnPrimary}>
+          <button onClick={handleSubmit} disabled={loading || effectiveVisual.size === 0} className={btnPrimary}>
             {loading ? "创建中..." : "创建"}
           </button>
         </div>
