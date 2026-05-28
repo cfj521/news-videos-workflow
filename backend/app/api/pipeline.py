@@ -472,6 +472,66 @@ async def regen_scene_prompt(run_id: int, scene_id: int, body: RegenPromptReques
     return {"status": "ok", "image_prompt": new_prompt}
 
 
+# ─── Scene add / delete ───────────────────────────────────
+
+class _AddSceneBody(_PydBase):
+    group_id: int
+    requirement: str = ""
+
+
+@router.post("/runs/{run_id}/scenes")
+async def add_scene(run_id: int, body: _AddSceneBody):
+    rd = _run_dir(run_id)
+    script_path = rd / "script.json"
+    if not script_path.exists():
+        raise HTTPException(status_code=404, detail="Script not found")
+    script = json.loads(script_path.read_text(encoding="utf-8"))
+    group = next((g for g in script.get("groups", []) if g["id"] == body.group_id), None)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    articles = json.loads((rd / "articles.json").read_text(encoding="utf-8")) if (rd / "articles.json").exists() else []
+    si = group.get("source_index", -1)
+    src = articles[si] if 0 <= si < len(articles) else {}
+    src_text = f"标题：{src.get('title', '')}\n内容：\n{(src.get('content') or '')[:2000]}"
+
+    from app.pipeline.stage2_script import ROUNDUP_ARTICLE_SYSTEM_PROMPT, _parse_json
+    tp = _build_text_provider()
+    prompt = f"{src_text}\n\n额外要求：{body.requirement or '补充一个新分镜'}\n只输出 1 个分镜。"
+    resp = await tp.generate(prompt=prompt, system_prompt=ROUNDUP_ARTICLE_SYSTEM_PROMPT)
+    try:
+        gen = _parse_json(resp).get("scenes") or []
+    except Exception:
+        gen = []
+    sc = gen[0] if gen else {"narration": "", "image_prompt": "", "motion_prompt": "", "duration_hint": 5}
+    sc["id"] = max([s["id"] for s in script["scenes"]], default=0) + 1
+    sc["group_id"] = body.group_id
+    sc["group_title"] = group["title"]
+
+    last = max((i for i, s in enumerate(script["scenes"]) if s["group_id"] == body.group_id), default=len(script["scenes"]) - 1)
+    script["scenes"].insert(last + 1, sc)
+    script_path.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
+    return sc
+
+
+@router.delete("/runs/{run_id}/scenes/{scene_id}")
+def delete_scene(run_id: int, scene_id: int):
+    rd = _run_dir(run_id)
+    script_path = rd / "script.json"
+    if not script_path.exists():
+        raise HTTPException(status_code=404, detail="Script not found")
+    script = json.loads(script_path.read_text(encoding="utf-8"))
+    target = next((s for s in script["scenes"] if s["id"] == scene_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    same_group = [s for s in script["scenes"] if s["group_id"] == target["group_id"]]
+    if len(same_group) <= 1:
+        raise HTTPException(status_code=400, detail="每组至少保留 1 个分镜")
+    script["scenes"] = [s for s in script["scenes"] if s["id"] != scene_id]
+    script_path.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
+    return script
+
+
 # ─── Preview HTML ─────────────────────────────────────────
 
 @router.get("/runs/{run_id}/preview-html")
