@@ -20,7 +20,7 @@ export interface AppSettings {
   summary: { enabled: boolean; provider: string; base_url: string; model: string; api_key: string; max_length: number };
   collectors: { tavily_key: string; brave_key: string; serper_key: string };
   youtube: { client_id: string; client_secret: string };
-  pipeline: { default_time_range: string; default_max_articles: number; default_video_route: string; default_language: string; dedup_lookback: string; enable_summary: boolean; enable_dedup: boolean; enable_scoring: boolean };
+  pipeline: { default_time_range: string; default_max_articles: number; default_video_route: string; default_language: string; dedup_lookback: string };
   video: { resolution: string; aspect_ratio: string; fps: string; scene_gap_ms: number; transition: string };
   ltx: { model_dir: string; checkpoint: string; upsampler: string; distilled_lora: string; lora_strength: number; gemma_dir: string; inference_steps: number; cfg_scale: number; stg_scale: number; fps: number; use_fp8: boolean };
 }

@@ -242,7 +242,7 @@ const EMPTY_SETTINGS: AppSettings = {
   summary: { enabled: true, provider: "", base_url: "", model: "", api_key: "", max_length: 150 },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
-  pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "hyperframes", default_language: "zh", dedup_lookback: "30d", enable_summary: true, enable_dedup: true, enable_scoring: true },
+  pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "hyperframes", default_language: "zh", dedup_lookback: "30d" },
   video: { resolution: "1080x1920", aspect_ratio: "9:16", fps: "30", scene_gap_ms: 500, transition: "crossfade" },
   ltx: { model_dir: "", checkpoint: "ltx-2.3-22b-distilled-1.1.safetensors", upsampler: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors", distilled_lora: "ltx-2.3-22b-distilled-lora-384.safetensors", lora_strength: 0.6, gemma_dir: "", inference_steps: 8, cfg_scale: 3.0, stg_scale: 1.0, fps: 25.0, use_fp8: true },
 };
@@ -409,21 +409,6 @@ export function SettingsPage() {
           <Select value={settings.pipeline.default_language} onChange={(v) => patch("pipeline", { default_language: v })} options={[
             { value: "zh", label: "中文" }, { value: "en", label: "English" },
           ]} />
-        </Field>
-        <Field label="文章去重">
-          <button type="button" onClick={() => patch("pipeline", { enable_dedup: !settings.pipeline.enable_dedup })} className={toggleCls(settings.pipeline.enable_dedup)}>
-            <span className={toggleThumbCls(settings.pipeline.enable_dedup)} />
-          </button>
-        </Field>
-        <Field label="评分排序">
-          <button type="button" onClick={() => patch("pipeline", { enable_scoring: !settings.pipeline.enable_scoring })} className={toggleCls(settings.pipeline.enable_scoring)}>
-            <span className={toggleThumbCls(settings.pipeline.enable_scoring)} />
-          </button>
-        </Field>
-        <Field label="摘要生成">
-          <button type="button" onClick={() => patch("pipeline", { enable_summary: !settings.pipeline.enable_summary })} className={toggleCls(settings.pipeline.enable_summary)}>
-            <span className={toggleThumbCls(settings.pipeline.enable_summary)} />
-          </button>
         </Field>
       </Section>
 
