@@ -583,6 +583,19 @@ async def _render_video_async(run_id: int, session_factory):
             return
         cfg = get_settings()
         rd = _run_dir(run_id)
+
+        if run.video_route == "audio":
+            from app.pipeline.runner import _ffmpeg_merge_audio
+            _update(db, run, progress_detail="重新合成音频中...")
+            script = json.loads((rd / "script.json").read_text(encoding="utf-8"))
+            final_path = _ffmpeg_merge_audio(script, rd / "assets", rd)
+            if Path(final_path).exists():
+                size_mb = Path(final_path).stat().st_size / 1024 / 1024
+                _update(db, run, progress_detail=f"S5 合成完成 — {size_mb:.1f} MB", output_path=final_path)
+            else:
+                _update(db, run, status="failed", error_message="音频文件未生成", finished_at=datetime.now(timezone.utc))
+            return
+
         timeline = json.loads((rd / "timeline.json").read_text(encoding="utf-8"))
         output_mp4 = str((rd / "output.mp4").resolve())
 
@@ -651,12 +664,19 @@ def get_logs(run_id: int, tail: int = 200, db: Session = Depends(get_db)):
     return {"lines": lines[-tail:]}
 
 
+def _output_media_meta(path: Path) -> tuple[str, str]:
+    if path.suffix.lower() == ".mp3":
+        return "audio/mpeg", "mp3"
+    return "video/mp4", "mp4"
+
+
 @router.get("/runs/{run_id}/video")
 def get_video(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
     if not run or not run.output_path:
-        raise HTTPException(status_code=404, detail="Video not available")
+        raise HTTPException(status_code=404, detail="Output not available")
     path = Path(run.output_path)
     if not path.exists():
-        raise HTTPException(status_code=404, detail="Video file not found")
-    return FileResponse(path, media_type="video/mp4", filename=f"run_{run_id}.mp4")
+        raise HTTPException(status_code=404, detail="Output file not found")
+    media_type, ext = _output_media_meta(path)
+    return FileResponse(path, media_type=media_type, filename=f"run_{run_id}.{ext}")
