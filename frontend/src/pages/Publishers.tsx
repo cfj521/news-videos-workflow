@@ -2,7 +2,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { api } from "../api/client";
 import type { PublishTarget } from "../types";
-import { PLATFORM_LABELS } from "../types";
+import { PLATFORM_LABELS, PLATFORM_MEDIA } from "../types";
 import {
   btnPrimary, btnSecondary, btnDanger, btnCompact, cardCls, chipCls,
   inputCls, labelCls, dialogOverlayCls, dialogPanelCls, errorTextCls,
@@ -46,6 +46,18 @@ const PLATFORM_FIELDS: Record<string, FieldDef[]> = {
     { key: "app_id", label: "App ID" },
     { key: "app_secret", label: "App Secret", secret: true },
     { key: "access_token", label: "Access Token", secret: true },
+  ],
+  ximalaya: [
+    { key: "access_token", label: "Access Token", secret: true },
+  ],
+  xiaoyuzhou: [
+    { key: "cookie", label: "Cookie", secret: true },
+  ],
+  netease_music: [
+    { key: "cookie", label: "Cookie", secret: true },
+  ],
+  apple_podcasts: [
+    { key: "rss_url", label: "RSS URL", placeholder: "https://feeds.example.com/podcast.xml" },
   ],
 };
 
@@ -175,7 +187,13 @@ const PLATFORM_CHIP: Record<string, string> = {
   bilibili: "bg-blue-500/15 text-blue-300",
   douyin: "bg-cyan-500/15 text-cyan-300",
   kuaishou: "bg-orange-500/15 text-orange-300",
+  ximalaya: "bg-red-500/15 text-red-300",
+  xiaoyuzhou: "bg-purple-500/15 text-purple-300",
+  netease_music: "bg-red-500/15 text-red-300",
+  apple_podcasts: "bg-violet-500/15 text-violet-300",
 };
+
+const MEDIA_LABEL: Record<string, string> = { video: "视频", audio: "音频", both: "音视频" };
 
 export function PublishersPage() {
   const { data: targets, mutate } = useSWR("publishers", api.publishers.list);
@@ -209,6 +227,9 @@ export function PublishersPage() {
                     <span className="text-sm font-medium text-white/80">{t.name}</span>
                     <span className={`${chipCls} ${PLATFORM_CHIP[t.platform] ?? "bg-white/[0.06] text-white/40"}`}>
                       {PLATFORM_LABELS[t.platform] ?? t.platform}
+                    </span>
+                    <span className={`${chipCls} bg-white/[0.06] text-white/40`}>
+                      {MEDIA_LABEL[PLATFORM_MEDIA[t.platform] ?? "video"]}
                     </span>
                     {!t.enabled && <span className="text-[10px] text-white/25 italic">已禁用</span>}
                   </div>
