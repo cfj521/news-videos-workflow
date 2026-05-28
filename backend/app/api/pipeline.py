@@ -118,7 +118,16 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
 
     from app.providers.base import RawArticleData
     articles_raw = json.loads(articles_path.read_text(encoding="utf-8"))
-    article = RawArticleData(title=articles_raw[0]["title"], content="", source_url=articles_raw[0].get("url", ""), source_name=articles_raw[0].get("source", ""))
+    first = articles_raw[0]
+    aihot_method = first.get("aihot_method")
+    article = RawArticleData(
+        title=first["title"],
+        content=first.get("content", ""),
+        source_url=first.get("url", ""),
+        source_name=first.get("source", ""),
+        metadata={"aihot_method": aihot_method} if aihot_method else {},
+    )
+    style = "daily" if aihot_method == "daily" else "single"
 
     cfg = get_settings()
     if cfg.text.provider == "claude":
@@ -130,7 +139,7 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
 
     from app.pipeline.stage2_script import run_stage2
     log.info("Regenerating script for run #%d", run_id)
-    script = await run_stage2(article=article, text_provider=tp, language=cfg.pipeline.default_language)
+    script = await run_stage2(article=article, text_provider=tp, language=cfg.pipeline.default_language, style=style)
     (rd / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
     return script
 

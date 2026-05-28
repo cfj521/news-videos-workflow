@@ -51,7 +51,7 @@ class YouTubeCfg(BaseModel):
 
 
 class SummaryCfg(BaseModel):
-    enabled: bool = True
+    enabled: bool = True  # 历史字段：摘要现按信息源组自动决定，此开关已不再生效
     provider: str = ""
     base_url: str = ""
     model: str = ""

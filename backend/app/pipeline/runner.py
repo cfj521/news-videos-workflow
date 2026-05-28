@@ -190,8 +190,9 @@ def _save_articles(articles, run_dir):
             "url": a.source_url,
             "aggregator_url": a.aggregator_url,
             "source": a.source_name,
-            "content": (a.content or "")[:500],
+            "content": a.content or "",
             "summary": a.summary,
+            "aihot_method": a.metadata.get("aihot_method"),
         })
     (run_dir / "articles.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
