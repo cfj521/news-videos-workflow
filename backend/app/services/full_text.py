@@ -49,6 +49,18 @@ class FullTextFetcher:
         log.info("Fetched %d chars from %s in %.1fs", len(text), url, time.time() - t0)
         return text
 
+    async def fetch_with_title(self, url: str) -> tuple[str, str]:
+        log.debug("Fetching with title: %s", url)
+        async with httpx.AsyncClient(
+            timeout=30, follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"},
+        ) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+        m = re.search(r"<title[^>]*>(.*?)</title>", resp.text, re.DOTALL | re.IGNORECASE)
+        title = (m.group(1).strip() if m else "")
+        return title, self._extract_content(resp.text)
+
     def _extract_content(self, html: str) -> str:
         article_match = re.search(r"<article[^>]*>(.*?)</article>", html, re.DOTALL | re.IGNORECASE)
         target_html = article_match.group(1) if article_match else html
