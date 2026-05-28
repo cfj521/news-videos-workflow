@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import useSWR from "swr";
 import { api, type ScriptData, type TimelineData, type ArticleData, type AppSettings } from "../api/client";
 import {
-  btnPrimary, btnSecondary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
+  btnPrimary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
   sectionTitleCls, inputCls, labelCls, errorTextCls,
   btnActionAudio, btnActionImage, btnActionPrompt, btnActionReroll,
 } from "../styles";
@@ -346,7 +346,7 @@ const IconPause = () => (
 function OverlayIndicator({ playing }: { playing: boolean }) {
   const [visible, setVisible] = useState(false);
   const [icon, setIcon] = useState(playing);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const trigger = useCallback((isPlaying: boolean) => {
     setIcon(isPlaying);

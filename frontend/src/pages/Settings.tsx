@@ -7,7 +7,6 @@ import {
   inputCls as _inputCls,
   monoInputCls as _monoInputCls,
   btnPrimary,
-  btnSecondary,
   btnCompact,
   sectionTitleCls,
   toggleCls,
@@ -262,11 +261,6 @@ export function SettingsPage() {
 
   const patch = <G extends keyof AppSettings>(group: G, p: Partial<AppSettings[G]>) => {
     setSettings((prev) => ({ ...prev, [group]: { ...prev[group], ...p } }));
-    setDirty(true);
-  };
-
-  const setField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
     setDirty(true);
   };
 

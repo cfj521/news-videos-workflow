@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { PublishTarget } from "../types";
 import { PLATFORM_LABELS } from "../types";
 import {
-  btnPrimary, btnSecondary, btnDanger, btnCompact, cardCls, chipCls, sectionTitleCls,
+  btnPrimary, btnSecondary, btnDanger, btnCompact, cardCls, chipCls,
   inputCls, labelCls, dialogOverlayCls, dialogPanelCls, errorTextCls,
 } from "../styles";
 import { Select } from "../components/Select";
@@ -90,7 +90,7 @@ function TargetDialog({ target, onSave, onClose }: {
   const fieldDefs = PLATFORM_FIELDS[platform] ?? [];
 
   const handlePlatformChange = (p: string) => {
-    setPlatform(p);
+    setPlatform(p as PublishTarget["platform"]);
     if (!isEdit) {
       setName(PLATFORM_LABELS[p] ?? p);
       setFields({});
