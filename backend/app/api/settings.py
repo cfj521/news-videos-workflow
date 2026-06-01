@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.config import Settings, get_settings, save_settings
 from app.logging import get_logger
+from app.prompts import PROMPTS
 
 log = get_logger("api.settings")
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -42,9 +43,10 @@ async def update_settings(payload: dict):
         if group_key == "infra":
             continue
         if isinstance(group_val, dict) and group_key in current:
+            secret_group = group_key in ("text", "image", "tts", "collectors", "youtube")
             for k, v in group_val.items():
-                if isinstance(v, str) and "..." in v:
-                    continue
+                if secret_group and isinstance(v, str) and "..." in v:
+                    continue  # 跳过未改动的脱敏密钥
                 current[group_key][k] = v
             changed_groups.append(group_key)
         else:
@@ -54,3 +56,8 @@ async def update_settings(payload: dict):
     save_settings(updated)
     log.info("Settings updated — groups: %s", changed_groups)
     return _redact(updated)
+
+
+@router.get("/prompts/defaults")
+async def prompt_defaults():
+    return {p.key: {"label": p.label, "desc": p.desc, "default": p.default} for p in PROMPTS}
