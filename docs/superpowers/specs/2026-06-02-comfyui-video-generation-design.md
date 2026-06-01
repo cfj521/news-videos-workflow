@@ -48,13 +48,16 @@ class ComfyUIVideoProvider(VideoClipProvider):
         # 3. frames = _snap_4n1(round(duration * fps))   # 4n+1，下限 5（约 9/13...）
         # 4. fill: INPUT_IMAGE=server_name, POSITIVE=prompt, NEGATIVE=self._negative,
         #          SEED=随机, WIDTH=W, HEIGHT=H, LENGTH=frames
-        # 5. files = client.run(graph); 取首个 videos→gifs→images 输出 → fetch 到临时文件(带原扩展)
+        # 5. files = client.run(graph)；**provider 内按类别优先级自挑** videos→gifs→images
+        #    （client.run 返回是 images-first 扁平表，不能 files[0]；wan→images、ltx→videos）
+        #    取第一个非空类别的首项 → fetch 到临时文件(带原扩展)
         # 6. ffmpeg 转 output_path(mp4): -i tmp -vf scale=W:H -r fps -pix_fmt yuv420p
         # 7. AssetResult(file_path=output_path, duration_ms=int(frames/fps*1000))
 ```
-- `_snap_4n1(n)`：`max(5, 4*round((n-1)/4)+1)`。
+- `_snap_4n1(n)`：`max(5, min(4*round((n-1)/4)+1, 257))`（含 257 帧上限，防长分镜爆显存）。
+- **输出挑选**（关键，见评审 B2）：`for kind in ("videos","gifs","images"): cands=[f for f in files if f["kind"]==kind]; if cands: pick=cands[0]; break` —— 不依赖 `client.run` 返回顺序。
 - 失败（upload/run/无输出/ffmpeg 非 0）→ `ProviderError(service="视频生成", provider="comfyui", model=workflow, base_url=server, ...)`。
-- ffmpeg 经 `subprocess.run`（项目已这么用，`shell=True` win 兼容，见现有 composer）。
+- ffmpeg 用 `subprocess.run(cmd_list, capture_output=True, timeout=...)`，**不带 `shell=True`**（list 形式无需 shell；新代码不沿用旧 composer 的 `shell=True` 瑕疵）。
 
 ### 3. `ComfyUIVideoComposer` — 新建 `providers/composer/comfyui_composer.py`（全新，不复用 LTX）
 
@@ -107,7 +110,8 @@ class ComfyUIVideoProvider(VideoClipProvider):
 
 - `types/index.ts`：`video_route` 联合类型 `"ltx"`→`"comfyui"`；`VIDEO_ROUTE_LABELS` `ltx:"LTX 2.3"`→`comfyui:"ComfyUI"`。
 - `client.ts`：删 `AppSettings.ltx`。
-- `Settings.tsx`：删 `EMPTY_SETTINGS.ltx`；「视频路线」选项 `ltx`→`comfyui`；`default_video_route` 默认改 `comfyui`；**填充「视频生成」tab**：ComfyUI 地址(`comfyui.server_url`)、视频模式(wan5b/wan14b/wan14b_lightx2v/ltx 下拉)、fps —— 需在 `AppSettings`/`EMPTY_SETTINGS` 增 `comfyui` 组、`patch("comfyui",...)`。
+- `client.ts`：删 `AppSettings.ltx`；**新增 `AppSettings.comfyui` 组**（前端只暴露 `{ server_url: string; video_workflow: string; video_fps: number }` 三字段；后端 `ComfyuiCfg` 另有 `workflows_dir/default_negative`，保存走 `Partial<AppSettings>`、pydantic 默认补齐，无碍）。
+- `Settings.tsx`：删 `EMPTY_SETTINGS.ltx`；**`EMPTY_SETTINGS.comfyui` 必须给全三字段**（`{server_url:"http://127.0.0.1:8188", video_workflow:"wan5b", video_fps:24}`，否则 `AppSettings.comfyui` 非可选导致 TS 不全）；「视频路线」选项 `ltx`→`comfyui`、`default_video_route` 默认改 `comfyui`；**填充「视频生成」tab** 为表单：ComfyUI 地址 + 视频模式(wan5b/wan14b/wan14b_lightx2v/ltx 下拉) + fps，经 `patch("comfyui",...)`（加组后泛型成立）。
 - `CreateRunDialog.tsx`：`videoRoute` 默认 `"comfyui"`；路线选项 `ltx`→`comfyui`。
 - `Dashboard.tsx`：`"LTX 视频预览"` 等文案改中性（"视频预览"）。
 
@@ -124,7 +128,8 @@ Stage5 video_route="comfyui"
 
 ## 边界与错误处理
 
-- wan 出动图 webp → ffmpeg 转 mp4（冒烟确认 ffmpeg 能解 webp；不行则把 wan 工作流保存节点改视频节点，列为备选）。
+- wan 出动图 webp → ffmpeg 转 mp4。**实施第一步硬门槛（评审 N4）**：先验证 ffmpeg 能否解 SaveAnimatedWEBP 的动图 webp；**若不能，直接把 wan 三个 i2v 工作流的 `SaveAnimatedWEBP` 换成 `CreateVideo`+`SaveVideo`（出 mp4，像 ltx23_i2v 那样）**，比事后补救省事。
+- 帧率：ltx 工作流内部 25fps、wan 24fps；provider 统一按 `video_fps` 归一，时长有轻微偏差，可接受。
 - 单分镜失败 → 静态兜底 clip（不中断整片）。
 - 整体 ComfyUI 不可达 → composer 内每分镜抛 ProviderError → 走静态兜底；若全失败则最终视频为静态拼接（与现有 LTX 失败兜底语义一致）。
 - 删 LTX 后遗留 DB 里 `video_route=="ltx"` 的旧任务：重跑会落入 else(hyperframes) 分支——可接受（开发期）。
@@ -135,7 +140,8 @@ Stage5 video_route="comfyui"
 - `ComfyUIVideoProvider`：mock client(upload/run/fetch) + mock ffmpeg(subprocess)，验证 upload→选工作流→帧数 4n+1→占位符齐全→归一 mp4 调用→AssetResult；失败抛 ProviderError。
 - `ComfyUIVideoComposer`：mock video_provider，验证逐分镜调用 + 失败兜底 + concat 调用（mock subprocess）。
 - 路由：Stage5/render 在 `video_route=="comfyui"` 时建对 provider/composer。
-- 删除后：`python -c "import app.pipeline.runner, app.api.pipeline, app.main"` 无错；grep 无 LTX 残留；全量 pytest 绿（含删掉/改写涉 ltx 的旧测试，如有）。
+- 删除后：`python -c "import app.pipeline.runner, app.api.pipeline, app.main"` 无错；grep 无 LTX 残留；全量 pytest 绿。
+- **默认路线改 comfyui 必须同步改的两个断言测试（grep 不到 ltx、但会因默认值变动而红，见评审 B1）**：`backend/tests/test_config.py` 断言 `default_video_route == "hyperframes"`、`backend/tests/test_schemas.py` 断言 `PipelineRunCreate().video_route == "hyperframes"` —— 均改为 `"comfyui"`。
 - **真实冒烟**（控制者手动）：用一张分镜图，wan5b + ltx 各出一段 mp4 clip；再跑一条完整任务（video_route=comfyui）确认拼接出最终 mp4。
 
 ## 影响文件
