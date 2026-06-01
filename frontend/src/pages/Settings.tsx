@@ -9,8 +9,6 @@ import {
   btnPrimary,
   btnCompact,
   sectionTitleCls,
-  toggleCls,
-  toggleThumbCls,
   cx,
 } from "../styles";
 
@@ -259,6 +257,7 @@ export function SettingsPage() {
   const { data: promptDefs } = useSWR("prompt-defaults", api.settings.promptDefaults);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [dirty, setDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState<"ai" | "pipeline" | "prompts" | "video">("ai");
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -319,6 +318,16 @@ export function SettingsPage() {
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-2 border-b border-white/10 pb-2">
+        {([["ai", "AI 服务"], ["pipeline", "流水线"], ["prompts", "提示词"], ["video", "视频生成"]] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setActiveTab(k)}
+            className={`px-3 py-1.5 text-sm rounded-md transition ${activeTab === k ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "ai" && (<>
       <Section title="文章摘要" desc="对采集的文章进行 LLM 摘要（留空服务商则复用文本模型配置）">
         <Field label="服务商">
           <Select
@@ -394,7 +403,9 @@ export function SettingsPage() {
           </div>
         </Field>
       </Section>
+      </>)}
 
+      {activeTab === "pipeline" && (<>
       <Section title="流水线默认值">
         <Field label="时间范围">
           <Select value={settings.pipeline.default_time_range} onChange={(v) => patch("pipeline", { default_time_range: v })} options={[
@@ -457,58 +468,16 @@ export function SettingsPage() {
         </Field>
       </Section>
 
-      <Section title="LTX-2.3 视频生成" desc="本地 AI 视频生成模型配置（选择 LTX 路线时使用）">
-        <Field label="模型目录">
-          <input value={settings.ltx.model_dir} onChange={(e) => patch("ltx", { model_dir: e.target.value })} placeholder="/path/to/models/ltx-2.3" className={monoInputCls} />
-        </Field>
-        <Field label="Checkpoint">
-          <input value={settings.ltx.checkpoint} onChange={(e) => patch("ltx", { checkpoint: e.target.value })} className={monoInputCls} />
-        </Field>
-        <Field label="空间上采样器">
-          <input value={settings.ltx.upsampler} onChange={(e) => patch("ltx", { upsampler: e.target.value })} className={monoInputCls} />
-        </Field>
-        <Field label="蒸馏 LoRA">
-          <input value={settings.ltx.distilled_lora} onChange={(e) => patch("ltx", { distilled_lora: e.target.value })} className={monoInputCls} />
-        </Field>
-        <Field label="LoRA 强度">
-          <div className="flex items-center gap-3">
-            <input type="range" value={settings.ltx.lora_strength} onChange={(e) => patch("ltx", { lora_strength: Number(e.target.value) })} min={0} max={1} step={0.1} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/50 tabular-nums w-10 text-right">{settings.ltx.lora_strength.toFixed(1)}</span>
-          </div>
-        </Field>
-        <Field label="Gemma 目录">
-          <input value={settings.ltx.gemma_dir} onChange={(e) => patch("ltx", { gemma_dir: e.target.value })} placeholder="留空则使用模型目录/gemma" className={monoInputCls} />
-        </Field>
-        <Field label="推理步数">
-          <div className="flex items-center gap-3">
-            <input type="range" value={settings.ltx.inference_steps} onChange={(e) => patch("ltx", { inference_steps: Number(e.target.value) })} min={4} max={50} step={1} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/50 tabular-nums w-10 text-right">{settings.ltx.inference_steps}</span>
-          </div>
-        </Field>
-        <Field label="CFG Scale">
-          <div className="flex items-center gap-3">
-            <input type="range" value={settings.ltx.cfg_scale} onChange={(e) => patch("ltx", { cfg_scale: Number(e.target.value) })} min={1} max={7} step={0.5} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/50 tabular-nums w-10 text-right">{settings.ltx.cfg_scale.toFixed(1)}</span>
-          </div>
-        </Field>
-        <Field label="STG Scale">
-          <div className="flex items-center gap-3">
-            <input type="range" value={settings.ltx.stg_scale} onChange={(e) => patch("ltx", { stg_scale: Number(e.target.value) })} min={0} max={2} step={0.1} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/50 tabular-nums w-10 text-right">{settings.ltx.stg_scale.toFixed(1)}</span>
-          </div>
-        </Field>
-        <Field label="帧率">
-          <Select value={String(settings.ltx.fps)} onChange={(v) => patch("ltx", { fps: Number(v) })} options={[
-            { value: "24", label: "24 fps" }, { value: "25", label: "25 fps" }, { value: "48", label: "48 fps" }, { value: "50", label: "50 fps" },
-          ]} />
-        </Field>
-        <Field label="FP8 量化">
-          <button type="button" onClick={() => patch("ltx", { use_fp8: !settings.ltx.use_fp8 })} className={toggleCls(settings.ltx.use_fp8)}>
-            <span className={toggleThumbCls(settings.ltx.use_fp8)} />
-          </button>
-        </Field>
-      </Section>
+      </>)}
 
+      {activeTab === "video" && (
+        <div className="rounded-lg bg-white/[0.02] border border-white/[0.06] px-4 py-10 text-center">
+          <p className="text-sm text-white/40">ComfyUI 工作流配置将在后端接入完成后开放。</p>
+          <p className="text-xs text-white/25 mt-1">当前可用的工作流见 comfyui/workflows/，可在 ComfyUI 编辑器调试。</p>
+        </div>
+      )}
+
+      {activeTab === "prompts" && (<>
       <Section title="提示词" desc="流水线各步骤的 AI 提示词；留空使用内置默认。改后点上方「保存」。">
         {promptDefs && Object.entries(promptDefs).map(([key, def]) => (
           <div key={key} className="mb-4">
@@ -529,6 +498,7 @@ export function SettingsPage() {
           </div>
         ))}
       </Section>
+      </>)}
 
       <p className="text-xs text-white/20 text-center pt-2">
         设置保存在 backend/config.yaml
