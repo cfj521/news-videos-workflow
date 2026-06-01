@@ -34,8 +34,11 @@ class ComfyUIClient:
 ```
 
 - 用 `httpx.AsyncClient`（项目已用 httpx）。
-- `wait` 轮询间隔 ~1.5s，超时抛 `ProviderError(service="ComfyUI", ...)`；`/history` 里 status error 也抛。
+- `wait` 轮询用 **`await asyncio.sleep(1.5)`**（绝不用 `time.sleep`，Stage3 是 async 串行）；超时抛 `ProviderError(service="ComfyUI", ...)`。
+- **`/history` 失败判定简化为 `status.get("status_str") == "error"` 即抛**——不要照搬 `validate.py:90` 那段冗余 buggy 条件（`... or not completed and ... == "error"` 后半恒等前半、且优先级无意义）。
+- `fetch` 的 `type` 参数**改名为 `folder_type`**（避免遮蔽内建 `type`），默认 `"output"`；用 httpx `params={"filename":..., "subfolder":..., "type": folder_type}` 传参（httpx 自动 url-encode），`subfolder` 可为空串。
 - 错误统一包成 `ProviderError`（base.py 已有），带 server_url 上下文。
+- `run` 收集 outputs 里的 `images/gifs/videos`（图片只用 images）。
 
 ### 2. 工作流加载/填充 — 新建 `backend/app/providers/comfyui/workflow.py`
 
@@ -82,26 +85,26 @@ class ComfyuiCfg(BaseModel):
 
 > `workflows_dir` 解析（确定）：若为绝对路径直接用；否则相对**仓库根**解析，仓库根 = `Path(__file__).resolve().parents[N]`。`workflow.py` 位于 `backend/app/providers/comfyui/workflow.py`，到仓库根上溯 5 级（comfyui→providers→app→backend→repo，即 `parents[4]`）。`load_api_workflow` 内：`root = Path(__file__).resolve().parents[4]; path = Path(workflows_dir); full = path if path.is_absolute() else root / path; (full / f"{name}.api.json")`。
 
-### 5. Stage3 接线 — `backend/app/pipeline/runner.py`（约 478）
+### 5. 图片 provider 工厂 + 接线（避免两处逻辑漂移）
 
-把：
+两处直建 `OpenAIImageProvider`（grep 已核实仅这两处）：`runner.py:478`(Stage3) 与 `api/pipeline.py:421`(regen 单图)。**抽一个共享工厂**，两处都调，杜绝分叉：
+
 ```python
-image_provider = OpenAIImageProvider(api_key=cfg.image.api_key, model=cfg.image.model, base_url=cfg.image.base_url)
+# 放 backend/app/providers/image/__init__.py 或 runner 里（被 api/pipeline import）
+def build_image_provider(cfg):
+    if cfg.image.provider == "comfyui":
+        from app.providers.image.comfyui_image import ComfyUIImageProvider
+        return ComfyUIImageProvider(
+            server_url=cfg.image.base_url or "http://127.0.0.1:8188",
+            workflow=cfg.image.model or "z_image",
+            workflows_dir=cfg.comfyui.workflows_dir,
+            negative=cfg.comfyui.default_negative,
+        )
+    return OpenAIImageProvider(api_key=cfg.image.api_key, model=cfg.image.model, base_url=cfg.image.base_url)
 ```
-改为按 provider 选择：
-```python
-if cfg.image.provider == "comfyui":
-    from app.providers.image.comfyui_image import ComfyUIImageProvider
-    image_provider = ComfyUIImageProvider(
-        server_url=cfg.image.base_url or "http://127.0.0.1:8188",
-        workflow=cfg.image.model or "z_image",
-        workflows_dir=cfg.comfyui.workflows_dir,
-        negative=cfg.comfyui.default_negative,
-    )
-else:
-    image_provider = OpenAIImageProvider(api_key=cfg.image.api_key, model=cfg.image.model, base_url=cfg.image.base_url)
-```
-（`api/pipeline.py` 里若也有重建 image provider 的地方——如 regen 单图——同步用同一选择逻辑；实现时 grep `OpenAIImageProvider` 全部命中点统一。）
+
+- `runner.py:478` 改为 `image_provider = build_image_provider(cfg)`。
+- `api/pipeline.py:421` 的 regen 单图同样改为 `build_image_provider(cfg)`。注意该处 `img_size` 来自 `body.size or run.resolution or cfg.video.resolution`（可能是 `"1080x1920"` 等竖屏或前端任意值）——`ComfyUIImageProvider` 的 size 解析必须对 **无 "x" / 非数字** 都回退默认 1024×1024（见边界），保证 regen 也稳。
 
 ### 6. 前端 — `frontend/src/pages/Settings.tsx`
 
