@@ -1,0 +1,187 @@
+{
+  "1": {
+    "inputs": {
+      "text_encoder": "gemma3_12b_fp8_comfyquant.safetensors",
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
+      "device": "default"
+    },
+    "class_type": "LTXAVTextEncoderLoader",
+    "_meta": { "title": "LTX AV Text Encoder Loader (Gemma fp8 merged + spiece_model)" }
+  },
+  "2": {
+    "inputs": {
+      "text": "__POSITIVE_PROMPT__",
+      "clip": ["1", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Positive Prompt" }
+  },
+  "3": {
+    "inputs": {
+      "text": "__NEGATIVE_PROMPT__",
+      "clip": ["1", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative Prompt" }
+  },
+  "4": {
+    "inputs": {
+      "positive": ["2", 0],
+      "negative": ["3", 0],
+      "frame_rate": 25.0
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": { "title": "LTX Video Conditioning (fps)" }
+  },
+  "5": {
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": { "title": "Load Checkpoint" }
+  },
+  "6": {
+    "inputs": {
+      "lora_name": "ltx-2.3-22b-distilled-lora-384-1.1.safetensors",
+      "strength_model": 1.0,
+      "model": ["5", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": { "title": "Distilled LoRA (model only)" }
+  },
+  "7": {
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "class_type": "LTXVAudioVAELoader",
+    "_meta": { "title": "LTX Audio VAE Loader" }
+  },
+  "8": {
+    "inputs": {
+      "width": "__WIDTH__",
+      "height": "__HEIGHT__",
+      "length": "__LENGTH__",
+      "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": { "title": "Empty Video Latent" }
+  },
+  "9": {
+    "inputs": {
+      "width": "__WIDTH__",
+      "height": "__HEIGHT__",
+      "batch_size": 1,
+      "color": 0
+    },
+    "class_type": "EmptyImage",
+    "_meta": { "title": "Empty Image (T2V bypass placeholder)" }
+  },
+  "10": {
+    "inputs": {
+      "vae": ["5", 2],
+      "image": ["9", 0],
+      "latent": ["8", 0],
+      "strength": 1.0,
+      "bypass": true
+    },
+    "class_type": "LTXVImgToVideoInplace",
+    "_meta": { "title": "Img-to-Video Inplace (bypass=true for T2V)" }
+  },
+  "11": {
+    "inputs": {
+      "frames_number": "__LENGTH__",
+      "frame_rate": 25,
+      "batch_size": 1,
+      "audio_vae": ["7", 0]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": { "title": "Empty Audio Latent" }
+  },
+  "12": {
+    "inputs": {
+      "video_latent": ["10", 0],
+      "audio_latent": ["11", 0]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": { "title": "Concat AV Latent" }
+  },
+  "13": {
+    "inputs": {
+      "model": ["6", 0],
+      "positive": ["4", 0],
+      "negative": ["4", 1],
+      "cfg": 1.0
+    },
+    "class_type": "CFGGuider",
+    "_meta": { "title": "CFG Guider (cfg=1 for distilled)" }
+  },
+  "14": {
+    "inputs": {
+      "noise_seed": "__SEED__"
+    },
+    "class_type": "RandomNoise",
+    "_meta": { "title": "Random Noise" }
+  },
+  "15": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": { "title": "Sampler: Euler" }
+  },
+  "16": {
+    "inputs": {
+      "sigmas": "0.85, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": { "title": "Manual Sigmas (distilled 4-step)" }
+  },
+  "17": {
+    "inputs": {
+      "noise": ["14", 0],
+      "guider": ["13", 0],
+      "sampler": ["15", 0],
+      "sigmas": ["16", 0],
+      "latent_image": ["12", 0]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": { "title": "Sampler Custom Advanced" }
+  },
+  "18": {
+    "inputs": {
+      "av_latent": ["17", 0]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": { "title": "Separate AV Latent" }
+  },
+  "19": {
+    "inputs": {
+      "samples": ["18", 0],
+      "vae": ["5", 2],
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 64,
+      "temporal_overlap": 8
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": { "title": "VAE Decode Tiled" }
+  },
+  "20": {
+    "inputs": {
+      "images": ["19", 0],
+      "fps": 25.0
+    },
+    "class_type": "CreateVideo",
+    "_meta": { "title": "Create Video" }
+  },
+  "21": {
+    "inputs": {
+      "video": ["20", 0],
+      "filename_prefix": "video/LTX23_t2v",
+      "format": "mp4",
+      "codec": "h264"
+    },
+    "class_type": "SaveVideo",
+    "_meta": { "title": "Save Video" }
+  }
+}
