@@ -239,13 +239,18 @@ function S1Panel({ runId }: { runId: number }) {
     setRerolling(true);
     try {
       await api.runs.rerollArticles(runId);
-      showToast("重新采集中...", "success");
+      showToast(isWeekly ? "重新总结中..." : "重新采集中...", "success");
       setConfirmReroll(false);
       setTimeout(() => { mutate(); setRerolling(false); }, 5000);
     } catch { showToast("采集失败", "error"); setRerolling(false); }
   };
 
   const list = articles ?? [];
+  // AI HOT 采集模式（取首篇标记）：daily 禁用重新采集；weekly 语义是「重新总结」；items/普通源是「重新采集/reroll」
+  const aihotMethod = String((list[0] as ArticleRec | undefined)?.aihot_method ?? "");
+  const isDaily = aihotMethod === "daily";
+  const isWeekly = aihotMethod === "weekly";
+  const rerollLabel = isWeekly ? "重新总结" : "重新采集";
 
   const onSaveArticle = async (rec: ArticleRec) => {
     const next = [...list];
@@ -263,7 +268,9 @@ function S1Panel({ runId }: { runId: number }) {
         <div className="flex gap-2">
           <button onClick={() => setImporting(true)} className={btnAdd}>导入</button>
           <button onClick={() => setAdding(true)} className={btnAdd}>+ 添加文章</button>
-          <button onClick={() => setConfirmReroll(true)} disabled={rerolling} className={btnRegen}>{rerolling ? "采集中..." : "重新采集"}</button>
+          <button onClick={() => setConfirmReroll(true)} disabled={rerolling || isDaily}
+            title={isDaily ? "日报无需重新采集（同一份当日日报）" : undefined} className={btnRegen}>
+            {rerolling ? (isWeekly ? "总结中..." : "采集中...") : rerollLabel}</button>
         </div>
       </div>
       {list.length === 0 && <p className="text-white/30 text-sm">暂无文章，点「导入」或「添加文章」</p>}
@@ -298,12 +305,14 @@ function S1Panel({ runId }: { runId: number }) {
       {confirmReroll && (
         <div className={dialogOverlayCls} onClick={() => { if (!rerolling) setConfirmReroll(false); }}>
           <div className={`${dialogPanelCls} w-[420px]`} onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-2">重新采集</h2>
-            <p className="text-sm text-white/50 mb-3 leading-relaxed">将按当前信息源重新采集，<span className="text-amber-300/80">覆盖现有文章列表</span>。</p>
+            <h2 className="text-lg font-semibold mb-2">{rerollLabel}</h2>
+            <p className="text-sm text-white/50 mb-3 leading-relaxed">{isWeekly
+              ? <>将重新 AI 总结上周日报，<span className="text-amber-300/80">覆盖现有周报结果</span>。</>
+              : <>将按当前信息源重新采集，<span className="text-amber-300/80">覆盖现有文章列表</span>。</>}</p>
             <SourceSummary />
             <div className="flex gap-3 justify-end mt-5">
               <button onClick={() => setConfirmReroll(false)} disabled={rerolling} className={btnSecondary}>取消</button>
-              <button onClick={handleReroll} disabled={rerolling} className={btnPrimary}>{rerolling ? "采集中..." : "确认重新采集"}</button>
+              <button onClick={handleReroll} disabled={rerolling} className={btnPrimary}>{rerolling ? (isWeekly ? "总结中..." : "采集中...") : `确认${rerollLabel}`}</button>
             </div>
           </div>
         </div>

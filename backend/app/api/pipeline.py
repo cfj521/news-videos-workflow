@@ -434,11 +434,24 @@ async def reroll_articles(run_id: int, background_tasks: BackgroundTasks, db: Se
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    run.progress_detail = "S1 重新采集中..."
+    # 按当前采集模式分流：daily 无意义→拒绝；weekly=重新总结；items/普通源=重新采集
+    apath = _run_dir(run_id) / "articles.json"
+    method = ""
+    if apath.exists():
+        try:
+            arts = json.loads(apath.read_text(encoding="utf-8"))
+            method = arts[0].get("aihot_method", "") if arts else ""
+        except Exception:
+            method = ""
+    if method == "daily":
+        # 前端也会禁用按钮，这里双保险防止直接打 API
+        raise HTTPException(status_code=400, detail="日报模式无需重新采集")
+    is_weekly = method == "weekly"
+    run.progress_detail = "S1 重新总结中..." if is_weekly else "S1 重新采集中..."
     db.commit()
     session_factory = get_session_factory()
     background_tasks.add_task(_reroll_articles_bg, run_id, session_factory)
-    return {"status": "rerolling"}
+    return {"status": "resummarizing" if is_weekly else "rerolling"}
 
 
 def _reroll_articles_bg(run_id: int, session_factory):
