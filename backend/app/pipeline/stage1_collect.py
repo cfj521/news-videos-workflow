@@ -63,8 +63,8 @@ async def run_stage1(
     if is_aihot:
         method = all_articles[0].metadata.get("aihot_method", "items")
         compliant = _filter_compliant(all_articles)
-        if method == "daily":
-            log.info("AI HOT daily — single-doc passthrough")
+        if method in ("daily", "weekly"):
+            log.info("AI HOT %s — single-doc passthrough", method)
             return compliant[:1]
         log.info("AI HOT items — taking top %d (no dedup/scoring)", max_articles)
         return compliant[:max_articles]

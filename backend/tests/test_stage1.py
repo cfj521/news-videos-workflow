@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.pipeline.stage1_collect import run_stage1
-from app.providers.base import RawArticleData
+from app.providers.base import CollectorProvider, RawArticleData
 
 
 def _make_article(title: str, content: str = "content about AI") -> RawArticleData:
@@ -88,3 +88,21 @@ async def test_stage1_aihot_daily_single_passthrough():
     )
     assert len(result) == 1
     assert result[0].metadata["aihot_method"] == "daily"
+
+
+class _FakeWeeklyCollector(CollectorProvider):
+    async def collect(self, source_config, time_range, max_items=30):
+        return [RawArticleData(
+            title="本周回顾", content="c", source_url="u", source_name="AI HOT 周报",
+            metadata={"source_group": "aihot", "aihot_method": "weekly",
+                      "weekly_items": [{"title": "t", "summary": "s", "category": "x", "date": "2026-05-25"}]})]
+
+
+@pytest.mark.asyncio
+async def test_stage1_weekly_single_passthrough_ignores_max():
+    sources = [{"type": "api", "name": "AI HOT"}]
+    collectors = {"api": _FakeWeeklyCollector()}
+    # max_articles=0 不应把唯一一篇周报截断成空
+    out = await run_stage1(sources=sources, collectors=collectors, time_range="7d", max_articles=0)
+    assert len(out) == 1
+    assert out[0].metadata["aihot_method"] == "weekly"
