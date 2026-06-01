@@ -1,11 +1,11 @@
 import { useState, useRef, useCallback } from "react";
 import useSWR from "swr";
 import { api } from "../api/client";
-import { btnPrimary, btnCompact, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls } from "../styles";
+import { btnPrimary, btnCompact, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls, segItem } from "../styles";
 import { AddSourceDialog } from "../components/AddSourceDialog";
 import { EditSourceDialog } from "../components/EditSourceDialog";
 import { Select } from "../components/Select";
-import type { NewsSource } from "../types";
+import { type NewsSource, isAihotSource } from "../types";
 
 // ── Sort helpers ────────────────────────────────────────
 
@@ -13,13 +13,6 @@ type SortKey = "name" | "type" | "category" | "language" | "priority";
 type SortDir = "asc" | "desc";
 
 // ── AI HOT helpers ──────────────────────────────────────
-
-function isAihotSource(s: NewsSource): boolean {
-  if (s.config_json) {
-    try { if ((JSON.parse(s.config_json) as { provider?: string }).provider === "aihot") return true; } catch { /* ignore */ }
-  }
-  return s.url.includes("aihot.virxact.com");
-}
 
 function parseConfig(json: string | null): Record<string, unknown> {
   if (!json) return {};
@@ -175,11 +168,7 @@ function AIHotGroupCard({ source, customIds, onChange }: {
           <button
             key={m}
             onClick={() => setConfig({ method: m })}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-              method === m
-                ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
-                : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white/60"
-            }`}
+            className={segItem(method === m)}
           >
             {m === "items" ? "动态" : "日报"}
           </button>

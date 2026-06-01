@@ -248,6 +248,7 @@ const EMPTY_SETTINGS: AppSettings = {
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
   pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "hyperframes", default_language: "zh", dedup_lookback: "30d" },
+  storage: { work_dir: "", output_dir: "" },
   video: { resolution: "1080x1920", aspect_ratio: "9:16", fps: "30", scene_gap_ms: 500, transition: "crossfade" },
   ltx: { model_dir: "", checkpoint: "ltx-2.3-22b-distilled-1.1.safetensors", upsampler: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors", distilled_lora: "ltx-2.3-22b-distilled-lora-384.safetensors", lora_strength: 0.6, gemma_dir: "", inference_steps: 8, cfg_scale: 3.0, stg_scale: 1.0, fps: 25.0, use_fp8: true },
 };
@@ -442,6 +443,15 @@ export function SettingsPage() {
             { value: "crossfade", label: "交叉淡入淡出" }, { value: "fade", label: "淡入淡出" },
             { value: "slide", label: "滑动" }, { value: "cut", label: "直接切换（无转场）" },
           ]} />
+        </Field>
+      </Section>
+
+      <Section title="存储目录" desc="任务半成品与成品的存放位置">
+        <Field label="工作目录">
+          <input value={settings.storage.work_dir} onChange={(e) => patch("storage", { work_dir: e.target.value })} placeholder="留空使用默认 data/runs；每个任务一个子目录" className={monoInputCls} />
+        </Field>
+        <Field label="成品输出目录">
+          <input value={settings.storage.output_dir} onChange={(e) => patch("storage", { output_dir: e.target.value })} placeholder="留空不额外导出；渲染完成后复制成品到此，如 D:\视频成品" className={monoInputCls} />
         </Field>
       </Section>
 

@@ -2,13 +2,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import useSWR from "swr";
 import { api, type ScriptData, type TimelineData, type AppSettings } from "../api/client";
 import {
-  btnPrimary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
+  btnPrimary, btnSecondary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
   sectionTitleCls, inputCls, labelCls, errorTextCls,
-  btnActionAudio, btnActionImage, btnActionPrompt, btnActionReroll,
+  btnRegenAudio, btnRegenImage, btnRegenPrompt, btnRegen,
+  btnApprove, btnDelete, btnDeleteCompact, btnDeleteIcon, btnAdd, btnEdit,
   dialogOverlayCls, dialogPanelCls,
 } from "../styles";
 import { Select } from "../components/Select";
 import { CreateRunDialog } from "../components/CreateRunDialog";
+import { SourceSummary } from "../components/SourceSummary";
 import { useToast } from "../components/Toast";
 import type { PipelineRun } from "../types";
 import { STAGE_LABELS, VISIBLE_STAGES, BACKEND_STAGE_MAP } from "../types";
@@ -222,6 +224,7 @@ function ImportArticleDialog({ runId, onDone, onClose }: { runId: number; onDone
 function S1Panel({ runId }: { runId: number }) {
   const { data: articles, mutate } = useSWR<ArticleRec[]>(`articles-${runId}`, () => api.runs.articles(runId) as Promise<ArticleRec[]>);
   const [rerolling, setRerolling] = useState(false);
+  const [confirmReroll, setConfirmReroll] = useState(false);
   const [editing, setEditing] = useState<{ idx: number; rec: ArticleRec } | null>(null);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -234,8 +237,12 @@ function S1Panel({ runId }: { runId: number }) {
 
   const handleReroll = async () => {
     setRerolling(true);
-    try { await api.runs.rerollArticles(runId); showToast("重新采集中...", "success"); setTimeout(() => { mutate(); setRerolling(false); }, 5000); }
-    catch { showToast("采集失败", "error"); setRerolling(false); }
+    try {
+      await api.runs.rerollArticles(runId);
+      showToast("重新采集中...", "success");
+      setConfirmReroll(false);
+      setTimeout(() => { mutate(); setRerolling(false); }, 5000);
+    } catch { showToast("采集失败", "error"); setRerolling(false); }
   };
 
   const list = articles ?? [];
@@ -254,9 +261,9 @@ function S1Panel({ runId }: { runId: number }) {
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm text-white/40">{list.length} 篇文章</span>
         <div className="flex gap-2">
-          <button onClick={() => setImporting(true)} className={btnCompact}>导入</button>
-          <button onClick={() => setAdding(true)} className={btnCompact}>+ 添加文章</button>
-          <button onClick={handleReroll} disabled={rerolling} className={btnActionReroll}>{rerolling ? "采集中..." : "重新采集"}</button>
+          <button onClick={() => setImporting(true)} className={btnAdd}>导入</button>
+          <button onClick={() => setAdding(true)} className={btnAdd}>+ 添加文章</button>
+          <button onClick={() => setConfirmReroll(true)} disabled={rerolling} className={btnRegen}>{rerolling ? "采集中..." : "重新采集"}</button>
         </div>
       </div>
       {list.length === 0 && <p className="text-white/30 text-sm">暂无文章，点「导入」或「添加文章」</p>}
@@ -273,8 +280,8 @@ function S1Panel({ runId }: { runId: number }) {
                   {a.summary ? <p className="text-xs text-white/40 mt-2 leading-relaxed">{String(a.summary)}</p> : null}
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <button onClick={() => setEditing({ idx: i, rec: a })} className={btnCompact}>编辑</button>
-                  <button onClick={() => onDelete(i)} className={btnCompact}>删除</button>
+                  <button onClick={() => setEditing({ idx: i, rec: a })} className={btnEdit}>编辑</button>
+                  <button onClick={() => onDelete(i)} className={btnDeleteCompact}>删除</button>
                 </div>
               </div>
             </div>
@@ -287,6 +294,20 @@ function S1Panel({ runId }: { runId: number }) {
         <ArticleDialog initial={editing?.rec ?? null} onSave={onSaveArticle} onClose={() => { setAdding(false); setEditing(null); }} />
       )}
       {importing && <ImportArticleDialog runId={runId} onDone={() => { setImporting(false); mutate(); }} onClose={() => setImporting(false)} />}
+
+      {confirmReroll && (
+        <div className={dialogOverlayCls} onClick={() => { if (!rerolling) setConfirmReroll(false); }}>
+          <div className={`${dialogPanelCls} w-[420px]`} onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-2">重新采集</h2>
+            <p className="text-sm text-white/50 mb-3 leading-relaxed">将按当前信息源重新采集，<span className="text-amber-300/80">覆盖现有文章列表</span>。</p>
+            <SourceSummary />
+            <div className="flex gap-3 justify-end mt-5">
+              <button onClick={() => setConfirmReroll(false)} disabled={rerolling} className={btnSecondary}>取消</button>
+              <button onClick={handleReroll} disabled={rerolling} className={btnPrimary}>{rerolling ? "采集中..." : "确认重新采集"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -324,8 +345,21 @@ function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
   const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
   const [imgSize, setImgSize] = useState("");
   const [addGroup, setAddGroup] = useState<number | null>(null);
+  const [confirmRegen, setConfirmRegen] = useState(false);
+  const [regenning, setRegenning] = useState(false);
   const { showToast } = useToast();
   useEffect(() => { if (settings && !imgSize) setImgSize(settings.video.resolution); }, [settings, imgSize]);
+
+  const handleRegenScript = async () => {
+    setRegenning(true);
+    try {
+      await api.runs.regenScript(runId);
+      showToast("脚本已重新生成", "success");
+      setConfirmRegen(false);
+      mutateScript();
+    } catch (e) { showToast(e instanceof Error ? e.message : "重新生成失败", "error"); }
+    finally { setRegenning(false); }
+  };
 
   if (!script) return <p className="text-white/30 text-sm">暂无脚本</p>;
 
@@ -346,17 +380,22 @@ function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
 
   return (
     <div>
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex justify-between items-start mb-4 gap-4">
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-medium truncate">{script.title}</h3>
           <p className="text-xs text-white/30 mt-0.5">{script.description}</p>
         </div>
-        {!audioOnly && (
-          <div className="flex items-center gap-2 shrink-0 ml-4">
-            <label className="text-[11px] text-white/30 whitespace-nowrap">图片尺寸</label>
-            <PresetInput value={imgSize} onChange={setImgSize} presets={RES_PRESETS} className="w-40" />
-          </div>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {!audioOnly && (
+            <>
+              <label className="text-[11px] text-white/30 whitespace-nowrap">图片尺寸</label>
+              <PresetInput value={imgSize} onChange={setImgSize} presets={RES_PRESETS} className="w-40" />
+            </>
+          )}
+          <button onClick={() => setConfirmRegen(true)} disabled={regenning} className={btnRegen}>
+            {regenning ? "生成中..." : "重新生成脚本"}
+          </button>
+        </div>
       </div>
 
       {order.map((gid) => {
@@ -365,7 +404,7 @@ function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
           <div key={gid} className="mb-5">
             <div className="flex items-center justify-between mb-2">
               <h4 className={sectionTitleCls}>{groupTitle(gid)}</h4>
-              <button onClick={() => setAddGroup(gid)} className={btnCompact}>+ 新增分镜</button>
+              <button onClick={() => setAddGroup(gid)} className={btnAdd}>+ 新增分镜</button>
             </div>
             <div className="space-y-3">
               {groupScenes.map((scene) => {
@@ -383,6 +422,19 @@ function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
 
       {addGroup !== null && (
         <AddSceneDialog runId={runId} groupId={addGroup} onDone={() => { setAddGroup(null); mutateScript(); }} onClose={() => setAddGroup(null)} />
+      )}
+
+      {confirmRegen && (
+        <div className={dialogOverlayCls} onClick={() => { if (!regenning) setConfirmRegen(false); }}>
+          <div className={`${dialogPanelCls} w-[420px]`} onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-2">重新生成脚本</h2>
+            <p className="text-sm text-white/50 mb-5 leading-relaxed">将根据当前文章列表重新生成整个脚本，<span className="text-amber-300/80">会覆盖所有分镜及手工编辑</span>，不可恢复。</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmRegen(false)} disabled={regenning} className={btnSecondary}>取消</button>
+              <button onClick={handleRegenScript} disabled={regenning} className={btnPrimary}>{regenning ? "生成中..." : "确认重新生成"}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -406,6 +458,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
   const [regenPromptLoading, setRegenPromptLoading] = useState(false);
   const [audioTs, setAudioTs] = useState(0);
   const [imgTs, setImgTs] = useState(0);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const handleRegenAudio = async () => {
     setRegenAudioLoading(true);
@@ -446,7 +499,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
             <span className="text-xs text-white/30 font-mono">场景 {sid}</span>
             {durationS && <span className="text-xs text-white/25 font-mono">{durationS}s</span>}
             {onDelete && (
-              <button onClick={onDelete} disabled={!canDelete} className={btnCompact} title={canDelete ? "删除分镜" : "每组至少保留 1 个"}>删除</button>
+              <button onClick={() => setConfirmDel(true)} className={btnDeleteCompact} title="删除分镜">删除</button>
             )}
           </div>
 
@@ -454,7 +507,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
             <div className="text-[11px] text-white/30 mb-1">旁白</div>
             <textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={3} className={`${inputCls} text-[13px]`} />
             <div className="flex gap-2 mt-1.5">
-              <button onClick={handleRegenAudio} disabled={regenAudioLoading} className={btnActionAudio}>
+              <button onClick={handleRegenAudio} disabled={regenAudioLoading} className={btnRegenAudio}>
                 {regenAudioLoading ? "生成中..." : "重新配音"}
               </button>
             </div>
@@ -465,10 +518,10 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
               <div className="text-[11px] text-white/30 mb-1">图片提示词</div>
               <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} className={`${inputCls} text-[13px] text-white/50`} />
               <div className="flex gap-2 mt-1.5">
-                <button onClick={handleRegenPrompt} disabled={regenPromptLoading} className={btnActionPrompt}>
+                <button onClick={handleRegenPrompt} disabled={regenPromptLoading} className={btnRegenPrompt}>
                   {regenPromptLoading ? "生成中..." : "重生成提示词"}
                 </button>
-                <button onClick={handleRegenImage} disabled={regenImgLoading} className={btnActionImage}>
+                <button onClick={handleRegenImage} disabled={regenImgLoading} className={btnRegenImage}>
                   {regenImgLoading ? "生成中..." : "重新生成图片"}
                 </button>
               </div>
@@ -476,6 +529,25 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
           )}
         </div>
       </div>
+
+      {confirmDel && (
+        <div className={dialogOverlayCls} onClick={() => setConfirmDel(false)}>
+          <div className={`${dialogPanelCls} w-[400px]`} onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-2">删除分镜 {sid}</h2>
+            <p className="text-sm text-white/50 mb-5 leading-relaxed">
+              {canDelete
+                ? "确认删除此分镜？不可恢复。"
+                : <>这是该文章分组的最后一个分镜，<span className="text-amber-300/80">删除后将连带移除该组对应的文章</span>，不可恢复。</>}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmDel(false)} className={btnSecondary}>取消</button>
+              <button onClick={() => { onDelete?.(); setConfirmDel(false); }} className={btnDelete}>
+                {canDelete ? "删除" : "删除分镜及文章"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1006,7 +1078,7 @@ function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () =>
           {r.progress_detail && <span className="text-xs text-white/30">{r.progress_detail}</span>}
         </div>
         {r.status === "review" && (
-          <button onClick={handleResume} className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium transition active:scale-[0.98]">
+          <button onClick={handleResume} className={btnApprove}>
             审核通过并继续
           </button>
         )}
@@ -1030,6 +1102,9 @@ export function DashboardPage() {
   const { data: runs, mutate } = useSWR<PipelineRun[]>("runs", api.runs.list, { refreshInterval: 5000 });
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PipelineRun | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (runs && runs.length > 0 && expandedId === null) {
@@ -1038,6 +1113,22 @@ export function DashboardPage() {
       else setExpandedId(runs[0].id);
     }
   }, [runs, expandedId]);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      await api.runs.remove(pendingDelete.id);
+      showToast("任务已删除", "success");
+      if (expandedId === pendingDelete.id) setExpandedId(null);
+      mutate();
+      setPendingDelete(null);
+    } catch {
+      showToast("删除失败", "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div>
@@ -1051,19 +1142,28 @@ export function DashboardPage() {
           const d = new Date(run.created_at);
           const ts = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
           return (
-            <button
+            <div
               key={run.id}
               onClick={() => setExpandedId(run.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition border ${
+              className={`flex items-center gap-1.5 pl-1.5 pr-3 py-1.5 rounded-lg text-sm transition border cursor-pointer ${
                 expandedId === run.id
                   ? "bg-white/[0.08] border-white/[0.12] text-white"
                   : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:text-white/60 hover:bg-white/[0.04]"
               }`}
             >
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setPendingDelete(run); }}
+                disabled={run.status === "processing"}
+                title={run.status === "processing" ? "任务正在运行，无法删除" : "删除此任务"}
+                className={btnDeleteIcon}
+              >
+                ×
+              </button>
               <span className="font-mono text-xs">#{run.id}</span>
-              <span className="text-xs text-white/25 mx-1.5">{ts}</span>
+              <span className="text-xs text-white/25">{ts}</span>
               <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px]`}>{STATUS_LABEL[run.status] ?? run.status}</span>
-            </button>
+            </div>
           );
         })}
         {(!runs || runs.length === 0) && (
@@ -1080,6 +1180,21 @@ export function DashboardPage() {
           onCreated={() => { setShowCreate(false); mutate(); }}
           onClose={() => setShowCreate(false)}
         />
+      )}
+
+      {pendingDelete && (
+        <div className={dialogOverlayCls} onClick={() => { if (!deleting) setPendingDelete(null); }}>
+          <div className={`${dialogPanelCls} w-[360px]`} onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-2">删除任务 #{pendingDelete.id}</h2>
+            <p className="text-sm text-white/50 mb-5 leading-relaxed">将一并删除该任务的所有文件，此操作不可恢复。</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setPendingDelete(null)} disabled={deleting} className={btnSecondary}>取消</button>
+              <button onClick={confirmDelete} disabled={deleting} className={btnDelete}>
+                {deleting ? "删除中..." : "删除"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

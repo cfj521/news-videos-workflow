@@ -5,7 +5,7 @@ import httpx
 import openai
 
 from app.logging import get_logger
-from app.providers.base import AssetResult, ImageProvider
+from app.providers.base import AssetResult, ImageProvider, ProviderError
 
 log = get_logger("provider.image.openai")
 
@@ -23,6 +23,7 @@ class OpenAIImageProvider(ImageProvider):
             kwargs["base_url"] = base_url
         self._client = openai.AsyncOpenAI(**kwargs)
         self._model = model
+        self._base_url = base_url or "https://api.openai.com/v1"
         log.info("Initialized OpenAIImageProvider model=%s", model)
 
     async def generate(self, prompt: str, size: str = "1080x1920", output_path: str = "") -> AssetResult:
@@ -35,9 +36,9 @@ class OpenAIImageProvider(ImageProvider):
             response = await self._client.images.generate(
                 model=self._model, prompt=prompt, size=api_size, quality="high", n=1,
             )
-        except Exception:
+        except Exception as e:
             log.exception("images.generate() API call failed after %.1fs", time.time() - t0)
-            raise
+            raise ProviderError(service="图片生成", provider="openai", model=self._model, base_url=self._base_url, cause=e) from e
 
         item = response.data[0]
 

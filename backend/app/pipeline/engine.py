@@ -22,6 +22,8 @@ class PipelineEngine:
         selected_stages: list[int] | None = None,
         publish_platforms: list[str] | None = None,
         auto_collect: bool = True,
+        resolution: str = "",
+        aspect_ratio: str = "",
     ) -> PipelineRun:
         stages = selected_stages or [1, 2, 3, 4, 5]
         platforms = publish_platforms or []
@@ -31,6 +33,8 @@ class PipelineEngine:
             selected_stages=json.dumps(stages),
             publish_platforms=json.dumps(platforms),
             auto_collect=auto_collect,
+            resolution=resolution or None,
+            aspect_ratio=aspect_ratio or None,
         )
         self.db.add(run)
         self.db.commit()

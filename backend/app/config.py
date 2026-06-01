@@ -95,8 +95,17 @@ class InfraCfg(BaseModel):
     data_dir: str = "../data"
 
 
+class StorageCfg(BaseModel):
+    # 工作目录：每个任务的半成品与成品（articles/script/assets/output）的根目录，每个任务一个子目录。
+    # 留空 = 使用 data_dir/runs（向后兼容）。
+    work_dir: str = ""
+    # 成品输出目录：渲染完成后把最终 mp4/mp3 额外复制一份到此处归档。留空 = 不额外导出。
+    output_dir: str = ""
+
+
 class Settings(BaseModel):
     infra: InfraCfg = InfraCfg()
+    storage: StorageCfg = StorageCfg()
     text: ProviderCfg = ProviderCfg(provider="claude", base_url="https://api.anthropic.com", model="claude-sonnet-4-6")
     image: ProviderCfg = ProviderCfg(provider="openai", base_url="https://api.openai.com/v1", model="gpt-image-1")
     vision: ProviderCfg = ProviderCfg(provider="openai", base_url="https://api.openai.com/v1", model="gpt-4o")
@@ -108,10 +117,16 @@ class Settings(BaseModel):
     video: VideoCfg = VideoCfg()
     ltx: LTXCfg = LTXCfg()
 
+    def runs_root(self) -> Path:
+        """任务工作目录的根：配置了 storage.work_dir 用它，否则回退 data_dir/runs。"""
+        return Path(self.storage.work_dir) if self.storage.work_dir else Path(self.infra.data_dir) / "runs"
+
     def ensure_data_dirs(self) -> None:
         base = Path(self.infra.data_dir)
-        (base / "runs").mkdir(parents=True, exist_ok=True)
+        self.runs_root().mkdir(parents=True, exist_ok=True)
         (base / "history").mkdir(parents=True, exist_ok=True)
+        if self.storage.output_dir:
+            Path(self.storage.output_dir).mkdir(parents=True, exist_ok=True)
 
     # --- 兼容旧属性 ---
     @property

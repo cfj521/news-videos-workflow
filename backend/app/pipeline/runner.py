@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.logging import get_logger, get_run_logger
 from app.models.pipeline_run import PipelineRun
-from app.providers.base import ImageProvider
+from app.providers.base import ImageProvider, ProviderError
 from app.providers.collector.hackernews import HackerNewsCollector
 from app.providers.composer.hyperframes_composer import HyperframesComposer
 from app.providers.image.openai_image import OpenAIImageProvider
@@ -235,6 +235,80 @@ def _update(db: Session, run: PipelineRun, **kwargs) -> None:
     db.refresh(run)
 
 
+def export_final(run_id: int, final_path: str | None, title: str = "") -> str | None:
+    """渲染完成后把成品（mp4/mp3）额外复制一份到 storage.output_dir 归档。
+
+    未配置 output_dir 或源文件不存在则跳过。文件名为 run_{id}_{标题}.{ext}（标题做了文件名安全清洗）。
+    """
+    import re
+    import shutil
+
+    cfg = get_settings()
+    out_dir = cfg.storage.output_dir
+    if not out_dir or not final_path or not Path(final_path).exists():
+        return None
+    if not title:
+        try:
+            sj = cfg.runs_root() / str(run_id) / "script.json"
+            if sj.exists():
+                title = json.loads(sj.read_text(encoding="utf-8")).get("title", "")
+        except Exception:
+            pass
+    ext = Path(final_path).suffix
+    safe = re.sub(r'[\\/:*?"<>|]+', "_", title).strip()[:50] if title else ""
+    name = f"run_{run_id}_{safe}{ext}" if safe else f"run_{run_id}{ext}"
+    try:
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        dest = Path(out_dir) / name
+        shutil.copy2(final_path, dest)
+        get_logger("runner").info("Exported final → %s", dest)
+        return str(dest)
+    except Exception:
+        get_logger("runner").exception("Export final failed for run #%d", run_id)
+        return None
+
+
+_STAGE_LABELS = {1: "采集", 2: "脚本生成", 3: "素材生成", 4: "预览", 5: "合成渲染", 6: "发布"}
+
+
+def _reason_text(exc: Exception) -> str:
+    """根据异常类型/消息推断「具体原因」（不含源头）。"""
+    name = type(exc).__name__.lower()
+    raw = str(exc).strip()
+    low = raw.lower()
+
+    if "timeout" in name or "timed out" in low:
+        return "调用超时——可能是网络不通、代理未开启或服务地址不可达。"
+    if "connect" in name or "connection" in low or "getaddrinfo" in low or "name or service not known" in low:
+        return "无法建立连接——请检查网络、代理与服务地址。"
+    if "authentication" in name or "unauthorized" in low or "401" in low or "invalid api key" in low:
+        return "认证失败——请检查 API Key 是否正确或已过期。"
+    if "ratelimit" in name or "429" in low or "rate limit" in low:
+        return "触发限流（429）——请稍后重试或降低请求频率。"
+    if "permissiondenied" in name or "403" in low:
+        return "拒绝访问（403）——请检查账户权限或所选模型是否可用。"
+    if "notfound" in name or "404" in low:
+        return "返回 404——请检查名称或地址（base_url）是否正确。"
+    return raw or type(exc).__name__
+
+
+def _humanize_error(exc: Exception, stage: int | None = None) -> str:
+    """把底层异常转成「源头 + 具体原因」的中文失败信息（完整堆栈见 pipeline.log）。"""
+    label = _STAGE_LABELS.get(stage or 0, "")
+    prefix = f"[{label}] " if label else ""
+
+    if isinstance(exc, ProviderError):
+        meta = [f"provider={exc.provider}"]
+        if exc.model:
+            meta.append(f"model={exc.model}")
+        if exc.base_url:
+            meta.append(f"地址={exc.base_url}")
+        source = f"{exc.service}失败（{' '.join(meta)}）"
+        return f"{prefix}{source}：{_reason_text(exc.cause or exc)}"
+
+    return f"{prefix}{_reason_text(exc)}"
+
+
 async def execute_pipeline(run_id: int, db_factory) -> None:
     db: Session = db_factory()
     try:
@@ -242,9 +316,9 @@ async def execute_pipeline(run_id: int, db_factory) -> None:
     except Exception as e:
         run = db.get(PipelineRun, run_id)
         if run:
-            _update(db, run, status="failed", error_message=str(e)[:1000], finished_at=datetime.now(timezone.utc))
+            _update(db, run, status="failed", error_message=_humanize_error(e, run.current_stage)[:1000], finished_at=datetime.now(timezone.utc))
             try:
-                rlog = get_run_logger(run_id, Path(get_settings().infra.data_dir) / "runs" / str(run_id))
+                rlog = get_run_logger(run_id, get_settings().runs_root() / str(run_id))
                 rlog.exception("Pipeline failed with unhandled exception")
             except Exception:
                 get_logger("runner").exception("Pipeline run #%d failed (could not write run log)", run_id)
@@ -260,8 +334,10 @@ async def _run_inner(run_id: int, db: Session) -> None:
     cfg = get_settings()
     cfg.ensure_data_dirs()
     selected = json.loads(run.selected_stages)
+    # 任务级分辨率（图片与视频共用），留空回退全局 video 设置
+    resolution = run.resolution or cfg.video.resolution
 
-    run_dir = Path(cfg.infra.data_dir) / "runs" / str(run.id)
+    run_dir = cfg.runs_root() / str(run.id)
     assets_dir = run_dir / "assets"
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -411,7 +487,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
             image_provider=TrackedImageProvider(image_provider),
             tts_provider=TrackedTTSProvider(tts_provider),
             assets_dir=str(assets_dir),
-            resolution=cfg.video.resolution,
+            resolution=resolution,
             audio_only=audio_only,
         )
 
@@ -449,7 +525,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
             _update(db, run, progress_detail="S4 生成 Hyperframes 预览...")
             composer = HyperframesComposer()
             try:
-                hyperframes_html = composer._render_html(timeline, cfg.video.resolution, run_dir, transition=cfg.video.transition)
+                hyperframes_html = composer._render_html(timeline, resolution, run_dir, transition=cfg.video.transition)
                 (run_dir / "index.html").write_text(hyperframes_html, encoding="utf-8")
                 log.info("[S4] Hyperframes HTML generated at %s/index.html", run_dir)
             except Exception as e:
@@ -486,6 +562,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
                 _update(db, run, progress_detail=f"S5 合成完成 — {size_mb:.1f} MB ({time.time()-t0:.1f}s)", output_path=final_path)
                 log.info("[S5] Audio merged — %.1f MB", size_mb)
+                export_final(run.id, final_path, script.get("title", ""))
             else:
                 _update(db, run, status="failed", error_message="音频文件未生成", finished_at=datetime.now(timezone.utc))
                 return
@@ -517,26 +594,26 @@ async def _run_inner(run_id: int, db: Session) -> None:
                     ltx_composer = LTXComposer(video_provider=ltx_video)
                     result = await ltx_composer.compose(
                         timeline_json=timeline, assets_dir=str(assets_dir),
-                        output_path=output_mp4, resolution=cfg.video.resolution,
+                        output_path=output_mp4, resolution=resolution,
                     )
                     final_path = result.file_path
                     log.info("[S5] LTX render ok — %s", final_path)
                 except Exception as e:
                     log.warning("[S5] LTX failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 LTX 失败，FFmpeg 合成中...")
-                    final_path = _ffmpeg_compose(timeline, run_dir, cfg.video.resolution, cfg.video.fps)
+                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.video.fps)
             else:
                 _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
                 log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
                 composer = HyperframesComposer()
                 try:
-                    result = await run_stage5(timeline=timeline, composer=composer, assets_dir=str(assets_dir), output_path=output_mp4, resolution=cfg.video.resolution)
+                    result = await run_stage5(timeline=timeline, composer=composer, assets_dir=str(assets_dir), output_path=output_mp4, resolution=resolution)
                     final_path = result.file_path
                     log.info("[S5] Hyperframes render ok — %s", final_path)
                 except Exception as e:
                     log.warning("[S5] Hyperframes failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 Hyperframes 失败，FFmpeg 合成中...")
-                    final_path = _ffmpeg_compose(timeline, run_dir, cfg.video.resolution, cfg.video.fps)
+                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.video.fps)
 
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
@@ -544,6 +621,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 detail = f"S5 渲染完成 — {size_mb:.1f} MB ({elapsed:.1f}s)"
                 _update(db, run, progress_detail=detail, output_path=final_path)
                 log.info("[S5] Done — %.1f MB in %.1fs", size_mb, elapsed)
+                export_final(run.id, final_path, script.get("title", ""))
             else:
                 log.error("[S5] Output file not found: %s", final_path)
                 _update(db, run, status="failed", error_message=f"Video output not found: {final_path}", finished_at=datetime.now(timezone.utc))
@@ -622,9 +700,18 @@ def _generate_storyboard_html(script: dict, scene_assets: list[dict], timeline: 
 </body></html>"""
 
 
-def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) -> str:
+def _run_ffmpeg(cmd, service: str, shell: bool = False) -> None:
+    """跑 ffmpeg；失败时抛带 stderr 尾部的 ProviderError，便于定位真实原因。"""
     import subprocess
 
+    proc = subprocess.run(cmd, capture_output=True, timeout=300, shell=shell)
+    if proc.returncode != 0:
+        tail = (proc.stderr or b"").decode("utf-8", "ignore").strip().splitlines()
+        msg = "；".join(tail[-4:]) if tail else f"ffmpeg 退出码 {proc.returncode}"
+        raise ProviderError(service=service, provider="ffmpeg", cause=RuntimeError(msg))
+
+
+def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) -> str:
     output_path = str((run_dir / "output.mp4").resolve())
     entries = timeline["entries"]
     w, h = resolution.split("x")
@@ -651,14 +738,13 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) ->
     n = len(concat_inputs)
     fc = ";".join(filter_parts) + f";{''.join(concat_inputs)}concat=n={n}:v=1:a=1[outv][outa]"
     cmd = ["ffmpeg", "-y", *inputs, "-filter_complex", fc, "-map", "[outv]", "-map", "[outa]", "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-shortest", output_path]
-    subprocess.run(cmd, capture_output=True, timeout=300, shell=True)
+    _run_ffmpeg(cmd, service="视频合成", shell=True)
     return output_path
 
 
 def _ffmpeg_merge_audio(script: dict, assets_dir, run_dir) -> str:
     """按 script 分镜顺序合并逐条音频为单个 MP3。"""
     import os
-    import subprocess
 
     assets_dir = Path(assets_dir)
     run_dir = Path(run_dir)
@@ -677,10 +763,10 @@ def _ffmpeg_merge_audio(script: dict, assets_dir, run_dir) -> str:
     list_file = run_dir / "audio_concat.txt"
     list_file.write_text("".join(f"file '{rel}'\n" for rel in list_lines), encoding="utf-8")
 
-    subprocess.run(
+    _run_ffmpeg(
         ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
          "-c:a", "libmp3lame", "-q:a", "2", output_path],
-        check=True, capture_output=True, timeout=300,
+        service="音频合成",
     )
     get_logger("runner").info("Merged %d audio clips → %s", len(list_lines), output_path)
     return output_path

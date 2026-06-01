@@ -22,7 +22,7 @@ def setup_global_logger(level: str = "INFO") -> logging.Logger:
 
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(getattr(logging, level.upper(), logging.INFO))
-    console.setFormatter(logging.Formatter(FMT, datefmt="%H:%M:%S"))
+    console.setFormatter(logging.Formatter(FMT, datefmt=DATEFMT))
     root.addHandler(console)
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)

@@ -10,46 +10,66 @@ export const monoInputCls = `${inputCls} font-mono text-[13px]`;
 
 export const labelCls = "block text-xs font-medium text-white/40 mb-1.5";
 
-// --- Buttons ---
-// Primary: filled blue, main action (保存/创建/确认)
-export const btnPrimary =
+// --- Buttons：按动作语义命名（add / edit / delete / regen / confirm / cancel / approve）---
+// 尺寸约定：confirm/cancel/approve/delete 为对话框默认尺寸；add/edit/regen 为行内小尺寸。
+
+// confirm：主确认动作，实心蓝（创建/保存/确认/生成/下载）
+export const btnConfirm =
   "px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition shadow-lg shadow-blue-600/20 active:scale-[0.98] disabled:opacity-40 disabled:cursor-default";
 
-// Secondary: outline, secondary action (取消/显示/隐藏/重新渲染)
-export const btnSecondary =
+// cancel：取消/次要动作，描边
+export const btnCancel =
   "px-4 py-2 rounded-lg text-sm font-medium text-white/50 border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] hover:text-white/70 transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-default";
 
-// Compact: smaller variant for toolbars/inline controls
-export const btnCompact =
+// approve：审核通过并继续，实心琥珀（正向、强调，区别于普通确认）
+export const btnApprove =
+  "px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium transition active:scale-[0.98] disabled:opacity-40 disabled:cursor-default";
+
+// add / edit：新增、编辑等中性行内动作，描边小号
+const neutralCompact =
   "px-3 py-1.5 rounded-lg text-xs font-medium text-white/40 border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] hover:text-white/60 transition select-none disabled:opacity-40 disabled:cursor-default";
+export const btnAdd = neutralCompact;
+export const btnEdit = neutralCompact;
 
-// Danger: destructive action (删除/禁用)
-export const btnDanger =
-  "px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 border border-red-500/20 text-red-400/70 hover:bg-red-500/20 hover:text-red-300 transition active:scale-[0.98]";
+// delete：删除动作，软红三尺寸
+const dangerBase =
+  "rounded-lg font-medium bg-red-500/15 border border-red-500/20 text-red-300 hover:bg-red-500/25 transition disabled:opacity-40 disabled:cursor-not-allowed";
+export const btnDelete = `px-4 py-2 text-sm active:scale-[0.98] ${dangerBase}`;   // 对话框确认删除主按钮
+export const btnDeleteCompact = `px-3 py-1.5 text-xs ${dangerBase}`;              // 行内删除（如分镜删除）
+export const btnDeleteIcon =
+  "w-5 h-5 flex items-center justify-center text-sm leading-none rounded text-red-400/60 hover:text-red-300 hover:bg-red-500/15 transition disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-red-400/60 disabled:hover:bg-transparent"; // × 图标删除
 
-// Icon: square icon-only button (全屏/播放控制)
+// regen：重新生成动作。通用为青色，场景级保留彩色区分（配音/图片/提示词）
+const regenBase =
+  "px-3 py-1.5 rounded-lg text-xs font-medium transition border disabled:opacity-40 disabled:cursor-not-allowed";
+export const btnRegen = `${regenBase} bg-cyan-500/10 border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20`;
+export const btnRegenAudio = `${regenBase} bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20`;
+export const btnRegenImage = `${regenBase} bg-emerald-500/10 border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20`;
+export const btnRegenPrompt = `${regenBase} bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20`;
+
+// icon：纯图标控件（播放/全屏等）
 export const btnIcon =
   "p-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-white/40 hover:text-white/60 transition";
 
-// Legacy aliases (avoid breaking existing refs, but prefer new names)
-export const btnGhost = btnSecondary;
-export const btnSmall = btnCompact;
+// segItem：分段选择项（平台/采集方式等互斥切换）
+export const segItem = (active: boolean) =>
+  `px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+    active
+      ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
+      : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white/60"
+  }`;
 
-// --- Action buttons (colored by function, for scene editing) ---
-const actionBase =
-  "px-3 py-1.5 rounded-lg text-xs font-medium transition border disabled:opacity-40 disabled:cursor-not-allowed";
-
-export const btnActionAudio =
-  `${actionBase} bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20`;
-
-export const btnActionImage =
-  `${actionBase} bg-emerald-500/10 border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20`;
-
-export const btnActionPrompt =
-  `${actionBase} bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20`;
-
-export const btnActionReroll =
-  `${actionBase} bg-cyan-500/10 border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20`;
+// --- Legacy aliases：保留旧引用，逐步迁移到上面的动作语义名 ---
+export const btnPrimary = btnConfirm;
+export const btnSecondary = btnCancel;
+export const btnCompact = neutralCompact;
+export const btnDanger = btnDelete;
+export const btnGhost = btnCancel;
+export const btnSmall = neutralCompact;
+export const btnActionAudio = btnRegenAudio;
+export const btnActionImage = btnRegenImage;
+export const btnActionPrompt = btnRegenPrompt;
+export const btnActionReroll = btnRegen;
 
 // --- Toggle switch ---
 export const toggleCls = (on: boolean) =>

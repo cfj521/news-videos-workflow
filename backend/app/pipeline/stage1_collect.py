@@ -1,5 +1,5 @@
 from app.logging import get_logger
-from app.providers.base import CollectorProvider, RawArticleData
+from app.providers.base import CollectorProvider, ProviderError, RawArticleData
 from app.services.compliance import ComplianceService
 from app.services.dedup import DedupService
 from app.services.scoring import ScoringService
@@ -30,6 +30,7 @@ async def run_stage1(
     history_fingerprints: list[str] | None = None,
 ) -> list[RawArticleData]:
     all_articles: list[RawArticleData] = []
+    errors: list[tuple[str, Exception]] = []
     for source in sources:
         source_type = source.get("type", "rss")
         source_name = source.get("name", source_type)
@@ -41,8 +42,18 @@ async def run_stage1(
             articles = await collector.collect(source_config=source, time_range=time_range)
             log.info("Source '%s' (%s) → %d articles", source_name, source_type, len(articles))
             all_articles.extend(articles)
-        except Exception:
+        except Exception as e:
             log.exception("Collector failed for source '%s' (%s)", source_name, source_type)
+            errors.append((source_name, e))
+
+    # 所有源都失败、一篇都没采到 → 抛出带源头的错误（而非静默返回空，让用户看到每个源为何失败）
+    if not all_articles and errors:
+        if len(errors) == 1:
+            name, exc = errors[0]
+            raise ProviderError(service="采集", provider=name, cause=exc)
+        names = "、".join(n for n, _ in errors)
+        detail = "；".join(f"{n}: {type(e).__name__}" for n, e in errors)
+        raise ProviderError(service="采集", provider=names, cause=RuntimeError(detail))
 
     log.info("Total raw articles: %d", len(all_articles))
 

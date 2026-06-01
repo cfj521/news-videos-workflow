@@ -3,7 +3,7 @@ import time
 import anthropic
 
 from app.logging import get_logger
-from app.providers.base import TextProvider
+from app.providers.base import ProviderError, TextProvider
 
 log = get_logger("provider.text.claude")
 
@@ -15,6 +15,7 @@ class ClaudeTextProvider(TextProvider):
             kwargs["base_url"] = base_url
         self._client = anthropic.AsyncAnthropic(**kwargs)
         self._model = model
+        self._base_url = base_url or "https://api.anthropic.com"
         log.info("Initialized ClaudeTextProvider model=%s base_url=%s", model, base_url or "(default)")
 
     async def generate(self, prompt: str, system_prompt: str = "") -> str:
@@ -34,6 +35,6 @@ class ClaudeTextProvider(TextProvider):
             text = message.content[0].text
             log.info("generate() done — %d chars in %.1fs, usage=%s", len(text), time.time() - t0, getattr(message, "usage", None))
             return text
-        except Exception:
+        except Exception as e:
             log.exception("generate() failed after %.1fs", time.time() - t0)
-            raise
+            raise ProviderError(service="文本生成", provider="claude", model=self._model, base_url=self._base_url, cause=e) from e

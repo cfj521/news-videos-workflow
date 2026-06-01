@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import { inputCls, labelCls, btnPrimary, btnSecondary, btnDanger, dialogOverlayCls, dialogPanelCls, errorTextCls } from "../styles";
+import { inputCls, labelCls, btnPrimary, btnSecondary, btnDanger, btnDeleteCompact, dialogOverlayCls, dialogPanelCls, errorTextCls } from "../styles";
 import { Select } from "./Select";
 import type { NewsSource } from "../types";
 
@@ -146,11 +146,7 @@ export function EditSourceDialog({ source, onUpdated, onClose }: Props) {
               confirmDisable ? (
                 <div className="flex items-center gap-2">
                   <span className={`text-xs ${errorTextCls}`}>确认禁用此信息源？</span>
-                  <button
-                    onClick={handleDisable}
-                    disabled={disabling}
-                    className="px-3 py-1 text-xs rounded-lg bg-red-500/15 text-red-300 hover:bg-red-500/25 transition disabled:opacity-50"
-                  >
+                  <button onClick={handleDisable} disabled={disabling} className={btnDeleteCompact}>
                     {disabling ? "..." : "确认"}
                   </button>
                   <button onClick={() => setConfirmDisable(false)} className="px-2 py-1 text-xs text-white/30 hover:text-white/50 transition">

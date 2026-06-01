@@ -3,6 +3,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 
+class ProviderError(Exception):
+    """带服务源头上下文的 AI provider 调用异常，便于失败时定位是哪个服务/模型/地址出错。"""
+
+    def __init__(self, service: str, provider: str, model: str = "", base_url: str = "", cause: Exception | None = None):
+        self.service = service      # 文本生成 / 图片生成 / 语音合成 ...
+        self.provider = provider    # openai / claude / edge-tts ...
+        self.model = model
+        self.base_url = base_url
+        self.cause = cause
+        super().__init__(str(cause) if cause is not None else service)
+
+
 @dataclass
 class RawArticleData:
     title: str

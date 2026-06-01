@@ -32,6 +32,14 @@ export interface NewsSource {
   created_at: string;
 }
 
+/** 判断信息源是否为 AI HOT 聚合源（与后端 _resolve_collector_type 的判断一致）。 */
+export function isAihotSource(s: NewsSource): boolean {
+  if (s.config_json) {
+    try { if ((JSON.parse(s.config_json) as { provider?: string }).provider === "aihot") return true; } catch { /* ignore */ }
+  }
+  return s.url.includes("aihot.virxact.com");
+}
+
 export type StageNumber = 1 | 2 | 3 | 4 | 5 | 6;
 
 export const STAGE_LABELS: Record<number, string> = {

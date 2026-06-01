@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { api } from "../api/client";
-import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, selectCls } from "../styles";
+import useSWR from "swr";
+import { api, type AppSettings } from "../api/client";
+import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, selectCls, segItem } from "../styles";
 import { Select } from "./Select";
-import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA } from "../types";
+import { SourceSummary } from "./SourceSummary";
+import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isAihotSource } from "../types";
 
 interface Props {
   onCreated: () => void;
@@ -22,6 +24,14 @@ function toBackendStages(visual: Set<number>): number[] {
 
 const ALL_PLATFORMS = Object.keys(PLATFORM_MEDIA).map((k) => ({ value: k, label: PLATFORM_LABELS[k] ?? k }));
 
+// 分辨率预设（图片与视频共用）；选中时同时确定画面比例
+const RES_PRESETS_DLG = [
+  { value: "1080x1920", ar: "9:16", label: "1080×1920 · 9:16 竖屏" },
+  { value: "1920x1080", ar: "16:9", label: "1920×1080 · 16:9 横屏" },
+  { value: "1024x1024", ar: "1:1", label: "1024×1024 · 1:1 方形" },
+  { value: "720x1280", ar: "9:16", label: "720×1280 · 9:16 竖屏" },
+];
+
 export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [mode, setMode] = useState("auto");
   const [timeRange, setTimeRange] = useState("7d");
@@ -31,6 +41,34 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5]));
   const [platforms, setPlatforms] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [resolution, setResolution] = useState("");
+  const [aspectRatio, setAspectRatio] = useState("");
+
+  const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
+  // 任务级分辨率/比例：未选则回退全局 video 设置
+  const effRes = resolution || settings?.video.resolution || "1080x1920";
+  const effAr = aspectRatio || settings?.video.aspect_ratio || "9:16";
+  const resOptions = (RES_PRESETS_DLG.some((o) => o.value === effRes)
+    ? RES_PRESETS_DLG
+    : [{ value: effRes, ar: effAr, label: effRes }, ...RES_PRESETS_DLG]
+  ).map((o) => ({ value: o.value, label: o.label }));
+  const onResChange = (v: string) => {
+    setResolution(v);
+    const p = RES_PRESETS_DLG.find((o) => o.value === v);
+    if (p) setAspectRatio(p.ar);
+  };
+
+  const { data: sources } = useSWR("sources", api.sources.list);
+  const enabledSources = (sources ?? []).filter((s) => s.enabled);
+  // 后端互斥：只要有启用的 AI HOT 源，就只走 AI HOT 组
+  const aihotSource = enabledSources.find(isAihotSource);
+  const aihotMethod = (() => {
+    if (!aihotSource) return "";
+    try { return (JSON.parse(aihotSource.config_json ?? "{}") as { method?: string }).method ?? "items"; }
+    catch { return "items"; }
+  })();
+  // 仅日报模式忽略时间范围与文章数；动态(items)模式两者仍生效
+  const isAihotDaily = aihotMethod === "daily";
 
   const audioOnly = videoRoute === "audio";
   const excludedMedia = audioOnly ? "video" : "audio";
@@ -84,6 +122,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         max_articles: maxArticles,
         selected_stages: toBackendStages(effectiveVisual),
         publish_platforms: Array.from(effectivePlatforms),
+        resolution: effRes,
+        aspect_ratio: effAr,
         auto_collect: autoCollect,
       });
       onCreated();
@@ -93,7 +133,9 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   return (
     <div className={dialogOverlayCls}>
       <div className={`${dialogPanelCls} w-[500px]`}>
-        <h2 className="text-lg font-semibold mb-5">新建任务</h2>
+        <h2 className="text-lg font-semibold mb-4">新建任务</h2>
+
+        <div className="mb-5"><SourceSummary /></div>
 
         <label className={labelCls}>执行阶段</label>
         <div className="rounded-lg border border-white/[0.06] mb-4 overflow-hidden">
@@ -123,11 +165,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
                   key={p.value}
                   type="button"
                   onClick={() => togglePlatform(p.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
-                    effectivePlatforms.has(p.value)
-                      ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
-                      : "bg-white/[0.03] border-white/[0.06] text-white/40 hover:text-white/60"
-                  }`}
+                  className={segItem(effectivePlatforms.has(p.value))}
                 >
                   {p.label}
                 </button>
@@ -155,6 +193,11 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         </div>
 
         <div className="mb-4">
+          <label className={labelCls}>分辨率 / 比例（图片与视频共用）</label>
+          <Select value={effRes} onChange={onResChange} options={resOptions} />
+        </div>
+
+        <div className="mb-4">
           <label className={labelCls}>采集方式</label>
           {mode === "auto" ? (
             <div className={`${selectCls} flex items-center justify-between opacity-50 cursor-not-allowed`}>
@@ -168,7 +211,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           )}
         </div>
 
-        {autoCollect && (
+        {autoCollect && !isAihotDaily && (
           <div className="grid grid-cols-2 gap-3 mb-5">
             <div>
               <label className={labelCls}>时间范围</label>

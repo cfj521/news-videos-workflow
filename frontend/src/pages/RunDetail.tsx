@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import useSWR from "swr";
 import { api } from "../api/client";
-import { STATUS_CHIP, cardCls, chipCls, sectionTitleCls, errorTextCls, btnPrimary } from "../styles";
+import { STATUS_CHIP, cardCls, chipCls, sectionTitleCls, errorTextCls, btnPrimary, btnApprove } from "../styles";
 import { StageIndicator } from "../components/StageIndicator";
 import { STAGE_LABELS, VIDEO_ROUTE_LABELS, type PipelineRun, type StageNumber } from "../types";
 
@@ -98,7 +98,7 @@ export function RunDetailPage() {
       {/* Action buttons */}
       <div className="flex gap-3 mb-6">
         {run.status === "review" && (
-          <button onClick={handleResume} className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium transition active:scale-[0.98]">
+          <button onClick={handleResume} className={btnApprove}>
             审核通过并继续
           </button>
         )}

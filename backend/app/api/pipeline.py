@@ -1,5 +1,6 @@
 import asyncio
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from app.config import get_settings
 from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
-from app.pipeline.runner import execute_pipeline, build_collectors, build_collectors_from_db, _build_text_provider, _update, _article_from_dict
+from app.pipeline.runner import execute_pipeline, build_collectors, build_collectors_from_db, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final
 from app.providers.tts.edge_tts_provider import EdgeTTSProvider
 from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
 
@@ -24,8 +25,27 @@ router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
 
 def _run_dir(run_id: int) -> Path:
-    cfg = get_settings()
-    return Path(cfg.infra.data_dir) / "runs" / str(run_id)
+    return get_settings().runs_root() / str(run_id)
+
+
+# 本后端进程的启动时刻。pipeline 跑在进程内的 BackgroundTasks 里，
+# 进程重启后这些后台协程就消失了——凡是仍处于 processing 但发起时间早于本进程启动的任务，
+# 其协程必然已不存在，可确定性地判为「中断失败」（不会误伤本进程内真正在跑的任务）。
+_PROCESS_STARTED_AT = datetime.now(timezone.utc)
+
+
+def _reap_orphan(run: PipelineRun, db: Session) -> PipelineRun:
+    """惰性回收僵尸任务：读取任务时若发现它是上一个进程发起且仍 processing，自动判失败。"""
+    if run.status == "processing" and run.started_at:
+        started = run.started_at if run.started_at.tzinfo else run.started_at.replace(tzinfo=timezone.utc)
+        if started < _PROCESS_STARTED_AT:
+            run.status = "failed"
+            run.error_message = "后端重启导致任务中断，请重新发起"
+            run.finished_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(run)
+            log.warning("Reaped orphan run #%d (started %s < process %s) → failed", run.id, started, _PROCESS_STARTED_AT)
+    return run
 
 
 @router.post("/runs", response_model=PipelineRunRead, status_code=201)
@@ -37,6 +57,7 @@ def create_run(body: PipelineRunCreate, background_tasks: BackgroundTasks, db: S
         max_articles=body.max_articles, selected_stages=body.selected_stages,
         publish_platforms=body.publish_platforms,
         auto_collect=body.auto_collect,
+        resolution=body.resolution, aspect_ratio=body.aspect_ratio,
     )
     session_factory = get_session_factory()
     background_tasks.add_task(_run_pipeline_bg, run.id, session_factory)
@@ -50,7 +71,8 @@ def _run_pipeline_bg(run_id: int, session_factory):
 
 @router.get("/runs", response_model=list[PipelineRunRead])
 def list_runs(limit: int = 20, offset: int = 0, db: Session = Depends(get_db)):
-    return db.query(PipelineRun).order_by(PipelineRun.created_at.desc()).offset(offset).limit(limit).all()
+    runs = db.query(PipelineRun).order_by(PipelineRun.created_at.desc()).offset(offset).limit(limit).all()
+    return [_reap_orphan(r, db) for r in runs]
 
 
 @router.get("/runs/{run_id}", response_model=PipelineRunRead)
@@ -58,7 +80,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    return run
+    return _reap_orphan(run, db)
 
 
 @router.post("/runs/{run_id}/resume")
@@ -70,6 +92,22 @@ def resume_run(run_id: int, db: Session = Depends(get_db)):
     engine = PipelineEngine(db)
     resumed = engine.resume_run(run_id)
     return {"status": "resumed", "run_id": resumed.id}
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: int, db: Session = Depends(get_db)):
+    run = db.get(PipelineRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status == "processing":
+        raise HTTPException(status_code=409, detail="任务正在运行，无法删除")
+    db.delete(run)
+    db.commit()
+    run_dir = _run_dir(run_id)
+    if run_dir.exists():
+        shutil.rmtree(run_dir, ignore_errors=True)
+    log.info("DELETE /runs/%d — removed DB record and %s", run_id, run_dir)
+    return {"status": "deleted", "run_id": run_id}
 
 
 # ─── Asset serving ────────────────────────────────────────
@@ -383,7 +421,7 @@ async def regen_scene_image(run_id: int, scene_id: int, body: RegenImageRequest,
     img_provider = OpenAIImageProvider(api_key=cfg.image.api_key, model=cfg.image.model, base_url=cfg.image.base_url)
     image_path = str(rd / "assets" / f"scene_{scene_id:02d}_image.png")
     log.info("Regenerating image for run #%d scene %d: %s", run_id, scene_id, body.image_prompt[:60])
-    img_size = body.size or cfg.video.resolution
+    img_size = body.size or run.resolution or cfg.video.resolution
     await img_provider.generate(prompt=body.image_prompt, size=img_size, output_path=image_path)
 
     return {"status": "ok", "scene_id": scene_id}
@@ -439,7 +477,7 @@ async def _reroll_articles_async(run_id: int, session_factory):
         log.exception("Reroll articles failed for run #%d", run_id)
         run = db.get(PipelineRun, run_id)
         if run:
-            _update(db, run, progress_detail=f"S1 采集失败: {str(e)[:200]}")
+            _update(db, run, progress_detail=f"采集失败: {_humanize_error(e)[:200]}")
     finally:
         db.close()
 
@@ -524,10 +562,30 @@ def delete_scene(run_id: int, scene_id: int):
     target = next((s for s in script["scenes"] if s["id"] == scene_id), None)
     if not target:
         raise HTTPException(status_code=404, detail="Scene not found")
-    same_group = [s for s in script["scenes"] if s.get("group_id") == target.get("group_id")]
-    if len(same_group) <= 1:
-        raise HTTPException(status_code=400, detail="每组至少保留 1 个分镜")
+
+    gid = target.get("group_id")
+    same_group = [s for s in script["scenes"] if s.get("group_id") == gid]
+    is_last_in_group = len(same_group) <= 1
+
+    # 删除该分镜
     script["scenes"] = [s for s in script["scenes"] if s["id"] != scene_id]
+
+    # 若删的是分组的最后一个分镜 → 连带删除该分组及其对应文章
+    if is_last_in_group and gid is not None:
+        group = next((g for g in script.get("groups", []) if g.get("id") == gid), None)
+        script["groups"] = [g for g in script.get("groups", []) if g.get("id") != gid]
+        si = group.get("source_index", -1) if group else -1
+        if si >= 0:
+            arts = _read_articles(run_id)
+            if 0 <= si < len(arts):
+                del arts[si]
+                _write_articles(run_id, arts)
+                # 删文章后其余分组指向的 source_index 若大于 si 需整体前移，维持对应关系
+                for g in script.get("groups", []):
+                    if g.get("source_index", -1) > si:
+                        g["source_index"] -= 1
+        log.info("Deleted last scene of group %s in run #%d → removed group + article[%s]", gid, run_id, si)
+
     script_path.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
     return script
 
@@ -535,16 +593,18 @@ def delete_scene(run_id: int, scene_id: int):
 # ─── Preview HTML ─────────────────────────────────────────
 
 @router.get("/runs/{run_id}/preview-html")
-def get_preview_html(run_id: int):
+def get_preview_html(run_id: int, db: Session = Depends(get_db)):
     rd = _run_dir(run_id)
     timeline_path = rd / "timeline.json"
     if not timeline_path.exists():
         raise HTTPException(status_code=404, detail="No timeline — run stage 4 first")
     cfg = get_settings()
+    run = db.get(PipelineRun, run_id)
+    resolution = (run.resolution if run else None) or cfg.video.resolution
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
     from app.providers.composer.hyperframes_composer import HyperframesComposer
     composer = HyperframesComposer()
-    html = composer._render_html(timeline, cfg.video.resolution, rd, transition=cfg.video.transition)
+    html = composer._render_html(timeline, resolution, rd, transition=cfg.video.transition)
     return HTMLResponse(html)
 
 
@@ -566,6 +626,7 @@ async def trigger_render(run_id: int, background_tasks: BackgroundTasks, db: Ses
     run.status = "processing"
     run.progress_detail = "S5 合成启动中..." if is_audio else "S5 渲染启动中..."
     run.output_path = None
+    run.started_at = datetime.now(timezone.utc)  # 重新发起 → 刷新发起时间，避免被孤儿回收误判
     db.commit()
     session_factory = get_session_factory()
     background_tasks.add_task(_render_video_bg, run_id, session_factory)
@@ -601,12 +662,14 @@ async def _render_video_async(run_id: int, session_factory):
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
                 _update(db, run, status="done", progress_detail=f"S5 合成完成 — {size_mb:.1f} MB", output_path=final_path, finished_at=datetime.now(timezone.utc))
+                export_final(run_id, final_path)
             else:
                 _update(db, run, status="failed", error_message="音频文件未生成", finished_at=datetime.now(timezone.utc))
             return
 
         timeline = json.loads((rd / "timeline.json").read_text(encoding="utf-8"))
         output_mp4 = str((rd / "output.mp4").resolve())
+        resolution = run.resolution or cfg.video.resolution
 
         if run.video_route == "ltx":
             _update(db, run, progress_detail="S5 LTX 视频生成中...")
@@ -622,13 +685,13 @@ async def _render_video_async(run_id: int, session_factory):
                 )
                 result = await LTXComposer(ltx_video).compose(
                     timeline_json=timeline, assets_dir=str(rd / "assets"),
-                    output_path=output_mp4, resolution=cfg.video.resolution,
+                    output_path=output_mp4, resolution=resolution,
                 )
                 final_path = result.file_path
             except Exception as e:
                 log.warning("LTX render failed for run #%d: %s — trying FFmpeg", run_id, e)
                 _update(db, run, progress_detail="S5 LTX 失败，FFmpeg 合成中...")
-                final_path = _ffmpeg_compose(timeline, rd, cfg.video.resolution, cfg.video.fps)
+                final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.video.fps)
         else:
             _update(db, run, progress_detail="S5 Hyperframes 渲染中...")
             from app.providers.composer.hyperframes_composer import HyperframesComposer
@@ -637,24 +700,25 @@ async def _render_video_async(run_id: int, session_factory):
                 result = await run_stage5(
                     timeline=timeline, composer=composer,
                     assets_dir=str(rd / "assets"), output_path=output_mp4,
-                    resolution=cfg.video.resolution,
+                    resolution=resolution,
                 )
                 final_path = result.file_path
             except Exception as e:
                 log.warning("Hyperframes render failed for run #%d: %s — trying FFmpeg", run_id, e)
                 _update(db, run, progress_detail="S5 FFmpeg 合成中...")
-                final_path = _ffmpeg_compose(timeline, rd, cfg.video.resolution, cfg.video.fps)
+                final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.video.fps)
 
         if Path(final_path).exists():
             size_mb = Path(final_path).stat().st_size / 1024 / 1024
-            _update(db, run, progress_detail=f"S5 渲染完成 — {size_mb:.1f} MB", output_path=final_path)
+            _update(db, run, status="done", progress_detail=f"S5 渲染完成 — {size_mb:.1f} MB", output_path=final_path, finished_at=datetime.now(timezone.utc))
+            export_final(run_id, final_path)
         else:
             _update(db, run, status="failed", error_message="Video file not found", finished_at=datetime.now(timezone.utc))
     except Exception as e:
         log.exception("Render failed for run #%d", run_id)
         run = db.get(PipelineRun, run_id)
         if run:
-            _update(db, run, status="failed", error_message=str(e)[:500], finished_at=datetime.now(timezone.utc))
+            _update(db, run, status="failed", error_message=_humanize_error(e, 5)[:500], finished_at=datetime.now(timezone.utc))
     finally:
         db.close()
 

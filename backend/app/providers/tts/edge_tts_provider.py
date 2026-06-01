@@ -4,7 +4,7 @@ from pathlib import Path
 import edge_tts
 
 from app.logging import get_logger
-from app.providers.base import AssetResult, TTSProvider
+from app.providers.base import AssetResult, ProviderError, TTSProvider
 
 log = get_logger("provider.tts.edge")
 
@@ -26,9 +26,9 @@ class EdgeTTSProvider(TTSProvider):
             communicate = edge_tts.Communicate(text, voice, rate=rate_str)
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             await communicate.save(output_path)
-        except Exception:
+        except Exception as e:
             log.exception("synthesize() failed after %.1fs", time.time() - t0)
-            raise
+            raise ProviderError(service="语音合成", provider="edge-tts", model=voice, cause=e) from e
 
         file_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
         duration_ms = self._estimate_duration(text, speed)
