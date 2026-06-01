@@ -61,6 +61,25 @@ class ComfyUIClient:
         except Exception as e:
             raise self._err(e) from e
 
+    async def upload_image(self, image_path: str) -> str:
+        import os
+        try:
+            async with httpx.AsyncClient(timeout=60) as c:
+                with open(image_path, "rb") as fh:
+                    files = {"image": (os.path.basename(image_path), fh, "image/png")}
+                    r = await c.post(f"{self._url}/upload/image", files=files, data={"overwrite": "true"})
+                    r.raise_for_status()
+                    j = r.json()
+        except ProviderError:
+            raise
+        except Exception as e:
+            raise self._err(e) from e
+        name = j.get("name")
+        if not name:
+            raise self._err(RuntimeError(f"upload no name: {j}"))
+        sub = j.get("subfolder") or ""
+        return f"{sub}/{name}" if sub else name
+
     async def run(self, prompt_graph: dict) -> list[dict]:
         outputs = await self.wait(await self.submit(prompt_graph))
         files: list[dict] = []

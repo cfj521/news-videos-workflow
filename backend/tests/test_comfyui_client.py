@@ -76,3 +76,13 @@ def test_load_and_fill_workflow():
 def test_fill_raises_on_unfilled():
     with pytest.raises(ValueError):
         fill_placeholders({"a": "__MISSING__"}, {})
+
+
+@pytest.mark.asyncio
+async def test_upload_image_returns_name(tmp_path):
+    p = tmp_path / "x.png"; p.write_bytes(b"PNG")
+    with patch("app.providers.comfyui.client.httpx.AsyncClient") as mc:
+        c = _mock_client(mc)
+        c.post = AsyncMock(return_value=_resp({"name": "x.png", "subfolder": "", "type": "input"}))
+        cli = ComfyUIClient("http://x:8188")
+        assert await cli.upload_image(str(p)) == "x.png"
