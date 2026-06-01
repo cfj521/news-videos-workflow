@@ -447,7 +447,7 @@ def _reroll_articles_bg(run_id: int, session_factory):
 
 async def _reroll_articles_async(run_id: int, session_factory):
     from app.pipeline.stage1_collect import run_stage1
-    from app.pipeline.runner import _summarize_articles, _save_articles, _update as runner_update
+    from app.pipeline.runner import _summarize_articles, _save_articles, _update as runner_update, _distill_weekly_if_needed
 
     db = session_factory()
     try:
@@ -468,6 +468,9 @@ async def _reroll_articles_async(run_id: int, session_factory):
         if articles and articles[0].metadata.get("source_group") != "aihot":
             runner_update(db, run, progress_detail="S1 生成摘要中...")
             await _summarize_articles(articles, cfg, run, db, log)
+        elif articles and articles[0].metadata.get("aihot_method") == "weekly":
+            runner_update(db, run, progress_detail="S1 提炼本周热点中...")
+            await _distill_weekly_if_needed(articles, log)
         rd = _run_dir(run_id)
         rd.mkdir(parents=True, exist_ok=True)
         _save_articles(articles, rd)
