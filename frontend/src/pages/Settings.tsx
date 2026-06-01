@@ -32,6 +32,7 @@ const TEXT_PRESETS: Record<string, ProviderPreset> = {
 const IMAGE_PRESETS: Record<string, ProviderPreset> = {
   openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-image-1", "dall-e-3"] },
   dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["wanx-v1", "wanx2.1-t2i-turbo"] },
+  comfyui: { label: "ComfyUI 本地", baseUrl: "http://127.0.0.1:8188", models: ["z_image", "qwen"], needsKey: false },
 };
 
 const VISION_PRESETS: Record<string, ProviderPreset> = {
