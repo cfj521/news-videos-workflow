@@ -251,10 +251,12 @@ const EMPTY_SETTINGS: AppSettings = {
   storage: { work_dir: "", output_dir: "" },
   video: { resolution: "1080x1920", aspect_ratio: "9:16", fps: "30", scene_gap_ms: 500, transition: "crossfade" },
   ltx: { model_dir: "", checkpoint: "ltx-2.3-22b-distilled-1.1.safetensors", upsampler: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors", distilled_lora: "ltx-2.3-22b-distilled-lora-384.safetensors", lora_strength: 0.6, gemma_dir: "", inference_steps: 8, cfg_scale: 3.0, stg_scale: 1.0, fps: 25.0, use_fp8: true },
+  prompts: {},
 };
 
 export function SettingsPage() {
   const { data: remote, error: loadError, mutate } = useSWR("settings", api.settings.get);
+  const { data: promptDefs } = useSWR("prompt-defaults", api.settings.promptDefaults);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [dirty, setDirty] = useState(false);
   const { showToast } = useToast();
@@ -505,6 +507,27 @@ export function SettingsPage() {
             <span className={toggleThumbCls(settings.ltx.use_fp8)} />
           </button>
         </Field>
+      </Section>
+
+      <Section title="提示词" desc="流水线各步骤的 AI 提示词；留空使用内置默认。改后点上方「保存」。">
+        {promptDefs && Object.entries(promptDefs).map(([key, def]) => (
+          <div key={key} className="mb-4">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm text-white/70">{def.label}<span className="text-white/30 text-xs ml-2">{def.desc}</span></label>
+              <button
+                onClick={() => patch("prompts", { [key]: "" })}
+                className="text-xs text-white/30 hover:text-white/60 transition"
+              >恢复默认</button>
+            </div>
+            <textarea
+              value={settings.prompts?.[key] ?? ""}
+              placeholder={def.default}
+              onChange={(e) => patch("prompts", { [key]: e.target.value })}
+              rows={6}
+              className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40"
+            />
+          </div>
+        ))}
       </Section>
 
       <p className="text-xs text-white/20 text-center pt-2">

@@ -25,6 +25,7 @@ export interface AppSettings {
   storage: { work_dir: string; output_dir: string };
   video: { resolution: string; aspect_ratio: string; fps: string; scene_gap_ms: number; transition: string };
   ltx: { model_dir: string; checkpoint: string; upsampler: string; distilled_lora: string; lora_strength: number; gemma_dir: string; inference_steps: number; cfg_scale: number; stg_scale: number; fps: number; use_fp8: boolean };
+  prompts: Record<string, string>;
 }
 
 export interface ScriptData {
@@ -169,5 +170,6 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(body),
       }),
+    promptDefaults: () => fetchJSON<Record<string, { label: string; desc: string; default: string }>>("/settings/prompts/defaults"),
   },
 };
