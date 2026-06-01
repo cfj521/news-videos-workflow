@@ -116,6 +116,12 @@ DAILY_BATCH_SYSTEM_PROMPT = """你是 AI 资讯日报短视频的分镜脚本编
 SUMMARY_META_SYSTEM_PROMPT = """你是短视频运营。下面给你一条汇总视频包含的各条资讯标题，生成整条视频的吸睛标题与简介。
 输出纯 JSON（无 markdown 标记）：{"title":"中文标题","description":"1-2句中文简介","tags":["标签1","标签2"]}"""
 
+WEEKLY_DIGEST_SYSTEM_PROMPT = """你是 AI 资讯周报编辑。下面给你过去一整周的全部资讯条目（含日期/分类线索）。
+请跨天归纳出**本周 3-5 个最重要的热点主题**，每个主题挑 1-3 条最有代表性的资讯，**全部主题的资讯总条数不超过 9 条**。
+要求：体现"本周"视角（趋势、归纳），合并跨天对同一事件的重复报道。
+输出纯 JSON（无 markdown 标记）：
+{"sections":[{"label":"主题名(中文)","items":[{"title":"资讯标题","summary":"一句话摘要"}]}]}"""
+
 
 def _parse_json(response: str) -> dict:
     cleaned = response.strip()
@@ -123,6 +129,57 @@ def _parse_json(response: str) -> dict:
         cleaned = cleaned.split("\n", 1)[1]
         cleaned = cleaned.rsplit("```", 1)[0]
     return json.loads(cleaned)
+
+
+def _sample_weekly_items(weekly_items: list[dict], per_day: int = 8, char_cap: int = 12000) -> str:
+    """按天采样渲染，避免简单截断偏向前半周。"""
+    from collections import OrderedDict
+    by_day: "OrderedDict[str, list]" = OrderedDict()
+    for it in weekly_items:
+        by_day.setdefault(it.get("date", ""), []).append(it)
+    lines: list[str] = []
+    total = 0
+    for day, day_items in by_day.items():
+        for it in day_items[:per_day]:
+            line = f"[{day}/{it.get('category', '')}] 「{it.get('title', '')}」{it.get('summary', '')}"
+            if total + len(line) > char_cap:
+                return "\n".join(lines)
+            lines.append(line)
+            total += len(line)
+    return "\n".join(lines)
+
+
+def _fallback_weekly_sections(weekly_items: list[dict], max_sections: int = 5, per_section: int = 3) -> list[dict]:
+    """提炼失败兜底：按 category 分组，形状同 daily_sections。"""
+    from collections import OrderedDict
+    groups: "OrderedDict[str, list]" = OrderedDict()
+    for it in weekly_items:
+        groups.setdefault(it.get("category", "其它"), []).append(
+            {"title": it.get("title", ""), "summary": it.get("summary", "")})
+    sections: list[dict] = []
+    for label, items in groups.items():
+        sections.append({"label": label, "items": items[:per_section]})
+        if len(sections) >= max_sections:
+            break
+    return sections
+
+
+async def distill_weekly_sections(weekly_items: list[dict], text_provider) -> list[dict]:
+    """把一周扁平条目跨天提炼成主题 sections（形状同 daily_sections）。失败/空则兜底分组。"""
+    text = _sample_weekly_items(weekly_items)
+    try:
+        resp = await text_provider.generate(
+            prompt="本周资讯条目：\n" + text, system_prompt=WEEKLY_DIGEST_SYSTEM_PROMPT)
+        sections = _parse_json(resp).get("sections", [])
+    except Exception:
+        log.warning("[S1] weekly distill parse failed")
+        sections = []
+    sections = [s for s in sections if s.get("items")]
+    if not sections:
+        log.warning("[S1] weekly distill empty — fallback group by category")
+        sections = _fallback_weekly_sections(weekly_items)
+    log.info("[S1] weekly distilled into %d themes", len(sections))
+    return sections
 
 
 def _batch_items(n: int) -> list[int]:

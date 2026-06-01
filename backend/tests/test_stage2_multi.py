@@ -78,3 +78,35 @@ async def test_multi_falls_back_on_bad_json():
     script = await run_stage2_multi(arts, tp)
     assert len(script["scenes"]) == 1
     assert script["scenes"][0]["narration"] == "文章1"  # fallback to title
+
+
+from app.pipeline.stage2_script import distill_weekly_sections
+
+_WEEKLY_ITEMS = [
+    {"title": "GPT 新版", "summary": "s1", "category": "模型", "date": "2026-05-25"},
+    {"title": "某产品发布", "summary": "s2", "category": "产品", "date": "2026-05-26"},
+    {"title": "融资新闻", "summary": "s3", "category": "行业", "date": "2026-05-27"},
+]
+
+
+@pytest.mark.asyncio
+async def test_distill_weekly_parses_sections():
+    tp = AsyncMock()
+    tp.generate.return_value = json.dumps({"sections": [
+        {"label": "大模型进展", "items": [{"title": "GPT 新版", "summary": "s1"}]},
+        {"label": "行业动态", "items": [{"title": "融资新闻", "summary": "s3"}]},
+    ]})
+    sections = await distill_weekly_sections(_WEEKLY_ITEMS, tp)
+    assert [s["label"] for s in sections] == ["大模型进展", "行业动态"]
+    assert sections[0]["items"][0]["title"] == "GPT 新版"
+
+
+@pytest.mark.asyncio
+async def test_distill_weekly_falls_back_on_bad_json():
+    tp = AsyncMock()
+    tp.generate.return_value = "这不是JSON"
+    sections = await distill_weekly_sections(_WEEKLY_ITEMS, tp)
+    # 兜底：按 category 分组，形状同 daily_sections
+    assert {s["label"] for s in sections} == {"模型", "产品", "行业"}
+    for s in sections:
+        assert all("title" in it and "summary" in it for it in s["items"])
