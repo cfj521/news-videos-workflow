@@ -1,0 +1,117 @@
+{
+  "37": {
+    "inputs": {
+      "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "39": {
+    "inputs": {
+      "vae_name": "wan2.2_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "__POSITIVE_PROMPT__",
+      "clip": ["38", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "__NEGATIVE_PROMPT__",
+      "clip": ["38", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "48": {
+    "inputs": {
+      "model": ["37", 0],
+      "shift": 8.0
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "55": {
+    "inputs": {
+      "vae": ["39", 0],
+      "width": "__WIDTH__",
+      "height": "__HEIGHT__",
+      "length": "__LENGTH__",
+      "batch_size": 1
+    },
+    "class_type": "Wan22ImageToVideoLatent",
+    "_meta": {
+      "title": "Wan22ImageToVideoLatent"
+    }
+  },
+  "3": {
+    "inputs": {
+      "model": ["48", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["55", 0],
+      "seed": "__SEED__",
+      "steps": 30,
+      "cfg": 5.0,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1.0
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["39", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "28": {
+    "inputs": {
+      "images": ["8", 0],
+      "filename_prefix": "ComfyUI",
+      "fps": 24.0,
+      "lossless": false,
+      "quality": 80,
+      "method": "default"
+    },
+    "class_type": "SaveAnimatedWEBP",
+    "_meta": {
+      "title": "Save AnimatedWEBP"
+    }
+  }
+}
