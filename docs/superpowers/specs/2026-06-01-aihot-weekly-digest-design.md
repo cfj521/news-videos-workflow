@@ -94,9 +94,14 @@ week_end    = this_monday - timedelta(days=1)   # 上周日
   ```json
   {"sections":[{"label":"主题名(中文)","items":[{"title":"...","summary":"..."}]}]}
   ```
-- 提炼调用：把 `weekly_items` 渲染成带分类线索的文本（截断输入上限约 12000 字符，防超长），调文本 provider → 解析出 `sections`。
-- 解析失败兜底：退回到按 `weekly_items` 原 category 简单分组（取前若干条），保证不阻断流水线。
+- 提炼调用：把 `weekly_items` 渲染成带分类线索的文本喂给文本 provider。**输入不做无脑字符截断**——一周条目可能数百条，简单截断会丢掉后半周、让周报偏向前几天。改为**结构化采样**：按天保留 lead + 每个 section 取前 N 条（再设总字符上限兜底，约 12000），保证全周覆盖。
+- 解析失败兜底：退回到按 `weekly_items` 原 category 简单分组（取前若干条）。**兜底产出形状必须与 D2 完全一致** `[{label, items:[{title, summary}]}]`，保证下游 `_gen_daily_batch_scenes` 能取到 `title`/`summary`，不阻断流水线。
 - 把结果写回 `article.metadata["daily_sections"] = sections`（复用 daily 的下游路径）。
+
+**持久化约束（关键）**：`runner._save_articles` / `_article_from_dict` 只透传 `aihot_method` 与 `daily_sections` 两个 metadata 字段——`weekly_items` / `week_start` / `week_end` **不会被序列化**，仅作内存中转。因此：
+
+- **提炼必须发生在 `_save_articles`（runner.py:389）之前**，且结果只写进 `daily_sections`。否则 manual review 模式存盘再重载，weekly 的 sections 会丢。§下方调用点位置（紧跟 `_summarize_articles`、早于 save）已满足该时序。
+- `regen-script` / `add-scene` 端点经 `_article_from_dict` 从 `articles.json` 重建 article 后跑 `run_stage2_multi`：weekly **不重新提炼**，直接复用已存的 `daily_sections`（因此这两个端点无需调提炼 helper）。
 
 `_distill_weekly_if_needed` 的两处调用点：
 
@@ -105,7 +110,21 @@ week_end    = this_monday - timedelta(days=1)   # 上周日
 
 > 触发判定：`articles and articles[0].metadata.get("aihot_method") == "weekly"`。
 
-### 3. Stage2 — `backend/app/pipeline/stage2_script.py`
+### 3. Stage1 采集分流 — `backend/app/pipeline/stage1_collect.py`
+
+`run_stage1` 对 AI HOT 组按 `aihot_method` 分流（现有代码，约行 60-70）：
+
+```python
+if method == "daily":
+    return compliant[:1]          # 单篇直通
+return compliant[:max_articles]   # items 分支
+```
+
+weekly 同样是"单篇直通"（一周聚合成一篇），但 `aihot_method == "weekly"` 会落进 items 的 `compliant[:max_articles]` 分支。当 `max_articles ≥ 1` 时碰巧能返回这唯一一篇，但若前端在 digest 模式把文章数置为 0，`[:0]` 会返回空、误触发"无数据"失败。
+
+**改动**：把判断从 `if method == "daily"` 放宽为 `if method in ("daily", "weekly")` → weekly 也走 `compliant[:1]` 单篇直通。`compliance` 仍跑、跳过 dedup/scoring（与 daily 一致）。
+
+### 4. Stage2 — `backend/app/pipeline/stage2_script.py`
 
 `run_stage2_multi` 现有 daily 分支判断：
 
@@ -121,23 +140,28 @@ if article.metadata.get("aihot_method") in ("daily", "weekly") and sections:
 
 `sections` 仍读 `article.metadata.get("daily_sections")`（weekly 已在 Stage1 写好）。**其余分组批处理 / 分镜生成逻辑完全不变。** 这是 Stage2 唯一改动。
 
-### 4. Runner 失败文案 — `backend/app/pipeline/runner.py`
+### 5. Runner 失败文案 — `backend/app/pipeline/runner.py`
 
-现有 `daily_mode` 仅区分 daily。泛化为按模式给文案：
+现有 `daily_mode`（bool）仅区分 daily。**合并为单变量**，避免并行两个 bool：
 
-- weekly 无数据：`"上周 AI 日报数据不足，无法生成周报，请改用日报(daily)或动态(items)模式"`
-- daily 无数据：保持原文案。
-- 其它：`"No articles collected"`。
+```python
+digest_method = next((sc.get("method") for sc in source_configs
+                      if sc.get("method") in ("daily", "weekly")), None)
+```
 
-实现：`source_configs` 已知各源 `method`，据此选择文案（保留现有 `daily_mode` 检测，新增 weekly 检测）。
+无文章时按 `digest_method` 三分支选文案：
 
-### 5. 前端
+- `"weekly"`：`"上周 AI 日报数据不足，无法生成周报，请改用日报(daily)或动态(items)模式"`
+- `"daily"`：保持原日报文案。
+- 其它（`None`）：`"No articles collected"`。
+
+### 6. 前端
 
 - **`frontend/src/pages/Sources.tsx`**（`AIHotGroupCard`，行 167-175）：模式切换数组从 `["items","daily"]` 扩为 `["items","daily","weekly"]`，标签映射 `items→动态 / daily→日报 / weekly→周报`。`category` 筛选仍只在 `items` 显示。
 - **`frontend/src/components/CreateRunDialog.tsx`**（行 71、214）：`isAihotDaily` 泛化为 `isAihotDigest = aihotMethod === "daily" || aihotMethod === "weekly"`，引用处同步改名（周报同样忽略时间范围 / 文章数）。
 - **`frontend/src/components/SourceSummary.tsx`**（行 26）：标签映射增加 `weekly → "每周周报"`（`daily → "每日日报"`、其它 → "动态聚合"）。
 
-### 6. config / schema
+### 7. config / schema
 
 `config_json.method` 是自由字符串，无枚举校验，**无需 schema/config 改动**。种子 AI HOT 源默认仍为 `items`，用户在前端切到 `weekly`。
 
@@ -163,8 +187,8 @@ AI HOT daily:
 
 - **上周无任何日报**：collector 返回空 → runner 周报专属失败文案（§4）。
 - **某天日报 404 / 异常**：跳过该天，记 warning，不中断（只要该周至少 1 天有数据即可生成）。
-- **提炼 AI 解析失败**：兜底按原 category 简单分组（§2），不阻断流水线。
-- **输入超长**：提炼输入截断（约 12000 字符）+ 提示词限制主题/条数共同约束。
+- **提炼 AI 解析失败 / 返回 sections 为空**：兜底按原 category 简单分组（§2，形状同 D2），不阻断流水线。
+- **输入超长**：结构化采样（按天 lead + 每 section 前 N 条）+ 总字符上限兜底 + 提示词限制主题/条数共同约束，避免偏向前半周（§2）。
 - **weekly 下 `time_range` / `max_articles` 无意义**：采集层忽略；前端 `isAihotDigest` 置灰这两项。
 - **互斥**：沿用现有"有启用的 AI HOT 源即只用 AI HOT 组"机制，weekly 无新增。
 
@@ -182,9 +206,10 @@ AI HOT daily:
 ## 影响文件
 
 - `backend/app/providers/collector/aihot.py`（`_collect_weekly` + 周范围 + 扁平汇总）
-- `backend/app/pipeline/runner.py`（weekly 提炼 helper + Stage1 调用 + 失败文案泛化）
-- `backend/app/api/pipeline.py`（`_reroll_articles_async` 调同一提炼 helper）
-- `backend/app/pipeline/stage2_script.py`（`WEEKLY_DIGEST_SYSTEM_PROMPT` + 提炼函数；分支判断放宽到 `in ("daily","weekly")`）
+- `backend/app/pipeline/stage1_collect.py`（AI HOT 分流：weekly 也走 `compliant[:1]` 单篇直通）
+- `backend/app/pipeline/runner.py`（`_distill_weekly_if_needed` helper + Stage1 调用 + `digest_method` 失败文案）
+- `backend/app/api/pipeline.py`（`_reroll_articles_async` 调同一提炼 helper；`regen-script`/`add-scene` 不变，复用已存 sections）
+- `backend/app/pipeline/stage2_script.py`（`WEEKLY_DIGEST_SYSTEM_PROMPT` + `distill_weekly_sections` 提炼函数；分支判断放宽到 `in ("daily","weekly")`）
 - `frontend/src/pages/Sources.tsx`（模式切换加 `weekly`）
 - `frontend/src/components/CreateRunDialog.tsx`（`isAihotDaily` → `isAihotDigest`）
 - `frontend/src/components/SourceSummary.tsx`（weekly 标签）
