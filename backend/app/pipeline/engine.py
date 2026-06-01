@@ -16,7 +16,7 @@ class PipelineEngine:
     def create_run(
         self,
         mode: str = "auto",
-        video_route: str = "hyperframes",
+        video_route: str = "comfyui",
         time_range: str = "7d",
         max_articles: int = 5,
         selected_stages: list[int] | None = None,

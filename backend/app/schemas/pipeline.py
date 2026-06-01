@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class PipelineRunCreate(BaseModel):
     mode: str = "manual"
-    video_route: str = "hyperframes"
+    video_route: str = "comfyui"
     time_range: str = "7d"
     max_articles: int = 5
     selected_stages: list[int] = [1, 2, 3, 4, 5]

@@ -4,7 +4,7 @@ def test_config_loads_defaults():
     settings = Settings()
     assert settings.pipeline.default_time_range == "7d"
     assert settings.pipeline.default_max_articles == 5
-    assert settings.pipeline.default_video_route == "hyperframes"
+    assert settings.pipeline.default_video_route == "comfyui"
     assert settings.pipeline.default_language == "zh"
     assert settings.DATABASE_URL == "sqlite:///../data/news_videos.db"
     assert settings.text.provider == "claude"

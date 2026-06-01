@@ -19,7 +19,7 @@ def test_news_source_create():
 def test_pipeline_run_create():
     run = PipelineRunCreate(time_range="7d", max_articles=5)
     assert run.mode == "manual"
-    assert run.video_route == "hyperframes"
+    assert run.video_route == "comfyui"
 
 
 def test_scene_schema():

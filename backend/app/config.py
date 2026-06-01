@@ -20,7 +20,7 @@ class TimeRange(str, Enum):
 
 class VideoRoute(str, Enum):
     HYPERFRAMES = "hyperframes"
-    LTX = "ltx"
+    COMFYUI = "comfyui"
 
 
 class ProviderCfg(BaseModel):
@@ -62,23 +62,9 @@ class SummaryCfg(BaseModel):
 class PipelineCfg(BaseModel):
     default_time_range: str = "7d"
     default_max_articles: int = 5
-    default_video_route: str = "hyperframes"
+    default_video_route: str = "comfyui"
     default_language: str = "zh"
     dedup_lookback: str = "30d"
-
-
-class LTXCfg(BaseModel):
-    model_dir: str = ""
-    checkpoint: str = "ltx-2.3-22b-distilled-1.1.safetensors"
-    upsampler: str = "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
-    distilled_lora: str = "ltx-2.3-22b-distilled-lora-384.safetensors"
-    lora_strength: float = 0.6
-    gemma_dir: str = ""
-    inference_steps: int = 8
-    cfg_scale: float = 3.0
-    stg_scale: float = 1.0
-    fps: float = 25.0
-    use_fp8: bool = True
 
 
 class VideoCfg(BaseModel):
@@ -116,6 +102,9 @@ class PromptsCfg(BaseModel):
 class ComfyuiCfg(BaseModel):
     workflows_dir: str = "comfyui/workflows/api"
     default_negative: str = "模糊, 丑陋, 变形, 低质量, 水印"
+    server_url: str = "http://127.0.0.1:8188"
+    video_workflow: str = "wan5b"
+    video_fps: int = 24
 
 
 class Settings(BaseModel):
@@ -130,7 +119,6 @@ class Settings(BaseModel):
     youtube: YouTubeCfg = YouTubeCfg()
     pipeline: PipelineCfg = PipelineCfg()
     video: VideoCfg = VideoCfg()
-    ltx: LTXCfg = LTXCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
     prompts: PromptsCfg = PromptsCfg()
 
