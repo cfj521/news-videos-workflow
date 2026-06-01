@@ -8,9 +8,12 @@
 #
 # 官方模板要求（见模板内 MarkdownNote）：
 #   checkpoints/            ltx-2.3-22b-dev-fp8.safetensors                                  （早先已下，幂等跳过）
+#   text_encoders/          gemma_3_12B_it_fp4_mixed.safetensors                             （官方 fp4 Gemma 编码器，~9.5GB，比自量化 fp8 更小更正规）
 #   loras/                  ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors
 #   loras/                  gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors
 #   latent_upscale_models/  ltx-2.3-spatial-upscaler-x2-1.1.safetensors
+#
+# 注：fp4 Gemma 也可从 ModelScope 同名仓库 Comfy-Org/ltx-2 下（国内可能更快）；本脚本统一走 hf-mirror。
 #
 # 前置：aria2c 或 curl（aria2c 16 线程更快、支持断点续传）
 # 用法：powershell -ExecutionPolicy Bypass -File scripts/download-ltx23-comfyui-models.ps1
@@ -23,7 +26,7 @@ $ErrorActionPreference = "Stop"
 $ComfyModels = "D:\models\comfyui"
 $Mirror      = "https://hf-mirror.com"
 
-foreach ($d in @("checkpoints", "loras", "latent_upscale_models")) {
+foreach ($d in @("checkpoints", "text_encoders", "loras", "latent_upscale_models")) {
     New-Item -ItemType Directory -Force -Path "$ComfyModels\$d" | Out-Null
 }
 
@@ -46,6 +49,8 @@ Write-Host "`n========== LTX 2.3 官方模板配套模型 ==========" -Foregroun
 $items = @(
     @{ Url = "$Mirror/Lightricks/LTX-2.3-fp8/resolve/main/ltx-2.3-22b-dev-fp8.safetensors";
        Dir = "checkpoints";           File = "ltx-2.3-22b-dev-fp8.safetensors" },
+    @{ Url = "$Mirror/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors";
+       Dir = "text_encoders";         File = "gemma_3_12B_it_fp4_mixed.safetensors" },
     @{ Url = "$Mirror/Comfy-Org/ltx-2.3/resolve/main/split_files/loras/ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors";
        Dir = "loras";                 File = "ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors" },
     @{ Url = "$Mirror/Comfy-Org/ltx-2/resolve/main/split_files/loras/gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors";
