@@ -417,8 +417,8 @@ async def regen_scene_image(run_id: int, scene_id: int, body: RegenImageRequest,
     script_path.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
 
     cfg = get_settings()
-    from app.providers.image.openai_image import OpenAIImageProvider
-    img_provider = OpenAIImageProvider(api_key=cfg.image.api_key, model=cfg.image.model, base_url=cfg.image.base_url)
+    from app.providers.image import build_image_provider
+    img_provider = build_image_provider(cfg)
     image_path = str(rd / "assets" / f"scene_{scene_id:02d}_image.png")
     log.info("Regenerating image for run #%d scene %d: %s", run_id, scene_id, body.image_prompt[:60])
     img_size = body.size or run.resolution or cfg.video.resolution

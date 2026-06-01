@@ -475,7 +475,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
         _update(db, run, current_stage=3, progress_detail=f"S3 生成素材 0/{total}")
         log.info("[S3] Generating assets — %d scenes, provider: %s/%s", total, cfg.image.provider, cfg.image.model)
 
-        image_provider = OpenAIImageProvider(api_key=cfg.image.api_key, model=cfg.image.model, base_url=cfg.image.base_url)
+        from app.providers.image import build_image_provider
+        image_provider = build_image_provider(cfg)
         tts_provider = EdgeTTSProvider(default_voice=cfg.tts.voice)
         img_count = 0
         tts_count = 0

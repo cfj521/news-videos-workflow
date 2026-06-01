@@ -113,6 +113,11 @@ class PromptsCfg(BaseModel):
     news_scoring: str = ""
 
 
+class ComfyuiCfg(BaseModel):
+    workflows_dir: str = "comfyui/workflows/api"
+    default_negative: str = "模糊, 丑陋, 变形, 低质量, 水印"
+
+
 class Settings(BaseModel):
     infra: InfraCfg = InfraCfg()
     storage: StorageCfg = StorageCfg()
@@ -126,6 +131,7 @@ class Settings(BaseModel):
     pipeline: PipelineCfg = PipelineCfg()
     video: VideoCfg = VideoCfg()
     ltx: LTXCfg = LTXCfg()
+    comfyui: ComfyuiCfg = ComfyuiCfg()
     prompts: PromptsCfg = PromptsCfg()
 
     def runs_root(self) -> Path:
