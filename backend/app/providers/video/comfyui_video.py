@@ -18,8 +18,9 @@ def _snap16(v: int) -> int:
     return max(256, (v // 16) * 16)
 
 
-def _snap_4n1(n: int) -> int:
-    return max(5, min(4 * round((n - 1) / 4) + 1, 257))
+def _snap_frames(n: int, step: int = 4) -> int:
+    """帧数对齐到 step*k+1（wan 用 4，LTX 时间 VAE 用 8），下限 step+1、上限 257。"""
+    return max(step + 1, min(step * round((n - 1) / step) + 1, 257))
 
 
 class ComfyUIVideoProvider(VideoClipProvider):
@@ -39,7 +40,11 @@ class ComfyUIVideoProvider(VideoClipProvider):
             w, h = _snap16(int(parts[0])), _snap16(int(parts[1]))
         except Exception:
             w, h = 704, 480
-        frames = _snap_4n1(round(duration * self._fps))
+        # LTX 时间 VAE 需 8n+1 帧、内部 25fps；wan 系列 4n+1、用配置 fps
+        is_ltx = self._wf == "ltx23_i2v"
+        eff_fps = 25 if is_ltx else self._fps
+        frames = _snap_frames(round(duration * eff_fps), 8 if is_ltx else 4)
+        tmp = None
         try:
             server_name = await self._client.upload_image(image_path)
             graph = fill_placeholders(load_api_workflow(self._wf, self._dir), {
@@ -63,14 +68,16 @@ class ComfyUIVideoProvider(VideoClipProvider):
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             cmd = ["ffmpeg", "-y", "-i", tmp,
                    "-vf", f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1",
-                   "-r", str(self._fps), "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "fast", output_path]
+                   "-r", str(eff_fps), "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "fast", output_path]
             r = subprocess.run(cmd, capture_output=True, timeout=300)
-            Path(tmp).unlink(missing_ok=True)
             if r.returncode != 0:
                 raise RuntimeError(f"ffmpeg 转码失败: {r.stderr.decode('utf-8', 'replace')[:300]}")
         except ProviderError:
             raise
         except Exception as e:
             raise ProviderError(service="视频生成", provider="comfyui", model=self._wf, base_url=self._server, cause=e) from e
-        log.info("ComfyUI clip done %dx%d %d帧 → %s", w, h, frames, output_path)
-        return AssetResult(file_path=output_path, duration_ms=int(frames / self._fps * 1000))
+        finally:
+            if tmp:
+                Path(tmp).unlink(missing_ok=True)
+        log.info("ComfyUI clip done %dx%d %d帧 @%sfps → %s", w, h, frames, eff_fps, output_path)
+        return AssetResult(file_path=output_path, duration_ms=int(frames / eff_fps * 1000))

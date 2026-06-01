@@ -87,6 +87,22 @@ def test_delete_last_scene_cascades_group_and_article(client, tmp_path):
     assert [a["title"] for a in arts] == ["文章1"]
 
 
+def test_delete_last_scene_keeps_shared_article(client, tmp_path):
+    # 日报/周报：多分组共享同一篇汇总文章(source_index=0)，删一组的最后分镜不应删掉这篇文章
+    s = {"title": "T", "description": "d", "tags": [],
+         "groups": [{"id": 1, "title": "模型", "source_index": 0}, {"id": 2, "title": "行业", "source_index": 0}],
+         "scenes": [{"id": 1, "group_id": 1, "narration": "n1", "image_prompt": "p", "motion_prompt": "", "duration_hint": 5},
+                    {"id": 2, "group_id": 2, "narration": "n2", "image_prompt": "p", "motion_prompt": "", "duration_hint": 5}]}
+    _seed(tmp_path, 1, s, [{"title": "今日AI日报", "content": "c"}])
+    r = client.delete("/api/pipeline/runs/1/scenes/1")
+    assert r.status_code == 200
+    saved = json.loads((tmp_path / "1" / "script.json").read_text(encoding="utf-8"))
+    assert [g["id"] for g in saved["groups"]] == [2]
+    assert saved["groups"][0]["source_index"] == 0  # 未被错误前移
+    arts = json.loads((tmp_path / "1" / "articles.json").read_text(encoding="utf-8"))
+    assert len(arts) == 1  # 共享文章仍在
+
+
 def test_delete_scene_legacy_no_group_id(client, tmp_path):
     legacy = {"title": "T", "description": "d", "tags": [],
               "scenes": [

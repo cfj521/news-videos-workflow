@@ -38,9 +38,15 @@ class ComfyUIClient:
         t0 = time.time()
         async with httpx.AsyncClient(timeout=30) as c:
             while time.time() - t0 < self._timeout:
-                r = await c.get(f"{self._url}/history/{prompt_id}")
-                r.raise_for_status()
-                hist = r.json()
+                try:
+                    r = await c.get(f"{self._url}/history/{prompt_id}")
+                    r.raise_for_status()
+                    hist = r.json()
+                except Exception as e:
+                    # /history 的瞬时抖动（如 ComfyUI 忙时 5xx）不应中断等待，下一轮重试
+                    log.warning("ComfyUI /history transient error, retrying: %s", e)
+                    await asyncio.sleep(self._poll)
+                    continue
                 if prompt_id in hist:
                     entry = hist[prompt_id]
                     if entry.get("status", {}).get("status_str") == "error":

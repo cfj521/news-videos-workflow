@@ -37,7 +37,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [timeRange, setTimeRange] = useState("7d");
   const [maxArticles, setMaxArticles] = useState(5);
   const [autoCollect, setAutoCollect] = useState(true);
-  const [videoRoute, setVideoRoute] = useState("comfyui");
+  const [videoRoute, setVideoRoute] = useState("");
   const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5]));
   const [platforms, setPlatforms] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -48,6 +48,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   // 任务级分辨率/比例：未选则回退全局 video 设置
   const effRes = resolution || settings?.video.resolution || "1080x1920";
   const effAr = aspectRatio || settings?.video.aspect_ratio || "9:16";
+  // 未手动选则用全局默认视频路线
+  const effVideoRoute = videoRoute || settings?.pipeline?.default_video_route || "comfyui";
   const resOptions = (RES_PRESETS_DLG.some((o) => o.value === effRes)
     ? RES_PRESETS_DLG
     : [{ value: effRes, ar: effAr, label: effRes }, ...RES_PRESETS_DLG]
@@ -70,7 +72,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   // 日报/周报模式忽略时间范围与文章数；动态(items)模式两者仍生效
   const isAihotDigest = aihotMethod === "daily" || aihotMethod === "weekly";
 
-  const audioOnly = videoRoute === "audio";
+  const audioOnly = effVideoRoute === "audio";
   const excludedMedia = audioOnly ? "video" : "audio";
   const platformOptions = ALL_PLATFORMS.filter((p) => PLATFORM_MEDIA[p.value] !== excludedMedia);
   const dialogStages = audioOnly ? VISIBLE_STAGES.filter((s) => s !== 4) : VISIBLE_STAGES;
@@ -117,7 +119,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
     try {
       await api.runs.create({
         mode,
-        video_route: videoRoute,
+        video_route: effVideoRoute,
         time_range: timeRange,
         max_articles: maxArticles,
         selected_stages: toBackendStages(effectiveVisual),
@@ -184,7 +186,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           </div>
           <div>
             <label className={labelCls}>音视频路线</label>
-            <Select value={videoRoute} onChange={setVideoRoute} options={[
+            <Select value={effVideoRoute} onChange={setVideoRoute} options={[
               { value: "hyperframes", label: "Hyperframes" },
               { value: "comfyui", label: "ComfyUI" },
               { value: "audio", label: "纯语音" },

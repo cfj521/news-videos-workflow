@@ -416,6 +416,7 @@ async def regen_scene_image(run_id: int, scene_id: int, body: RegenImageRequest,
             break
     script_path.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    reload_settings()  # 拿最新图片 provider 配置
     cfg = get_settings()
     from app.providers.image import build_image_provider
     img_provider = build_image_provider(cfg)
@@ -479,10 +480,17 @@ async def _reroll_articles_async(run_id: int, session_factory):
             sources=source_configs, collectors=collectors,
             time_range=run.time_range, max_articles=run.max_articles,
         )
-        if articles and articles[0].metadata.get("source_group") != "aihot":
+        if not articles:
+            # 没采到任何文章（如周报当周无日报）：保留原有 articles.json，不静默清空，并给明确提示
+            from app.pipeline.runner import _no_article_message
+            method = next((sc.get("method") for sc in source_configs if sc.get("method") in ("daily", "weekly")), None)
+            _update(db, run, progress_detail=f"重新采集未获得文章（保留原列表）：{_no_article_message(method)}")
+            log.warning("Reroll for run #%d collected 0 articles — keeping existing list", run_id)
+            return
+        if articles[0].metadata.get("source_group") != "aihot":
             runner_update(db, run, progress_detail="S1 生成摘要中...")
             await _summarize_articles(articles, cfg, run, db, log)
-        elif articles and articles[0].metadata.get("aihot_method") == "weekly":
+        elif articles[0].metadata.get("aihot_method") == "weekly":
             runner_update(db, run, progress_detail="S1 提炼本周热点中...")
             await _distill_weekly_if_needed(articles, log)
         rd = _run_dir(run_id)
@@ -512,6 +520,7 @@ async def regen_scene_prompt(run_id: int, scene_id: int, body: RegenPromptReques
     if not script_path.exists():
         raise HTTPException(status_code=400, detail="No script")
 
+    reload_settings()  # 拿最新提示词（跨进程 worker 也生效）
     text_provider = _build_text_provider()
     from app.prompts import resolve_prompt
     system = resolve_prompt("image_regen")
@@ -537,6 +546,7 @@ class _AddSceneBody(_PydBase):
 
 @router.post("/runs/{run_id}/scenes")
 async def add_scene(run_id: int, body: _AddSceneBody):
+    reload_settings()  # 拿最新提示词
     rd = _run_dir(run_id)
     script_path = rd / "script.json"
     if not script_path.exists():
@@ -594,7 +604,9 @@ def delete_scene(run_id: int, scene_id: int):
         group = next((g for g in script.get("groups", []) if g.get("id") == gid), None)
         script["groups"] = [g for g in script.get("groups", []) if g.get("id") != gid]
         si = group.get("source_index", -1) if group else -1
-        if si >= 0:
+        # 仅当没有其它分组再引用这篇文章时才删它（日报/周报是多分组共享同一篇汇总文章，不能删）
+        still_used = any(g.get("source_index") == si for g in script["groups"])
+        if si >= 0 and not still_used:
             arts = _read_articles(run_id)
             if 0 <= si < len(arts):
                 del arts[si]

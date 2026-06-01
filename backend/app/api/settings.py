@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 def _redact(settings: Settings) -> dict:
     data = settings.model_dump()
-    for group in ("text", "image", "tts"):
+    for group in ("text", "image", "vision", "tts", "summary"):
         key = data.get(group, {}).get("api_key", "")
         if key and len(key) > 8:
             data[group]["api_key"] = key[:4] + "..." + key[-4:]
@@ -43,7 +43,7 @@ async def update_settings(payload: dict):
         if group_key == "infra":
             continue
         if isinstance(group_val, dict) and group_key in current:
-            secret_group = group_key in ("text", "image", "tts", "collectors", "youtube")
+            secret_group = group_key in ("text", "image", "vision", "tts", "summary", "collectors", "youtube")
             for k, v in group_val.items():
                 if secret_group and isinstance(v, str) and "..." in v:
                     continue  # 跳过未改动的脱敏密钥

@@ -59,7 +59,9 @@ def _static_clip(image_path: str, dur: float, w: int, h: int, fps: int, out: str
 
 
 def _mux_segment(clip: str, audio: str, dur: float, w: int, h: int, fps: int, out: str) -> None:
-    vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}"
+    # tpad=stop_mode=clone 把视频补到 -t dur（clip 比时长短时克隆末帧），保证每段恰好 dur、拼接不漂移
+    vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
+          f"setsar=1,fps={fps},tpad=stop_mode=clone:stop_duration={dur}")
     if audio and Path(audio).exists():
         cmd = ["ffmpeg", "-y", "-i", clip, "-i", audio,
                "-filter_complex", f"[0:v]{vf}[v];[1:a]apad[a]",
@@ -68,7 +70,7 @@ def _mux_segment(clip: str, audio: str, dur: float, w: int, h: int, fps: int, ou
                "-c:a", "aac", "-ar", "48000", out]
     else:
         cmd = ["ffmpeg", "-y", "-i", clip, "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
-               "-vf", vf, "-t", str(dur), "-shortest",
+               "-vf", vf, "-t", str(dur),
                "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p", "-c:a", "aac", out]
     _ff(cmd)
 

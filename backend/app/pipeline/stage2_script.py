@@ -58,7 +58,8 @@ async def distill_weekly_sections(weekly_items: list[dict], text_provider) -> li
             prompt="本周资讯条目：\n" + text, system_prompt=resolve_prompt("weekly_digest"))
         sections = _parse_json(resp).get("sections", [])
     except Exception:
-        log.warning("[S1] weekly distill parse failed")
+        # 含 provider 鉴权/网络错误：记完整堆栈再兜底，避免静默退化成 category 分组
+        log.exception("[S1] weekly distill failed (provider/parse) — 将按 category 兜底")
         sections = []
     sections = [s for s in sections if s.get("items")]
     if not sections:

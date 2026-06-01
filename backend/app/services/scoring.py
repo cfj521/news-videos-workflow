@@ -201,8 +201,11 @@ class ScoringService:
             score = parsed["score"]
             if isinstance(score, (int, float)) and 0 <= score <= 10:
                 return parsed
-            parsed["score"] = max(0, min(10, int(score)))
-            return parsed
+            try:
+                parsed["score"] = max(0, min(10, int(float(score))))
+                return parsed
+            except (ValueError, TypeError):
+                pass  # score 非数值（如 "高"）→ 落到下面的数字提取兜底，而非丢弃整条结果
 
         # Last resort: extract number
         nums = re.findall(r"\b(\d+)\b", result_text)

@@ -4,13 +4,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.providers.base import ProviderError
-from app.providers.video.comfyui_video import ComfyUIVideoProvider, _snap_4n1
+from app.providers.video.comfyui_video import ComfyUIVideoProvider, _snap_frames
 
 
-def test_snap_4n1():
-    assert _snap_4n1(1) == 5
-    assert _snap_4n1(120) == 121
-    assert _snap_4n1(10**9) == 257
+def test_snap_frames():
+    assert _snap_frames(1) == 5            # 4n+1 下限
+    assert _snap_frames(120) == 121        # 4n+1
+    assert _snap_frames(10**9) == 257      # 上限
+    assert (_snap_frames(60, 8) - 1) % 8 == 0   # LTX 8n+1 对齐
+    assert (_snap_frames(53, 8) - 1) % 8 == 0
 
 
 @pytest.mark.asyncio
