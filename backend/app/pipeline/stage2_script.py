@@ -2,125 +2,11 @@ import json
 import time
 
 from app.logging import get_logger
+from app.prompts import resolve_prompt
 from app.providers.base import RawArticleData, TextProvider
 
 log = get_logger("stage2")
 
-SCRIPT_SYSTEM_PROMPT = """你是一个专业的新闻视频分镜脚本编写者。根据新闻原文生成一个视频分镜脚本。
-
-输出要求：
-1. 纯 JSON 格式，不要包含 markdown 标记
-2. 旁白文案用口语化中文，像是一个专业新闻主播在播报
-3. 每个分镜 3-8 秒，整个视频 30-90 秒
-4. image_prompt 用英文，描述一张静态画面的构图、色调、风格
-5. motion_prompt 用英文，描述镜头运动方向（用于视频动效）
-6. 第一个分镜作为开场引入，最后一个分镜作为总结
-
-输出 JSON 结构：
-{
-  "title": "视频标题（中文，吸引眼球）",
-  "description": "视频简介（中文，1-2句话）",
-  "tags": ["标签1", "标签2"],
-  "scenes": [
-    {
-      "id": 1,
-      "narration": "旁白文本（中文）",
-      "image_prompt": "Scene description in English with composition, color, style",
-      "motion_prompt": "Camera slowly zooms in, particles floating",
-      "duration_hint": 5
-    }
-  ]
-}"""
-
-DAILY_DIGEST_SYSTEM_PROMPT = """你是一个专业的 AI 资讯日报播报脚本编写者。根据下面整理好的「今日 AI 日报」生成一个汇总播报视频分镜脚本。
-
-输出要求：
-1. 纯 JSON 格式，不要包含 markdown 标记
-2. 旁白文案用口语化中文，像新闻主播在播报当日 AI 资讯汇总
-3. 第一个分镜根据日报开场语作总览引入，最后一个分镜作总结
-4. 中间每条重要资讯一个分镜，按重要性挑选，**总分镜数不超过 10 个**
-5. 每个分镜 4-8 秒
-6. image_prompt 用英文，描述静态画面的构图、色调、风格
-7. motion_prompt 用英文，描述镜头运动方向
-
-输出 JSON 结构：
-{
-  "title": "视频标题（中文，吸引眼球）",
-  "description": "视频简介（中文，1-2句话）",
-  "tags": ["标签1", "标签2"],
-  "scenes": [
-    {
-      "id": 1,
-      "narration": "旁白文本（中文）",
-      "image_prompt": "Scene description in English",
-      "motion_prompt": "Camera slowly zooms in",
-      "duration_hint": 5
-    }
-  ]
-}"""
-
-
-async def run_stage2(
-    article: RawArticleData,
-    text_provider: TextProvider,
-    language: str = "zh",
-    style: str = "single",
-) -> dict:
-    log.info("Generating script (style=%s) for: '%s' (%d chars)", style, article.title, len(article.content))
-    t0 = time.time()
-
-    if style == "daily":
-        system_prompt = DAILY_DIGEST_SYSTEM_PROMPT
-        content_limit = 8000
-    else:
-        system_prompt = SCRIPT_SYSTEM_PROMPT
-        content_limit = 3000
-
-    prompt = f"""请为以下内容生成视频分镜脚本：
-
-标题：{article.title}
-来源：{article.source_name}
-原文：
-{article.content[:content_limit]}
-"""
-
-    response = await text_provider.generate(prompt=prompt, system_prompt=system_prompt)
-    log.debug("Raw response: %d chars", len(response))
-
-    cleaned = response.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[1]
-        cleaned = cleaned.rsplit("```", 1)[0]
-
-    try:
-        result = json.loads(cleaned)
-    except json.JSONDecodeError:
-        log.error("Failed to parse script JSON — raw response:\n%s", cleaned[:500])
-        raise
-
-    scene_count = len(result.get("scenes", []))
-    log.info("Script generated: '%s' — %d scenes in %.1fs", result.get("title", "?"), scene_count, time.time() - t0)
-    return result
-
-
-ROUNDUP_ARTICLE_SYSTEM_PROMPT = """你是新闻汇总短视频的分镜脚本编写者。下面给你一条资讯，为它生成 1~3 个分镜（内容多/重要则多，简短则 1 个）。
-输出纯 JSON（无 markdown 标记）：
-{"scenes":[{"narration":"口语化中文旁白","image_prompt":"English static scene description","motion_prompt":"English camera motion","duration_hint":5}]}
-要求：旁白像新闻主播口播；image_prompt 用英文描述构图/色调/风格；分镜数不超过 3。"""
-
-DAILY_BATCH_SYSTEM_PROMPT = """你是 AI 资讯日报短视频的分镜脚本编写者。下面给你同一类目下的若干条资讯，请**每条资讯生成 1 个分镜**，顺序与给定一致。
-输出纯 JSON（无 markdown 标记）：
-{"scenes":[{"narration":"...","image_prompt":"...","motion_prompt":"...","duration_hint":5}]}
-分镜数量须等于给定资讯条数。"""
-
-SUMMARY_META_SYSTEM_PROMPT = """你是短视频运营。下面给你一条汇总视频包含的各条资讯标题，生成整条视频的吸睛标题与简介。
-输出纯 JSON（无 markdown 标记）：{"title":"中文标题","description":"1-2句中文简介","tags":["标签1","标签2"]}"""
-
-WEEKLY_DIGEST_SYSTEM_PROMPT = """你是 AI 资讯周报编辑。下面给你过去一整周的全部资讯条目（含日期/分类线索）。
-请跨天归纳出**本周 3-5 个最重要的热点主题**，每个主题挑 1-3 条最有代表性的资讯，**全部主题的资讯总条数不超过 9 条**。
-要求：体现"本周"视角（趋势、归纳），合并跨天对同一事件的重复报道。
-输出纯 JSON（无 markdown 标记）：
-{"sections":[{"label":"主题名(中文)","items":[{"title":"资讯标题","summary":"一句话摘要"}]}]}"""
 
 
 def _parse_json(response: str) -> dict:
@@ -169,7 +55,7 @@ async def distill_weekly_sections(weekly_items: list[dict], text_provider) -> li
     text = _sample_weekly_items(weekly_items)
     try:
         resp = await text_provider.generate(
-            prompt="本周资讯条目：\n" + text, system_prompt=WEEKLY_DIGEST_SYSTEM_PROMPT)
+            prompt="本周资讯条目：\n" + text, system_prompt=resolve_prompt("weekly_digest"))
         sections = _parse_json(resp).get("sections", [])
     except Exception:
         log.warning("[S1] weekly distill parse failed")
@@ -197,7 +83,7 @@ def _batch_items(n: int) -> list[int]:
 
 async def _gen_article_scenes(article, tp) -> list[dict]:
     prompt = f"标题：{article.title}\n来源：{article.source_name}\n内容：\n{(article.content or article.title)[:2000]}"
-    resp = await tp.generate(prompt=prompt, system_prompt=ROUNDUP_ARTICLE_SYSTEM_PROMPT)
+    resp = await tp.generate(prompt=prompt, system_prompt=resolve_prompt("roundup_article"))
     try:
         scenes = _parse_json(resp).get("scenes", [])
     except Exception:
@@ -210,7 +96,7 @@ async def _gen_article_scenes(article, tp) -> list[dict]:
 
 async def _gen_daily_batch_scenes(items: list[dict], tp) -> list[dict]:
     lines = [f"{i + 1}. 「{it.get('title', '')}」{it.get('summary', '')}" for i, it in enumerate(items)]
-    resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=DAILY_BATCH_SYSTEM_PROMPT)
+    resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=resolve_prompt("daily_batch"))
     try:
         scenes = _parse_json(resp).get("scenes", [])
     except Exception:
@@ -222,7 +108,7 @@ async def _gen_daily_batch_scenes(items: list[dict], tp) -> list[dict]:
 
 
 async def _gen_summary_meta(titles: list[str], tp) -> dict:
-    resp = await tp.generate(prompt="各条资讯标题：\n" + "\n".join(f"- {t}" for t in titles), system_prompt=SUMMARY_META_SYSTEM_PROMPT)
+    resp = await tp.generate(prompt="各条资讯标题：\n" + "\n".join(f"- {t}" for t in titles), system_prompt=resolve_prompt("summary_meta"))
     try:
         m = _parse_json(resp)
     except Exception:

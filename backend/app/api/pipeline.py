@@ -549,10 +549,11 @@ async def add_scene(run_id: int, body: _AddSceneBody):
     src = articles[si] if 0 <= si < len(articles) else {}
     src_text = f"标题：{src.get('title', '')}\n内容：\n{(src.get('content') or '')[:2000]}"
 
-    from app.pipeline.stage2_script import ROUNDUP_ARTICLE_SYSTEM_PROMPT, _parse_json
+    from app.pipeline.stage2_script import _parse_json
+    from app.prompts import resolve_prompt
     tp = _build_text_provider()
     prompt = f"{src_text}\n\n额外要求：{body.requirement or '补充一个新分镜'}\n只输出 1 个分镜。"
-    resp = await tp.generate(prompt=prompt, system_prompt=ROUNDUP_ARTICLE_SYSTEM_PROMPT)
+    resp = await tp.generate(prompt=prompt, system_prompt=resolve_prompt("roundup_article"))
     try:
         gen = _parse_json(resp).get("scenes") or []
     except Exception:

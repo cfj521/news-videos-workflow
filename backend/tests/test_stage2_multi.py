@@ -131,3 +131,17 @@ async def test_multi_weekly_groups_like_daily():
     assert all(g["source_index"] == 0 for g in script["groups"])
     assert len(script["scenes"]) == 3
     assert len(script["scenes"]) <= 10
+
+
+from app import config
+from app.pipeline.stage2_script import _gen_article_scenes
+
+
+@pytest.mark.asyncio
+async def test_gen_article_scenes_uses_prompt_override(monkeypatch):
+    monkeypatch.setattr(config, "_settings", config.Settings(prompts={"roundup_article": "MY_OVERRIDE_PROMPT"}))
+    tp = AsyncMock()
+    tp.generate.return_value = json.dumps({"scenes": [{"narration": "x", "image_prompt": "p", "motion_prompt": "m", "duration_hint": 5}]})
+    art = RawArticleData(title="t", content="c", source_url="u", source_name="s")
+    await _gen_article_scenes(art, tp)
+    assert tp.generate.call_args.kwargs["system_prompt"] == "MY_OVERRIDE_PROMPT"
