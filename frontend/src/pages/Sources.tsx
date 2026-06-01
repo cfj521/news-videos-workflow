@@ -164,13 +164,13 @@ function AIHotGroupCard({ source, customIds, onChange }: {
         </button>
       </div>
       <div className="flex items-center gap-2 mb-3">
-        {(["items", "daily"] as const).map((m) => (
+        {(["items", "daily", "weekly"] as const).map((m) => (
           <button
             key={m}
             onClick={() => setConfig({ method: m })}
             className={segItem(method === m)}
           >
-            {m === "items" ? "动态" : "日报"}
+            {m === "items" ? "动态" : m === "daily" ? "日报" : "周报"}
           </button>
         ))}
       </div>

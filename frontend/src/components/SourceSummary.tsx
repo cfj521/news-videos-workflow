@@ -23,7 +23,7 @@ export function SourceSummary() {
       {sources === undefined ? (
         <span className="text-white/30">加载中…</span>
       ) : aihot ? (
-        <span className="text-blue-300">{aihot.name} · {method === "daily" ? "每日日报" : "动态聚合"}</span>
+        <span className="text-blue-300">{aihot.name} · {method === "daily" ? "每日日报" : method === "weekly" ? "每周周报" : "动态聚合"}</span>
       ) : customNames.length > 0 ? (
         <span className="text-white/70">{customNames.join("、")}</span>
       ) : (

@@ -67,8 +67,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
     try { return (JSON.parse(aihotSource.config_json ?? "{}") as { method?: string }).method ?? "items"; }
     catch { return "items"; }
   })();
-  // 仅日报模式忽略时间范围与文章数；动态(items)模式两者仍生效
-  const isAihotDaily = aihotMethod === "daily";
+  // 日报/周报模式忽略时间范围与文章数；动态(items)模式两者仍生效
+  const isAihotDigest = aihotMethod === "daily" || aihotMethod === "weekly";
 
   const audioOnly = videoRoute === "audio";
   const excludedMedia = audioOnly ? "video" : "audio";
@@ -211,7 +211,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           )}
         </div>
 
-        {autoCollect && !isAihotDaily && (
+        {autoCollect && !isAihotDigest && (
           <div className="grid grid-cols-2 gap-3 mb-5">
             <div>
               <label className={labelCls}>时间范围</label>
