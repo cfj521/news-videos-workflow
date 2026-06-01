@@ -110,3 +110,24 @@ async def test_distill_weekly_falls_back_on_bad_json():
     assert {s["label"] for s in sections} == {"模型", "产品", "行业"}
     for s in sections:
         assert all("title" in it and "summary" in it for it in s["items"])
+
+
+@pytest.mark.asyncio
+async def test_multi_weekly_groups_like_daily():
+    tp = AsyncMock()
+    tp.generate.side_effect = [
+        _scenes_json("w1"),                                  # 主题1 一条
+        _scenes_json("w2", "w3"),                            # 主题2 两条
+        json.dumps({"title": "周报汇总", "description": "d", "tags": []}),
+    ]
+    sections = [
+        {"label": "大模型进展", "items": [{"title": "GPT", "summary": "s"}]},
+        {"label": "行业动态", "items": [{"title": "融资", "summary": "s"}, {"title": "收购", "summary": "s"}]},
+    ]
+    art = RawArticleData(title="本周回顾", content="c", source_url="u", source_name="AI HOT 周报",
+                         metadata={"aihot_method": "weekly", "daily_sections": sections})
+    script = await run_stage2_multi([art], tp)
+    assert [g["title"] for g in script["groups"]] == ["大模型进展", "行业动态"]
+    assert all(g["source_index"] == 0 for g in script["groups"])
+    assert len(script["scenes"]) == 3
+    assert len(script["scenes"]) <= 10

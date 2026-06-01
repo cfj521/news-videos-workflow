@@ -239,7 +239,7 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
 
     for idx, article in enumerate(articles):
         sections = article.metadata.get("daily_sections")
-        if article.metadata.get("aihot_method") == "daily" and sections:
+        if article.metadata.get("aihot_method") in ("daily", "weekly") and sections:
             for section in sections:
                 label = section.get("label", "")
                 items = section.get("items", [])
