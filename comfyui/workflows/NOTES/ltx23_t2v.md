@@ -42,7 +42,7 @@ SaveVideo                      # 输出 MP4
 |------|------------|----------------|
 | 主模型（checkpoint） | `ltx-2.3-22b-dev-fp8.safetensors` | `ltx-2.3-22b-dev-fp8.safetensors` ✅ 一致 |
 | 蒸馏 LoRA | `ltx-2.3-22b-distilled-lora-384-1.1.safetensors` | `ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors` ⚠️ 不同 |
-| 文本编码器（Gemma） | `gemma3_12b_fp8_comfyquant.safetensors`（本地重打包） | `gemma_3_12B_it_fp4_mixed.safetensors` ⚠️ 不同 |
+| 文本编码器（Gemma） | `gemma_3_12B_it_fp4_mixed.safetensors`（本地重打包） | `gemma_3_12B_it_fp4_mixed.safetensors` ⚠️ 不同 |
 | Audio VAE | `ltx-2.3-22b-dev-fp8.safetensors`（同主模型文件） | `ltx-2.3-22b-dev-fp8.safetensors` ✅ 一致 |
 | 空间上采样器 | **跳过**（单阶段） | `ltx-2.3-spatial-upscaler-x2-1.1.safetensors` |
 
@@ -58,7 +58,7 @@ SaveVideo                      # 输出 MP4
 3. HF 分片不包含 `spiece_model` tokenizer tensor（ComfyUI 用它初始化 SentencePiece）
 4. 22.7GB BF16 + 11GB LTX fp8 = 33.7GB，超出 24GB 显存
 
-**解决方案**：本地重打包生成 `gemma3_12b_fp8_comfyquant.safetensors`（13.2GB）：
+**解决方案**：本地重打包生成 `gemma_3_12B_it_fp4_mixed.safetensors`（13.2GB）：
 - 读取全部 5 个 HF 分片，key 前缀 `language_model.` → 去掉（`model.layers.X...`）
 - 线性层权重（2D BF16）→ fp8_e4m3fn 量化（有损，scale=1.0）
 - 非线性层（LayerNorm、Embedding 等 1D/非weight BF16）→ 保持 BF16
@@ -134,7 +134,7 @@ $out = "D:\models\comfyui\text_encoders\gemma_3_12B_it_fp4_mixed.safetensors"
 curl.exe -L -C - -o $out $url --progress-bar
 ```
 
-下载后修改 `ltx23_t2v.api.json` 中的 `text_encoder` 字段为 `gemma_3_12B_it_fp4_mixed.safetensors`，并删除 `gemma3_12b_fp8_comfyquant.safetensors`。
+下载后修改 `ltx23_t2v.api.json` 中的 `text_encoder` 字段为 `gemma_3_12B_it_fp4_mixed.safetensors`，并删除 `gemma_3_12B_it_fp4_mixed.safetensors`。
 
 ---
 
@@ -148,6 +148,6 @@ curl.exe -L -C - -o $out $url --progress-bar
 
 | 文件 | 位置 | 说明 |
 |------|------|------|
-| `gemma3_12b_fp8_comfyquant.safetensors` | `D:\models\comfyui\text_encoders\` | 重打包的 Gemma fp8，本工作流专用 |
+| `gemma_3_12B_it_fp4_mixed.safetensors` | `D:\models\comfyui\text_encoders\` | 重打包的 Gemma fp8，本工作流专用 |
 | `gemma3_12b_spiece_only.safetensors` | `D:\models\comfyui\text_encoders\` | 仅含 tokenizer（调试用，可删除） |
 | `gemma3_12b_fp8_scaled.safetensors` | `D:\models\comfyui\text_encoders\` | 早期尝试版本（无 weight_scale，无法使用，可删除） |

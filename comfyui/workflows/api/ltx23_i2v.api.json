@@ -56,36 +56,28 @@
     "class_type": "LTXVAudioVAELoader",
     "_meta": { "title": "LTX Audio VAE Loader" }
   },
-  "8": {
-    "inputs": {
-      "width": "__WIDTH__",
-      "height": "__HEIGHT__",
-      "length": "__LENGTH__",
-      "batch_size": 1
-    },
-    "class_type": "EmptyLTXVLatentVideo",
-    "_meta": { "title": "Empty Video Latent" }
-  },
   "9": {
     "inputs": {
-      "width": "__WIDTH__",
-      "height": "__HEIGHT__",
-      "batch_size": 1,
-      "color": 0
+      "image": "__INPUT_IMAGE__",
+      "upload": "image"
     },
-    "class_type": "EmptyImage",
-    "_meta": { "title": "Empty Image (T2V bypass placeholder)" }
+    "class_type": "LoadImage",
+    "_meta": { "title": "Load Input Image (I2V start frame)" }
   },
   "10": {
     "inputs": {
+      "positive": ["4", 0],
+      "negative": ["4", 1],
       "vae": ["5", 2],
       "image": ["9", 0],
-      "latent": ["8", 0],
-      "strength": 1.0,
-      "bypass": true
+      "width": "__WIDTH__",
+      "height": "__HEIGHT__",
+      "length": "__LENGTH__",
+      "batch_size": 1,
+      "strength": 1.0
     },
-    "class_type": "LTXVImgToVideoInplace",
-    "_meta": { "title": "Img-to-Video Inplace (bypass=true for T2V)" }
+    "class_type": "LTXVImgToVideo",
+    "_meta": { "title": "LTX Img-to-Video: conditions on start frame, outputs (positive, negative, latent)" }
   },
   "11": {
     "inputs": {
@@ -99,7 +91,7 @@
   },
   "12": {
     "inputs": {
-      "video_latent": ["10", 0],
+      "video_latent": ["10", 2],
       "audio_latent": ["11", 0]
     },
     "class_type": "LTXVConcatAVLatent",
@@ -108,12 +100,12 @@
   "13": {
     "inputs": {
       "model": ["6", 0],
-      "positive": ["4", 0],
-      "negative": ["4", 1],
+      "positive": ["10", 0],
+      "negative": ["10", 1],
       "cfg": 1.0
     },
     "class_type": "CFGGuider",
-    "_meta": { "title": "CFG Guider (cfg=1 for distilled)" }
+    "_meta": { "title": "CFG Guider (cfg=1 for distilled, uses image-conditioned cond from LTXVImgToVideo)" }
   },
   "14": {
     "inputs": {
@@ -177,7 +169,7 @@
   "21": {
     "inputs": {
       "video": ["20", 0],
-      "filename_prefix": "video/LTX23_t2v",
+      "filename_prefix": "video/LTX23_i2v",
       "format": "mp4",
       "codec": "h264"
     },
