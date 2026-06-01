@@ -12,7 +12,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import get_settings, reload_settings
 from app.logging import get_logger, get_run_logger
 from app.models.pipeline_run import PipelineRun
 from app.providers.base import ImageProvider, ProviderError
@@ -332,6 +332,7 @@ def _humanize_error(exc: Exception, stage: int | None = None) -> str:
 
 
 async def execute_pipeline(run_id: int, db_factory) -> None:
+    reload_settings()  # 每次运行重载配置（含可编辑提示词），保证跨进程 worker 也拿到最新值
     db: Session = db_factory()
     try:
         await _run_inner(run_id, db)

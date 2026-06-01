@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db, get_session_factory
 from app.services.document_import import import_file, import_url
-from app.config import get_settings
+from app.config import get_settings, reload_settings
 from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
@@ -462,6 +462,7 @@ async def _reroll_articles_async(run_id: int, session_factory):
     from app.pipeline.stage1_collect import run_stage1
     from app.pipeline.runner import _summarize_articles, _save_articles, _update as runner_update, _distill_weekly_if_needed
 
+    reload_settings()  # 重载配置，保证拿到最新提示词
     db = session_factory()
     try:
         run = db.get(PipelineRun, run_id)
@@ -659,6 +660,7 @@ async def _render_video_async(run_id: int, session_factory):
     from app.pipeline.stage5_compose import run_stage5
     from app.pipeline.runner import _ffmpeg_compose
 
+    reload_settings()  # 重载配置（视频/LTX 等），保证跨进程拿到最新值
     db = session_factory()
     try:
         run = db.get(PipelineRun, run_id)
