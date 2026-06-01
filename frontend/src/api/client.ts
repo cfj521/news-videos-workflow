@@ -24,7 +24,7 @@ export interface AppSettings {
   pipeline: { default_time_range: string; default_max_articles: number; default_video_route: string; default_language: string; dedup_lookback: string };
   storage: { work_dir: string; output_dir: string };
   video: { resolution: string; aspect_ratio: string; fps: string; scene_gap_ms: number; transition: string };
-  ltx: { model_dir: string; checkpoint: string; upsampler: string; distilled_lora: string; lora_strength: number; gemma_dir: string; inference_steps: number; cfg_scale: number; stg_scale: number; fps: number; use_fp8: boolean };
+  comfyui: { server_url: string; video_workflow: string; video_fps: number };
   prompts: Record<string, string>;
 }
 

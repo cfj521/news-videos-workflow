@@ -37,7 +37,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [timeRange, setTimeRange] = useState("7d");
   const [maxArticles, setMaxArticles] = useState(5);
   const [autoCollect, setAutoCollect] = useState(true);
-  const [videoRoute, setVideoRoute] = useState("hyperframes");
+  const [videoRoute, setVideoRoute] = useState("comfyui");
   const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5]));
   const [platforms, setPlatforms] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -186,7 +186,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
             <label className={labelCls}>音视频路线</label>
             <Select value={videoRoute} onChange={setVideoRoute} options={[
               { value: "hyperframes", label: "Hyperframes" },
-              { value: "ltx", label: "LTX 2.3" },
+              { value: "comfyui", label: "ComfyUI" },
               { value: "audio", label: "纯语音" },
             ]} />
           </div>

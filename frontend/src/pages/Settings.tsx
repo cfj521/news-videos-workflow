@@ -246,10 +246,10 @@ const EMPTY_SETTINGS: AppSettings = {
   summary: { enabled: true, provider: "", base_url: "", model: "", api_key: "", max_length: 150 },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
-  pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "hyperframes", default_language: "zh", dedup_lookback: "30d" },
+  pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui", default_language: "zh", dedup_lookback: "30d" },
   storage: { work_dir: "", output_dir: "" },
   video: { resolution: "1080x1920", aspect_ratio: "9:16", fps: "30", scene_gap_ms: 500, transition: "crossfade" },
-  ltx: { model_dir: "", checkpoint: "ltx-2.3-22b-distilled-1.1.safetensors", upsampler: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors", distilled_lora: "ltx-2.3-22b-distilled-lora-384.safetensors", lora_strength: 0.6, gemma_dir: "", inference_steps: 8, cfg_scale: 3.0, stg_scale: 1.0, fps: 25.0, use_fp8: true },
+  comfyui: { server_url: "http://127.0.0.1:8188", video_workflow: "wan5b", video_fps: 24 },
   prompts: {},
 };
 
@@ -418,7 +418,7 @@ export function SettingsPage() {
         </Field>
         <Field label="视频路线">
           <Select value={settings.pipeline.default_video_route} onChange={(v) => patch("pipeline", { default_video_route: v })} options={[
-            { value: "hyperframes", label: "Hyperframes (MVP)" }, { value: "ltx", label: "LTX 2.3" },
+            { value: "hyperframes", label: "Hyperframes (MVP)" }, { value: "comfyui", label: "ComfyUI" },
           ]} />
         </Field>
         <Field label="语言">
@@ -472,10 +472,22 @@ export function SettingsPage() {
       </>)}
 
       {activeTab === "video" && (
-        <div className="rounded-lg bg-white/[0.02] border border-white/[0.06] px-4 py-10 text-center">
-          <p className="text-sm text-white/40">ComfyUI 工作流配置将在后端接入完成后开放。</p>
-          <p className="text-xs text-white/25 mt-1">当前可用的工作流见 comfyui/workflows/，可在 ComfyUI 编辑器调试。</p>
-        </div>
+        <Section title="ComfyUI 视频生成" desc="本地 ComfyUI 图生视频（i2v）。需 ComfyUI 运行中。">
+          <Field label="ComfyUI 地址">
+            <input value={settings.comfyui.server_url} onChange={(e) => patch("comfyui", { server_url: e.target.value })} className={monoInputCls} />
+          </Field>
+          <Field label="视频模式">
+            <Select value={settings.comfyui.video_workflow} onChange={(v) => patch("comfyui", { video_workflow: v })} options={[
+              { value: "wan5b", label: "Wan2.2 5B (默认/快)" }, { value: "wan14b", label: "Wan2.2 14B (质量)" },
+              { value: "wan14b_lightx2v", label: "Wan2.2 14B Lightx2v (4步快)" }, { value: "ltx", label: "LTX 2.3" },
+            ]} />
+          </Field>
+          <Field label="帧率">
+            <Select value={String(settings.comfyui.video_fps)} onChange={(v) => patch("comfyui", { video_fps: Number(v) })} options={[
+              { value: "16", label: "16" }, { value: "24", label: "24" }, { value: "25", label: "25" },
+            ]} />
+          </Field>
+        </Section>
       )}
 
       {activeTab === "prompts" && (<>

@@ -1,7 +1,7 @@
 export interface PipelineRun {
   id: number;
   mode: "auto" | "manual";
-  video_route: "hyperframes" | "ltx" | "audio";
+  video_route: "hyperframes" | "comfyui" | "audio";
   status: "pending" | "processing" | "review" | "done" | "failed";
   current_stage: number | null;
   time_range: string;
@@ -55,7 +55,7 @@ export const VISIBLE_STAGES = [1, 2, 4, 5, 6] as const;
 
 export const VIDEO_ROUTE_LABELS: Record<string, string> = {
   hyperframes: "Hyperframes",
-  ltx: "LTX 2.3",
+  comfyui: "ComfyUI",
   audio: "纯语音",
 };
 

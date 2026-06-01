@@ -786,7 +786,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     >
       <div className="flex justify-between items-center mb-3">
         <h4 className={sectionTitleCls}>
-          {isHyperframes ? "Hyperframes HTML 预览" : "LTX 视频预览"}
+          {isHyperframes ? "Hyperframes HTML 预览" : "视频预览"}
         </h4>
       </div>
       <div
