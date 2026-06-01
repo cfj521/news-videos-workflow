@@ -512,7 +512,8 @@ async def regen_scene_prompt(run_id: int, scene_id: int, body: RegenPromptReques
         raise HTTPException(status_code=400, detail="No script")
 
     text_provider = _build_text_provider()
-    system = "你是一个视频图片提示词专家。根据旁白文本生成一段详细的AI图片生成提示词（英文），描述一张能够配合旁白内容的画面。只输出提示词本身，不要其他内容。"
+    from app.prompts import resolve_prompt
+    system = resolve_prompt("image_regen")
     result = await text_provider.generate(prompt=body.narration, system_prompt=system)
     new_prompt = result.strip()
 

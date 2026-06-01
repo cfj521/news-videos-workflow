@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 
 from app.logging import get_logger
+from app.prompts import resolve_prompt
 from app.providers.base import RawArticleData
 
 log = get_logger("service.scoring")
@@ -78,28 +79,6 @@ def _parse_json_response(text: str) -> dict | None:
         except Exception:
             pass
     return None
-
-
-# ── Scoring prompt (structured JSON output, Horizon style) ──
-
-SCORING_SYSTEM_PROMPT = """你是新闻评分专家。根据以下标准为新闻打分（0-10 整数）：
-
-评分标准：
-- 9-10：重大突破、范式转变、广泛使用的技术的重大版本发布
-- 7-8：有深度的技术文章、新颖方法、有洞见的分析
-- 5-6：增量改进、有用教程、中等社区兴趣
-- 3-4：小更新、常识内容、过度宣传
-- 0-2：垃圾、纯推广、离题、琐碎更新
-
-评分要考虑：
-- 技术深度和新颖性
-- 对领域的潜在影响
-- 写作/展示质量
-- 与 AI/ML、软件工程的相关性
-- 社区互动信号（高投票+有质量的讨论 = 社区验证的重要性）
-
-输出纯 JSON，不要 markdown 标记：
-{"score": <0-10整数>, "reason": "<一句话理由>", "tags": ["<标签1>", "<标签2>"]}"""
 
 
 class ScoringService:
@@ -214,7 +193,7 @@ class ScoringService:
 
         result_text = await text_provider.generate(
             prompt="\n".join(prompt_parts),
-            system_prompt=SCORING_SYSTEM_PROMPT,
+            system_prompt=resolve_prompt("news_scoring"),
         )
 
         parsed = _parse_json_response(result_text)

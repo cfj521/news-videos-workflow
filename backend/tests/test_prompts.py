@@ -41,3 +41,11 @@ def test_resolve_prefers_override(monkeypatch):
 def test_resolve_falls_back_to_default_on_blank(monkeypatch):
     monkeypatch.setattr(config, "_settings", config.Settings(prompts={"news_scoring": "   "}))
     assert resolve_prompt("news_scoring") == DEFAULTS["news_scoring"]
+
+
+def test_scoring_uses_resolver(monkeypatch):
+    import app.services.scoring as scoring
+    monkeypatch.setattr(config, "_settings", config.Settings(prompts={"news_scoring": "SCORE_OVERRIDE"}))
+    from app.prompts import resolve_prompt
+    assert resolve_prompt("news_scoring") == "SCORE_OVERRIDE"
+    assert not hasattr(scoring, "SCORING_SYSTEM_PROMPT")

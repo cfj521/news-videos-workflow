@@ -166,9 +166,10 @@ def _build_summary_provider(cfg):
 
 
 async def _summarize_articles(articles, cfg, run, db, log):
+    from app.prompts import resolve_prompt
     tp = _build_summary_provider(cfg)
     max_len = cfg.summary.max_length
-    sys_prompt = f"用中文为新闻文章生成简洁摘要，不超过{max_len}字。只输出摘要文本。"
+    sys_prompt = resolve_prompt("article_summary") + f"（摘要不超过{max_len}字）"
     for i, a in enumerate(articles):
         try:
             _update(db, run, progress_detail=f"S1 生成摘要中 ({i+1}/{len(articles)})...")
