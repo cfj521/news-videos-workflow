@@ -103,6 +103,16 @@ class StorageCfg(BaseModel):
     output_dir: str = ""
 
 
+class PromptsCfg(BaseModel):
+    roundup_article: str = ""
+    daily_batch: str = ""
+    summary_meta: str = ""
+    weekly_digest: str = ""
+    image_regen: str = ""
+    article_summary: str = ""
+    news_scoring: str = ""
+
+
 class Settings(BaseModel):
     infra: InfraCfg = InfraCfg()
     storage: StorageCfg = StorageCfg()
@@ -116,6 +126,7 @@ class Settings(BaseModel):
     pipeline: PipelineCfg = PipelineCfg()
     video: VideoCfg = VideoCfg()
     ltx: LTXCfg = LTXCfg()
+    prompts: PromptsCfg = PromptsCfg()
 
     def runs_root(self) -> Path:
         """任务工作目录的根：配置了 storage.work_dir 用它，否则回退 data_dir/runs。"""
