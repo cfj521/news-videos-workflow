@@ -42,7 +42,10 @@
   "6": {
     "inputs": {
       "text": "__POSITIVE_PROMPT__",
-      "clip": ["38", 0]
+      "clip": [
+        "38",
+        0
+      ]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
@@ -52,7 +55,10 @@
   "7": {
     "inputs": {
       "text": "__NEGATIVE_PROMPT__",
-      "clip": ["38", 0]
+      "clip": [
+        "38",
+        0
+      ]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
@@ -61,7 +67,10 @@
   },
   "48": {
     "inputs": {
-      "model": ["37", 0],
+      "model": [
+        "37",
+        0
+      ],
       "shift": 8.0
     },
     "class_type": "ModelSamplingSD3",
@@ -71,8 +80,14 @@
   },
   "55": {
     "inputs": {
-      "vae": ["39", 0],
-      "start_image": ["57", 0],
+      "vae": [
+        "39",
+        0
+      ],
+      "start_image": [
+        "57",
+        0
+      ],
       "width": "__WIDTH__",
       "height": "__HEIGHT__",
       "length": "__LENGTH__",
@@ -85,10 +100,22 @@
   },
   "3": {
     "inputs": {
-      "model": ["48", 0],
-      "positive": ["6", 0],
-      "negative": ["7", 0],
-      "latent_image": ["55", 0],
+      "model": [
+        "48",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "55",
+        0
+      ],
       "seed": "__SEED__",
       "steps": 30,
       "cfg": 5.0,
@@ -103,26 +130,46 @@
   },
   "8": {
     "inputs": {
-      "samples": ["3", 0],
-      "vae": ["39", 0]
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
     },
     "class_type": "VAEDecode",
     "_meta": {
       "title": "VAE Decode"
     }
   },
-  "28": {
+  "58": {
+    "class_type": "CreateVideo",
     "inputs": {
-      "images": ["8", 0],
-      "filename_prefix": "ComfyUI",
-      "fps": 24.0,
-      "lossless": false,
-      "quality": 80,
-      "method": "default"
+      "images": [
+        "8",
+        0
+      ],
+      "fps": 24.0
     },
-    "class_type": "SaveAnimatedWEBP",
     "_meta": {
-      "title": "Save AnimatedWEBP"
+      "title": "Create Video"
+    }
+  },
+  "59": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "58",
+        0
+      ],
+      "filename_prefix": "video/wan22_5b_i2v",
+      "format": "mp4",
+      "codec": "h264"
+    },
+    "_meta": {
+      "title": "Save Video"
     }
   }
 }

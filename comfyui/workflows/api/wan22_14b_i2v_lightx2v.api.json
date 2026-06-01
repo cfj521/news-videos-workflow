@@ -21,7 +21,10 @@
   },
   "100": {
     "inputs": {
-      "model": ["37", 0],
+      "model": [
+        "37",
+        0
+      ],
       "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
       "strength_model": 1.0
     },
@@ -32,7 +35,10 @@
   },
   "101": {
     "inputs": {
-      "model": ["56", 0],
+      "model": [
+        "56",
+        0
+      ],
       "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
       "strength_model": 1.0
     },
@@ -63,7 +69,10 @@
   },
   "54": {
     "inputs": {
-      "model": ["100", 0],
+      "model": [
+        "100",
+        0
+      ],
       "shift": 5.0
     },
     "class_type": "ModelSamplingSD3",
@@ -73,7 +82,10 @@
   },
   "55": {
     "inputs": {
-      "model": ["101", 0],
+      "model": [
+        "101",
+        0
+      ],
       "shift": 5.0
     },
     "class_type": "ModelSamplingSD3",
@@ -84,7 +96,10 @@
   "6": {
     "inputs": {
       "text": "__POSITIVE_PROMPT__",
-      "clip": ["38", 0]
+      "clip": [
+        "38",
+        0
+      ]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
@@ -94,7 +109,10 @@
   "7": {
     "inputs": {
       "text": "__NEGATIVE_PROMPT__",
-      "clip": ["38", 0]
+      "clip": [
+        "38",
+        0
+      ]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
@@ -112,10 +130,22 @@
   },
   "50": {
     "inputs": {
-      "positive": ["6", 0],
-      "negative": ["7", 0],
-      "vae": ["39", 0],
-      "start_image": ["52", 0],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "start_image": [
+        "52",
+        0
+      ],
       "width": "__WIDTH__",
       "height": "__HEIGHT__",
       "length": "__LENGTH__",
@@ -128,16 +158,28 @@
   },
   "57": {
     "inputs": {
-      "model": ["54", 0],
+      "model": [
+        "54",
+        0
+      ],
       "add_noise": "enable",
       "noise_seed": "__SEED__",
       "steps": 4,
       "cfg": 1.0,
       "sampler_name": "euler",
       "scheduler": "simple",
-      "positive": ["50", 0],
-      "negative": ["50", 1],
-      "latent_image": ["50", 2],
+      "positive": [
+        "50",
+        0
+      ],
+      "negative": [
+        "50",
+        1
+      ],
+      "latent_image": [
+        "50",
+        2
+      ],
       "start_at_step": 0,
       "end_at_step": 2,
       "return_with_leftover_noise": "enable"
@@ -149,16 +191,28 @@
   },
   "58": {
     "inputs": {
-      "model": ["55", 0],
+      "model": [
+        "55",
+        0
+      ],
       "add_noise": "disable",
       "noise_seed": "__SEED__",
       "steps": 4,
       "cfg": 1.0,
       "sampler_name": "euler",
       "scheduler": "simple",
-      "positive": ["50", 0],
-      "negative": ["50", 1],
-      "latent_image": ["57", 0],
+      "positive": [
+        "50",
+        0
+      ],
+      "negative": [
+        "50",
+        1
+      ],
+      "latent_image": [
+        "57",
+        0
+      ],
       "start_at_step": 2,
       "end_at_step": 10000,
       "return_with_leftover_noise": "disable"
@@ -170,26 +224,46 @@
   },
   "8": {
     "inputs": {
-      "samples": ["58", 0],
-      "vae": ["39", 0]
+      "samples": [
+        "58",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
     },
     "class_type": "VAEDecode",
     "_meta": {
       "title": "VAE Decode"
     }
   },
-  "28": {
+  "102": {
+    "class_type": "CreateVideo",
     "inputs": {
-      "images": ["8", 0],
-      "filename_prefix": "ComfyUI",
-      "fps": 16.0,
-      "lossless": false,
-      "quality": 80,
-      "method": "default"
+      "images": [
+        "8",
+        0
+      ],
+      "fps": 16.0
     },
-    "class_type": "SaveAnimatedWEBP",
     "_meta": {
-      "title": "Save AnimatedWEBP"
+      "title": "Create Video"
+    }
+  },
+  "103": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "102",
+        0
+      ],
+      "filename_prefix": "video/wan22_14b_i2v_lightx2v",
+      "format": "mp4",
+      "codec": "h264"
+    },
+    "_meta": {
+      "title": "Save Video"
     }
   }
 }
