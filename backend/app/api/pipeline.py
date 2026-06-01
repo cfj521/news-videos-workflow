@@ -660,7 +660,7 @@ async def _render_video_async(run_id: int, session_factory):
     from app.pipeline.stage5_compose import run_stage5
     from app.pipeline.runner import _ffmpeg_compose
 
-    reload_settings()  # 重载配置（视频/LTX 等），保证跨进程拿到最新值
+    reload_settings()  # 重载配置（视频等），保证跨进程拿到最新值
     db = session_factory()
     try:
         run = db.get(PipelineRun, run_id)
@@ -691,26 +691,24 @@ async def _render_video_async(run_id: int, session_factory):
         output_mp4 = str((rd / "output.mp4").resolve())
         resolution = run.resolution or cfg.video.resolution
 
-        if run.video_route == "ltx":
-            _update(db, run, progress_detail="S5 LTX 视频生成中...")
+        if run.video_route == "comfyui":
+            _update(db, run, progress_detail="S5 ComfyUI 视频生成中...")
             try:
-                from app.providers.video.ltx_video import LTXVideoProvider
-                from app.providers.composer.ltx_composer import LTXComposer
-                ltx_video = LTXVideoProvider(
-                    model_dir=cfg.ltx.model_dir, checkpoint=cfg.ltx.checkpoint,
-                    upsampler=cfg.ltx.upsampler, distilled_lora=cfg.ltx.distilled_lora,
-                    lora_strength=cfg.ltx.lora_strength, gemma_dir=cfg.ltx.gemma_dir,
-                    inference_steps=cfg.ltx.inference_steps, cfg_scale=cfg.ltx.cfg_scale,
-                    stg_scale=cfg.ltx.stg_scale, fps=cfg.ltx.fps, use_fp8=cfg.ltx.use_fp8,
+                from app.providers.video.comfyui_video import ComfyUIVideoProvider
+                from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
+                vp = ComfyUIVideoProvider(
+                    server_url=cfg.comfyui.server_url, workflow=cfg.comfyui.video_workflow,
+                    workflows_dir=cfg.comfyui.workflows_dir, fps=cfg.comfyui.video_fps,
+                    negative=cfg.comfyui.default_negative,
                 )
-                result = await LTXComposer(ltx_video).compose(
+                result = await ComfyUIVideoComposer(vp, fps=cfg.comfyui.video_fps).compose(
                     timeline_json=timeline, assets_dir=str(rd / "assets"),
                     output_path=output_mp4, resolution=resolution,
                 )
                 final_path = result.file_path
             except Exception as e:
-                log.warning("LTX render failed for run #%d: %s — trying FFmpeg", run_id, e)
-                _update(db, run, progress_detail="S5 LTX 失败，FFmpeg 合成中...")
+                log.warning("ComfyUI render failed for run #%d: %s — trying FFmpeg", run_id, e)
+                _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
                 final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.video.fps)
         else:
             _update(db, run, progress_detail="S5 Hyperframes 渲染中...")

@@ -559,7 +559,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
             except Exception as e:
                 log.warning("[S4] Hyperframes HTML generation failed: %s", e)
         else:
-            log.info("[S4] LTX route — no HTML preview, clips will be generated in S5")
+            log.info("[S4] 视频路线 — 预览/clip 在 S5 生成")
 
         elapsed = time.time() - t0
         total_s = timeline["total_duration_ms"] / 1000
@@ -606,29 +606,26 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
             output_mp4 = str((run_dir / "output.mp4").resolve())
 
-            if run.video_route == "ltx":
-                _update(db, run, current_stage=5, progress_detail="S5 LTX 视频生成中...")
-                log.info("[S5] LTX rendering — output=%s", output_mp4)
+            if run.video_route == "comfyui":
+                _update(db, run, current_stage=5, progress_detail="S5 ComfyUI 视频生成中...")
+                log.info("[S5] ComfyUI rendering — output=%s", output_mp4)
                 try:
-                    from app.providers.video.ltx_video import LTXVideoProvider
-                    from app.providers.composer.ltx_composer import LTXComposer
-                    ltx_video = LTXVideoProvider(
-                        model_dir=cfg.ltx.model_dir, checkpoint=cfg.ltx.checkpoint,
-                        upsampler=cfg.ltx.upsampler, distilled_lora=cfg.ltx.distilled_lora,
-                        lora_strength=cfg.ltx.lora_strength, gemma_dir=cfg.ltx.gemma_dir,
-                        inference_steps=cfg.ltx.inference_steps, cfg_scale=cfg.ltx.cfg_scale,
-                        stg_scale=cfg.ltx.stg_scale, fps=cfg.ltx.fps, use_fp8=cfg.ltx.use_fp8,
+                    from app.providers.video.comfyui_video import ComfyUIVideoProvider
+                    from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
+                    vp = ComfyUIVideoProvider(
+                        server_url=cfg.comfyui.server_url, workflow=cfg.comfyui.video_workflow,
+                        workflows_dir=cfg.comfyui.workflows_dir, fps=cfg.comfyui.video_fps,
+                        negative=cfg.comfyui.default_negative,
                     )
-                    ltx_composer = LTXComposer(video_provider=ltx_video)
-                    result = await ltx_composer.compose(
+                    result = await ComfyUIVideoComposer(vp, fps=cfg.comfyui.video_fps).compose(
                         timeline_json=timeline, assets_dir=str(assets_dir),
                         output_path=output_mp4, resolution=resolution,
                     )
                     final_path = result.file_path
-                    log.info("[S5] LTX render ok — %s", final_path)
+                    log.info("[S5] ComfyUI render ok — %s", final_path)
                 except Exception as e:
-                    log.warning("[S5] LTX failed: %s — falling back to FFmpeg", e)
-                    _update(db, run, progress_detail="S5 LTX 失败，FFmpeg 合成中...")
+                    log.warning("[S5] ComfyUI failed: %s — falling back to FFmpeg", e)
+                    _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
                     final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.video.fps)
             else:
                 _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
