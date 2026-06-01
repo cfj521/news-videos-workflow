@@ -75,10 +75,16 @@ def test_delete_scene_ok(client, tmp_path):
     assert 3 not in [sc["id"] for sc in saved["scenes"]]
 
 
-def test_delete_last_scene_in_group_blocked(client, tmp_path):
+def test_delete_last_scene_cascades_group_and_article(client, tmp_path):
+    # 删某组最后一个分镜 → 连带删该分组及其对应文章（当前行为）
     _seed(tmp_path, 1, SCRIPT, ARTICLES)
     r = client.delete("/api/pipeline/runs/1/scenes/2")
-    assert r.status_code == 400
+    assert r.status_code == 200
+    saved = json.loads((tmp_path / "1" / "script.json").read_text(encoding="utf-8"))
+    assert [s["id"] for s in saved["scenes"]] == [1]
+    assert [g["id"] for g in saved["groups"]] == [1]
+    arts = json.loads((tmp_path / "1" / "articles.json").read_text(encoding="utf-8"))
+    assert [a["title"] for a in arts] == ["文章1"]
 
 
 def test_delete_scene_legacy_no_group_id(client, tmp_path):

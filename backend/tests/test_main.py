@@ -20,15 +20,15 @@ def test_root():
     assert response.status_code == 200
 
 
-def test_ensure_auto_collect_column_adds_missing(tmp_path):
+def test_ensure_pipeline_run_columns_adds_missing(tmp_path):
     from sqlalchemy import create_engine, text
-    from app.main import _ensure_auto_collect_column
+    from app.main import _ensure_pipeline_run_columns
     db_file = tmp_path / "legacy.db"
     eng = create_engine(f"sqlite:///{db_file}")
     with eng.begin() as c:
         c.execute(text("CREATE TABLE pipeline_runs (id INTEGER PRIMARY KEY, mode TEXT)"))
-    _ensure_auto_collect_column(eng)
+    _ensure_pipeline_run_columns(eng)
     with eng.connect() as c:
         cols = [r[1] for r in c.execute(text("PRAGMA table_info(pipeline_runs)"))]
-    assert "auto_collect" in cols
-    _ensure_auto_collect_column(eng)  # idempotent, no error
+    assert "auto_collect" in cols and "resolution" in cols and "aspect_ratio" in cols
+    _ensure_pipeline_run_columns(eng)  # idempotent, no error
