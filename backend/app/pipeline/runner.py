@@ -180,6 +180,27 @@ async def _summarize_articles(articles, cfg, run, db, log):
             a.summary = ""
 
 
+async def _distill_weekly_if_needed(articles, log):
+    """weekly article：调文本 AI 把 weekly_items 跨天提炼成 daily_sections（写回 metadata）。
+    必须在 _save_articles 之前调用——weekly_items 不会被序列化，只有 daily_sections 会存盘。"""
+    if not articles or articles[0].metadata.get("aihot_method") != "weekly":
+        return
+    from app.pipeline.stage2_script import distill_weekly_sections
+    art = articles[0]
+    items = art.metadata.get("weekly_items", [])
+    log.info("[S1] weekly distill — %d items", len(items))
+    tp = _build_text_provider()
+    art.metadata["daily_sections"] = await distill_weekly_sections(items, tp)
+
+
+def _no_article_message(digest_method) -> str:
+    if digest_method == "weekly":
+        return "上周 AI 日报数据不足，无法生成周报，请改用日报(daily)或动态(items)模式"
+    if digest_method == "daily":
+        return "今日 AI 日报尚未生成，请稍后再试或切换为动态(items)模式"
+    return "No articles collected"
+
+
 def _save_articles(articles, run_dir):
     import json
     data = []
@@ -347,7 +368,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
     _update(db, run, status="processing", started_at=datetime.now(timezone.utc))
 
     articles = []
-    daily_mode = False
+    digest_method = None
     script = None
     scene_assets = []
     timeline = None
@@ -373,7 +394,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             else:
                 source_configs, collectors = build_collectors(cfg)
                 log.info("[S1] No DB sources, using defaults")
-            daily_mode = any(sc.get("method") == "daily" for sc in source_configs)
+            digest_method = next((sc.get("method") for sc in source_configs
+                                  if sc.get("method") in ("daily", "weekly")), None)
             articles = await run_stage1(
                 sources=source_configs, collectors=collectors,
                 time_range=run.time_range, max_articles=run.max_articles,
@@ -383,6 +405,9 @@ async def _run_inner(run_id: int, db: Session) -> None:
             if articles and articles[0].metadata.get("source_group") != "aihot":
                 _update(db, run, progress_detail=f"S1 生成摘要中 (0/{len(articles)})...")
                 await _summarize_articles(articles, cfg, run, db, log)
+            elif articles and articles[0].metadata.get("aihot_method") == "weekly":
+                _update(db, run, progress_detail="S1 提炼本周热点中...")
+                await _distill_weekly_if_needed(articles, log)
             elapsed = time.time() - t0
             _update(db, run, progress_detail=f"S1 完成 — {len(articles)} 篇文章 ({elapsed:.1f}s)")
             log.info("[S1] Done — %d articles in %.1fs", len(articles), elapsed)
@@ -403,7 +428,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
             articles = _load_articles(run_dir)
 
     if not articles:
-        msg = "今日 AI 日报尚未生成，请稍后再试或切换为动态(items)模式" if daily_mode else "No articles collected"
+        msg = _no_article_message(digest_method)
         _update(db, run, status="failed", error_message=msg, finished_at=datetime.now(timezone.utc))
         log.error(msg)
         return
