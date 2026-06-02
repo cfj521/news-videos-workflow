@@ -1,3 +1,5 @@
+import pytest
+
 from app.providers.publisher.youtube import YouTubePublisher
 
 
@@ -20,3 +22,12 @@ def test_youtube_title_truncation():
     long_title = "A" * 200
     body = publisher._build_request_body(title=long_title, description="", tags=[])
     assert len(body["snippet"]["title"]) <= 100
+
+
+@pytest.mark.asyncio
+async def test_youtube_publish_rejects_without_refresh_token():
+    # 只有 client_id/secret、缺 refresh_token → 直接失败并给出可操作提示
+    publisher = YouTubePublisher(client_id="c", client_secret="s")
+    res = await publisher.publish(video_path="v.mp4", thumbnail_path=None, title="t", description="d", tags=[])
+    assert res.status == "failed"
+    assert "refresh_token" in res.error_message

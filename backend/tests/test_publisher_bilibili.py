@@ -18,6 +18,16 @@ def test_cookie_uses_real_names_and_drops_empty():
     assert pub._cookie == {"SESSDATA": "s", "bili_jct": "j"}
 
 
+def test_biliup_cookie_nested_format():
+    # biliup 1.2.0 的 login_by_cookies 要 {'cookie_info': {'cookies': [{name,value}]}}
+    pub = BilibiliPublisher(sessdata="s", bili_jct="j", dede_user_id="9")
+    nested = pub._biliup_cookie()
+    cookies = nested["cookie_info"]["cookies"]
+    assert {"name": "SESSDATA", "value": "s"} in cookies
+    assert {"name": "bili_jct", "value": "j"} in cookies
+    assert {"name": "DedeUserID", "value": "9"} in cookies
+
+
 def test_cookie_full_set():
     pub = BilibiliPublisher(sessdata="s", bili_jct="j", dede_user_id="123",
                             buvid3="b3", buvid4="b4", ac_time_value="ac")

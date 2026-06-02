@@ -42,5 +42,6 @@ def _build_one(platform: str, cfg: dict):
         )
     if platform == "youtube":
         from app.providers.publisher.youtube import YouTubePublisher
-        return YouTubePublisher(client_id=cfg.get("client_id", ""), client_secret=cfg.get("client_secret", ""))
+        return YouTubePublisher(client_id=cfg.get("client_id", ""), client_secret=cfg.get("client_secret", ""),
+                                refresh_token=cfg.get("refresh_token", ""))
     return None

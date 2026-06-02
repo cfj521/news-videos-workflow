@@ -29,17 +29,35 @@
    3. **范围（可选）** — **直接点「保存并继续」跳过，无需添加任何范围**。系统会在首次运行授权时动态请求 YouTube 上传权限，不用在控制台预填
    4. **OAuth 客户端 ID** — Application type 选 **Web application（Web 应用）**；如要求填重定向 URI，先填 `http://localhost`
    5. **您的凭据** — 此步会显示 `Client ID` 和 `Client Secret`，**复制保存好**
-5. 确认应用的「用户类型」和发布状态（改版后的入口在 **Google Auth Platform > 目标对象 / Audience**）：
-   - **内部（Internal）** — 你用的是 Google Workspace 组织账号，且 YouTube 频道也在同一账号下：**无需任何操作**。内部应用 token 长期有效、无验证警告。
-   - **外部（External）** — YouTube 频道是个人 Gmail 等组织外账号：在「目标对象」点 **「发布应用」** 把状态从 **测试（Testing）** 改为 **正式版 / 生产（In production）**，否则 token 7 天过期。（或保持测试状态、把自己的邮箱加为"测试用户"，但仍有 7 天过期问题）
+5. 设置应用的「用户类型」和发布状态。入口：[Google Auth Platform > 目标对象 / Audience](https://console.cloud.google.com/auth/audience)（把 URL 里的 project 换成你的项目）：
+   - **个人 Gmail 账号（绝大多数情况）→ 设为「外部（External）+ 正式版（In production）」**：在「目标对象」页把用户类型选 **外部**，再点 **「发布应用」** 把状态从 **测试（Testing）** 改为 **正式版 / 生产（In production）**。⚠️ 这步必做——否则拿到的 refresh_token 约 **7 天就失效**，需反复重授权。
+   - **内部（Internal）** — 仅当你用 Google Workspace 组织账号、且 YouTube 频道也在同一组织下才可选：无需发布操作，token 长期有效。
 6. 在 YouTube 上验证你的账号：打开 [youtube.com/verify](https://youtube.com/verify)，验证手机号（否则视频限 15 分钟）
-7. 首次运行时，系统会打开浏览器让你授权，之后自动续期
+7. **获取 Refresh Token**（关键，见下）
+
+### 获取 Refresh Token
+
+`Client ID` / `Client Secret` 只代表"应用身份"，并不代表"某个 YouTube 账号已授权"。真正能上传，必须先走一次 OAuth 授权拿到 **refresh_token**（长期有效，程序用它自动换取每小时过期的 access token）。本系统目前没有内置授权页，需手动获取一次：
+
+**方法 A — Google OAuth Playground（推荐，无需写代码）**
+
+1. 回 Google Cloud Console，给你的 OAuth 客户端的「已获授权的重定向 URI」**加上** `https://developers.google.com/oauthplayground` 并保存
+2. 打开 [OAuth Playground](https://developers.google.com/oauthplayground)
+3. 右上角齿轮 ⚙️ → 勾选 **Use your own OAuth credentials** → 填入你的 Client ID / Client Secret
+4. 左侧「Input your own scopes」输入 `https://www.googleapis.com/auth/youtube.upload` → 点 **Authorize APIs**
+5. 用目标 YouTube 账号登录并同意授权
+   - 此时可能弹出 **「此应用未经 Google 验证」** 警告屏。这是正常的——未验证的应用申请敏感权限（youtube.upload）都会弹，**个人自用无需提交 Google 验证**。点「显示高级部分」→ 底部的 **「转至 {应用名}（不安全）」** 链接继续，再勾选同意 YouTube 上传权限即可。
+6. 点 **Exchange authorization code for tokens**，右侧出现 **Refresh token**，复制
+7. 填入下面的配置
+
+> ⚠️ refresh_token 寿命取决于第 5 步设置的发布状态：**正式版（In production）→ 长期有效**；仍是**测试（Testing）→ 约 7 天失效**。务必确保应用已设为「外部 + 正式版」再获取，否则一周后要重来。
 
 ### 填入配置
 
-在 Settings 页面的 YouTube 区域填写：
+在「发布管理」页 → YouTube 平台填写：
 - **Client ID**: 第 4 步向导最后获取的 Client ID
 - **Client Secret**: 第 4 步向导最后获取的 Client Secret
+- **Refresh Token**: 上面「获取 Refresh Token」拿到的值（**必填**，否则无法上传）
 
 ### 注意
 

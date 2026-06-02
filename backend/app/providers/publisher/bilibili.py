@@ -6,6 +6,11 @@ from app.providers.base import PublisherAdapter, PublishResult
 
 log = get_logger("publisher.bilibili")
 
+# biliup 1.2.0 自带的 UA 是 2017 年的 Chrome/63，会被 B 站风控判为异常返回 412，
+# 导致 nav/投稿接口拿到 HTML 而非 JSON。这里覆盖为现代 UA 绕过。
+_MODERN_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
 
 class BilibiliPublisher(PublisherAdapter):
     """B 站投稿（基于 biliup 逆向 Web API）。
@@ -43,6 +48,10 @@ class BilibiliPublisher(PublisherAdapter):
     def _missing_required(self) -> list[str]:
         return [k for k in self.REQUIRED if not self._cookie.get(k)]
 
+    def _biliup_cookie(self) -> dict:
+        """转成 biliup login_by_cookies 期望的嵌套结构 {'cookie_info': {'cookies': [{name,value}]}}。"""
+        return {"cookie_info": {"cookies": [{"name": k, "value": v} for k, v in self._cookie.items()]}}
+
     async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str]) -> PublishResult:
         missing = self._missing_required()
         if missing:
@@ -60,11 +69,17 @@ class BilibiliPublisher(PublisherAdapter):
             video = Data()
             video.title = title[:80]
             video.desc = description[:250]
-            video.tag = tags[:12] if tags else ["科技"]
+            # B 站 tag 要逗号分隔字符串（biliup Data.tag 为 Union[list,str]，set_tag 即 join）
+            video.tag = ",".join(tags[:12] if tags else ["科技"])
             video.tid = self._tid
 
             with BiliBili(video) as bili:
-                bili.login_by_cookie(self._cookie)
+                # 覆盖 biliup 过旧 UA，避免 412 风控（私有属性，跨版本容错）
+                try:
+                    bili._BiliBili__session.headers["user-agent"] = _MODERN_UA
+                except Exception:
+                    pass
+                bili.login_by_cookies(self._biliup_cookie())
                 # 封面非必需，失败则回退默认封面，不阻断投稿
                 if thumbnail_path and Path(thumbnail_path).exists():
                     try:
