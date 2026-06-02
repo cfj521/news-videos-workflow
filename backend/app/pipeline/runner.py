@@ -610,13 +610,9 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 _update(db, run, current_stage=5, progress_detail="S5 ComfyUI 视频生成中...")
                 log.info("[S5] ComfyUI rendering — output=%s", output_mp4)
                 try:
-                    from app.providers.video.comfyui_video import ComfyUIVideoProvider
+                    from app.providers.video import build_video_provider
                     from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
-                    vp = ComfyUIVideoProvider(
-                        server_url=cfg.comfyui.server_url, workflow=cfg.comfyui.video_workflow,
-                        workflows_dir=cfg.comfyui.workflows_dir, fps=cfg.comfyui.video_fps,
-                        negative=cfg.comfyui.default_negative,
-                    )
+                    vp = build_video_provider(cfg)
                     result = await ComfyUIVideoComposer(vp, fps=cfg.comfyui.video_fps).compose(
                         timeline_json=timeline, assets_dir=str(assets_dir),
                         output_path=output_mp4, resolution=resolution,
@@ -664,9 +660,37 @@ async def _run_inner(run_id: int, db: Session) -> None:
         if platforms:
             _update(db, run, current_stage=6, progress_detail=f"S6 发布到 {', '.join(platforms)}...")
             log.info("[S6] Publishing to: %s", platforms)
-            # TODO: call publisher adapters
-            _update(db, run, progress_detail="S6 发布完成")
-            log.info("[S6] Done")
+            from dataclasses import asdict
+
+            from app.models.publish_target import PublishTarget
+            from app.pipeline.stage6_publish import run_stage6
+            from app.providers.publisher import build_publishers
+
+            video_path = run.output_path or ""
+            meta = script if isinstance(script, dict) else {}
+            if not meta:
+                sj = run_dir / "script.json"
+                if sj.exists():
+                    meta = json.loads(sj.read_text(encoding="utf-8"))
+
+            targets = [t for t in db.query(PublishTarget).filter(PublishTarget.enabled.is_(True)).all()
+                       if t.platform in platforms]
+            publishers = build_publishers(targets)
+            results = await run_stage6(
+                video_path=video_path, thumbnail_path=None,
+                title=meta.get("title", ""), description=meta.get("description", ""),
+                tags=meta.get("tags", []), publishers=publishers, platforms=platforms,
+            )
+
+            ok = [r.platform for r in results if r.status == "success"]
+            fail = [f"{r.platform}({r.error_message})" for r in results if r.status != "success"]
+            summary = "S6 发布完成 — 成功: " + (", ".join(ok) or "无")
+            if fail:
+                summary += " | 失败: " + ", ".join(fail)
+            (run_dir / "publish_results.json").write_text(
+                json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2), encoding="utf-8")
+            _update(db, run, progress_detail=summary[:500])
+            log.info("[S6] %s", summary)
 
     # ─── Finish ────────────────────────────────────────────
     now = datetime.now(timezone.utc)

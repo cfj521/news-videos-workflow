@@ -17,11 +17,14 @@ def _snap16(v: int) -> int:
 
 class ComfyUIImageProvider(ImageProvider):
     def __init__(self, server_url: str, workflow: str = "z_image",
-                 workflows_dir: str = "comfyui/workflows/api", negative: str = ""):
+                 workflows_dir: str = "comfyui/workflows/api", negative: str = "",
+                 steps: int = 9, cfg: float = 1.0):
         self._client = ComfyUIClient(server_url=server_url)
         self._wf = _WORKFLOW_MAP.get(workflow, "z_image_t2i")
         self._dir = workflows_dir
         self._negative = negative
+        self._steps = steps
+        self._cfg = cfg
         self._server = server_url
         log.info("Initialized ComfyUIImageProvider server=%s workflow=%s", server_url, self._wf)
 
@@ -35,6 +38,7 @@ class ComfyUIImageProvider(ImageProvider):
             graph = fill_placeholders(load_api_workflow(self._wf, self._dir), {
                 "POSITIVE_PROMPT": prompt, "NEGATIVE_PROMPT": self._negative,
                 "SEED": random.randint(0, 2**31 - 1), "WIDTH": w, "HEIGHT": h,
+                "STEPS": self._steps, "CFG": self._cfg,
             })
             files = await self._client.run(graph)
             imgs = [f for f in files if f["kind"] == "images"]

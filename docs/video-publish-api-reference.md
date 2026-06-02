@@ -215,17 +215,31 @@ httpx  # 异步 HTTP (项目已有)
 
 ### 认证
 
-Cookie 认证。需要三个值: `sessdata`, `bili_jct`, `buvid3`。
+Cookie 认证。**Cookie 名大小写敏感**（biliup 用 `cookiejar_from_dict` 原样转发给 B 站），`SESSDATA`/`DedeUserID` 必须大写。
+
+发布（写操作）推荐的 Cookie 集：
+
+| Cookie | 重要性 | 作用 |
+|---|---|---|
+| `SESSDATA` | 必填 | 登录态 |
+| `bili_jct` | 必填 | CSRF token，所有投稿 POST 接口校验 `csrf=bili_jct` |
+| `DedeUserID` | 强烈建议 | 上传者 UID，风控校验与 SESSDATA 一致性 |
+| `buvid3` / `buvid4` | 建议 | 设备指纹，过风控 |
+| `ac_time_value` | 可选 | 登录态续期 |
 
 ```python
+# 真实 cookie 名（大小写敏感），只传非空项
 cookie = {
-    "sessdata": cfg.bilibili.sessdata,
+    "SESSDATA": cfg.bilibili.sessdata,
     "bili_jct": cfg.bilibili.bili_jct,
+    "DedeUserID": cfg.bilibili.dede_user_id,
     "buvid3": cfg.bilibili.buvid3,
+    "buvid4": cfg.bilibili.buvid4,
+    "ac_time_value": cfg.bilibili.ac_time_value,
 }
 ```
 
-Cookie 约 30 天过期, 需定期刷新。实现中应检测 Cookie 失效并提示用户更新。
+Cookie 约 30 天过期, 需定期刷新。接口返回 `-101`（未登录）即 Cookie 失效，`BilibiliPublisher` 会捕获并返回可操作的失效提示。
 
 ### 上传流程
 
@@ -500,9 +514,12 @@ instagram:
   file_host: "s3"        # s3 / local / ngrok
 
 bilibili:
-  sessdata: ""
-  bili_jct: ""
-  buvid3: ""
+  sessdata: ""           # 必填
+  bili_jct: ""           # 必填（CSRF）
+  dede_user_id: ""       # 强烈建议（上传者 UID）
+  buvid3: ""             # 建议（设备指纹）
+  buvid4: ""             # 建议（新版设备指纹）
+  ac_time_value: ""      # 可选（登录态续期）
 
 douyin:
   method: "api"          # api / playwright

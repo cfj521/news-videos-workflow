@@ -102,7 +102,7 @@
       "model": ["6", 0],
       "positive": ["10", 0],
       "negative": ["10", 1],
-      "cfg": 1.0
+      "cfg": "__CFG__"
     },
     "class_type": "CFGGuider",
     "_meta": { "title": "CFG Guider (cfg=1 for distilled, uses image-conditioned cond from LTXVImgToVideo)" }

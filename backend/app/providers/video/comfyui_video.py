@@ -25,12 +25,15 @@ def _snap_frames(n: int, step: int = 4) -> int:
 
 class ComfyUIVideoProvider(VideoClipProvider):
     def __init__(self, server_url: str, workflow: str = "wan5b",
-                 workflows_dir: str = "comfyui/workflows/api", fps: int = 24, negative: str = ""):
+                 workflows_dir: str = "comfyui/workflows/api", fps: int = 24, negative: str = "",
+                 steps: int = 20, cfg: float = 5.0):
         self._client = ComfyUIClient(server_url=server_url)
         self._wf = _WORKFLOW_MAP.get(workflow, "wan22_5b_i2v")
         self._dir = workflows_dir
         self._fps = fps
         self._negative = negative
+        self._steps = steps
+        self._cfg = cfg
         self._server = server_url
 
     async def generate(self, image_path: str, prompt: str, duration: float,
@@ -50,6 +53,9 @@ class ComfyUIVideoProvider(VideoClipProvider):
             graph = fill_placeholders(load_api_workflow(self._wf, self._dir), {
                 "INPUT_IMAGE": server_name, "POSITIVE_PROMPT": prompt, "NEGATIVE_PROMPT": self._negative,
                 "SEED": random.randint(0, 2**31 - 1), "WIDTH": w, "HEIGHT": h, "LENGTH": frames,
+                # wan5b/wan14b 用 STEPS/CFG；wan14b 双段切换点 SPLIT=steps//2；ltx 仅用 CFG。
+                # 各 workflow 只填自身存在的占位符，多传的 key 无害。
+                "STEPS": self._steps, "CFG": self._cfg, "SPLIT": max(1, self._steps // 2),
             })
             files = await self._client.run(graph)
             pick = None

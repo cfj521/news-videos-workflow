@@ -68,7 +68,7 @@ async def test_run_flattens_image_files():
 def test_load_and_fill_workflow():
     g = load_api_workflow("z_image_t2i", "comfyui/workflows/api")
     assert isinstance(g, dict) and g
-    filled = fill_placeholders(g, {"POSITIVE_PROMPT": "p", "NEGATIVE_PROMPT": "n", "SEED": 1, "WIDTH": 512, "HEIGHT": 512})
+    filled = fill_placeholders(g, {"POSITIVE_PROMPT": "p", "NEGATIVE_PROMPT": "n", "SEED": 1, "WIDTH": 512, "HEIGHT": 512, "STEPS": 9, "CFG": 1.0})
     s = json.dumps(filled, ensure_ascii=False)
     assert "__" not in s
 

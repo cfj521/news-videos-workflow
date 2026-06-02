@@ -706,13 +706,9 @@ async def _render_video_async(run_id: int, session_factory):
         if run.video_route == "comfyui":
             _update(db, run, progress_detail="S5 ComfyUI 视频生成中...")
             try:
-                from app.providers.video.comfyui_video import ComfyUIVideoProvider
+                from app.providers.video import build_video_provider
                 from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
-                vp = ComfyUIVideoProvider(
-                    server_url=cfg.comfyui.server_url, workflow=cfg.comfyui.video_workflow,
-                    workflows_dir=cfg.comfyui.workflows_dir, fps=cfg.comfyui.video_fps,
-                    negative=cfg.comfyui.default_negative,
-                )
+                vp = build_video_provider(cfg)
                 result = await ComfyUIVideoComposer(vp, fps=cfg.comfyui.video_fps).compose(
                     timeline_json=timeline, assets_dir=str(rd / "assets"),
                     output_path=output_mp4, resolution=resolution,

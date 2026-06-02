@@ -3,8 +3,35 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.config import Settings
 from app.providers.base import ProviderError
+from app.providers.comfyui.workflow import fill_placeholders, load_api_workflow
+from app.providers.image import build_image_provider
 from app.providers.image.comfyui_image import ComfyUIImageProvider
+
+_IMG_VALUES = {
+    "POSITIVE_PROMPT": "p", "NEGATIVE_PROMPT": "n",
+    "SEED": 1, "WIDTH": 1024, "HEIGHT": 1024, "STEPS": 12, "CFG": 3.0,
+}
+
+
+@pytest.mark.parametrize("name", ["z_image_t2i", "qwen_image_t2i"])
+def test_image_workflows_fill_steps_cfg(name):
+    g = fill_placeholders(load_api_workflow(name, "comfyui/workflows/api"), _IMG_VALUES)
+    assert g["3"]["inputs"]["steps"] == 12
+    assert g["3"]["inputs"]["cfg"] == 3.0
+
+
+def test_build_image_provider_uses_comfyui_group():
+    s = Settings()
+    s.image.provider = "comfyui"
+    s.comfyui.image_workflow = "qwen"
+    s.comfyui.server_url = "http://test:8188"
+    prov = build_image_provider(s)
+    assert isinstance(prov, ComfyUIImageProvider)
+    assert prov._wf == "qwen_image_t2i"        # workflow 来自 comfyui 组
+    assert prov._server == "http://test:8188"  # 统一用 comfyui.server_url
+    assert prov._steps == 20 and prov._cfg == 2.5
 
 
 @pytest.mark.asyncio

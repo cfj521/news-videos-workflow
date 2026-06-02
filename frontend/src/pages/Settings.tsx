@@ -35,6 +35,41 @@ const IMAGE_PRESETS: Record<string, ProviderPreset> = {
   comfyui: { label: "ComfyUI 本地", baseUrl: "http://127.0.0.1:8188", models: ["z_image", "qwen"], needsKey: false },
 };
 
+// 每种 workflow 可调的生成参数 + 范围/说明。无 steps/cfg 字段表示该项锁死，note 给出原因。
+type ParamMeta = {
+  steps?: { min: number; max: number; desc: string };
+  cfg?: { min: number; max: number; desc: string };
+  note?: string;
+};
+// ComfyUI 图片 workflow 的可调参数（均为单 KSampler）。
+const IMAGE_PARAM_META: Record<string, ParamMeta> = {
+  z_image: {
+    steps: { min: 4, max: 20, desc: "采样步数，z_image turbo 蒸馏，8–9 步即可（默认 9）" },
+    cfg: { min: 1, max: 5, desc: "提示词遵循强度，turbo 建议 1.0（默认 1.0）" },
+  },
+  qwen: {
+    steps: { min: 10, max: 40, desc: "采样步数，越大越精细越慢（默认 20）" },
+    cfg: { min: 1, max: 6, desc: "提示词遵循强度（默认 2.5）" },
+  },
+};
+const VIDEO_PARAM_META: Record<string, ParamMeta> = {
+  wan5b: {
+    steps: { min: 10, max: 50, desc: "采样步数，越大越精细越慢（默认 30）" },
+    cfg: { min: 1, max: 10, desc: "提示词遵循强度，越大越贴提示词（默认 5.0）" },
+  },
+  wan14b: {
+    steps: { min: 10, max: 40, desc: "采样步数（默认 20）；高/低噪切换点自动取步数一半" },
+    cfg: { min: 1, max: 10, desc: "提示词遵循强度（默认 3.5）" },
+  },
+  wan14b_lightx2v: {
+    note: "加速 LoRA 固定 4 步、cfg≈1.0，步数与 cfg 均不可调。追求质量请改用 Wan2.2 14B。",
+  },
+  ltx: {
+    cfg: { min: 1, max: 5, desc: "提示词遵循强度（默认 1.0）" },
+    note: "蒸馏模型步数固定（约 4 步），无法调整。",
+  },
+};
+
 const VISION_PRESETS: Record<string, ProviderPreset> = {
   openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini"] },
   dashscope: { label: "阿里云 (Qwen-VL)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen-vl-max", "qwen-vl-plus"] },
@@ -97,12 +132,40 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, desc, children }: { label: string; desc?: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[11rem_1fr] gap-4 items-start">
-      <label className="text-sm text-white/40 pt-2 select-none">{label}</label>
+      <label className="text-sm text-white/40 pt-2 select-none">
+        {label}
+        {desc && <span className="block text-xs text-white/25 mt-0.5 font-normal">{desc}</span>}
+      </label>
       <div>{children}</div>
     </div>
+  );
+}
+
+// 按 ParamMeta 渲染某 workflow 的 steps/cfg 输入与锁定说明；图片、视频两区共用。
+function ParamFields({ meta, params, onChange }: {
+  meta: ParamMeta;
+  params: { steps: number; cfg: number };
+  onChange: (next: Partial<{ steps: number; cfg: number }>) => void;
+}) {
+  return (
+    <>
+      {meta.steps && (
+        <Field label="采样步数" desc={`${meta.steps.desc}；可设 ${meta.steps.min}–${meta.steps.max}`}>
+          <input type="number" value={params.steps} min={meta.steps.min} max={meta.steps.max}
+            onChange={(e) => onChange({ steps: Number(e.target.value) })} className={inputCls} />
+        </Field>
+      )}
+      {meta.cfg && (
+        <Field label="CFG" desc={`${meta.cfg.desc}；可设 ${meta.cfg.min}–${meta.cfg.max}`}>
+          <input type="number" step={0.5} value={params.cfg} min={meta.cfg.min} max={meta.cfg.max}
+            onChange={(e) => onChange({ cfg: Number(e.target.value) })} className={inputCls} />
+        </Field>
+      )}
+      {meta.note && <p className="text-xs text-amber-300/60 pl-1">{meta.note}</p>}
+    </>
   );
 }
 
@@ -183,13 +246,16 @@ interface ProviderFieldValues {
   api_key: string;
 }
 
-function ProviderSection({ title, desc, presets, config, onChange }: {
+function ProviderSection({ title, desc, presets, config, onChange, selfManagedProvider }: {
   title: string; desc: string;
   presets: Record<string, ProviderPreset>;
   config: ProviderFieldValues;
   onChange: (patch: Partial<ProviderFieldValues>) => void;
+  // 选中此 provider 时，接口地址/模型/Key 由别处管理：收起这些字段，改显 note。
+  selfManagedProvider?: { value: string; note: string };
 }) {
   const isCustom = !(config.provider in presets);
+  const selfManaged = selfManagedProvider?.value === config.provider;
   const preset = presets[config.provider];
   const models = preset?.models ?? [];
   const options = [
@@ -216,13 +282,19 @@ function ProviderSection({ title, desc, presets, config, onChange }: {
           <input value={config.provider === "__custom__" ? "" : config.provider} onChange={(e) => onChange({ provider: e.target.value })} placeholder="例如 deepseek" className={inputCls} />
         </Field>
       )}
-      <Field label="接口地址">
-        <input value={config.base_url} onChange={(e) => onChange({ base_url: e.target.value })} placeholder={isCustom ? "https://api.example.com/v1" : "自动填充，可按需修改"} className={monoInputCls} />
-      </Field>
-      <Field label="模型">
-        <ModelInput value={config.model} onChange={(v) => onChange({ model: v })} suggestions={models} />
-      </Field>
-      <SecretField label="API Key" value={config.api_key} onChange={(v) => onChange({ api_key: v })} />
+      {selfManaged ? (
+        <p className="text-xs text-white/40 pl-1">{selfManagedProvider!.note}</p>
+      ) : (
+        <>
+          <Field label="接口地址">
+            <input value={config.base_url} onChange={(e) => onChange({ base_url: e.target.value })} placeholder={isCustom ? "https://api.example.com/v1" : "自动填充，可按需修改"} className={monoInputCls} />
+          </Field>
+          <Field label="模型">
+            <ModelInput value={config.model} onChange={(v) => onChange({ model: v })} suggestions={models} />
+          </Field>
+          <SecretField label="API Key" value={config.api_key} onChange={(v) => onChange({ api_key: v })} />
+        </>
+      )}
     </Section>
   );
 }
@@ -249,7 +321,7 @@ const EMPTY_SETTINGS: AppSettings = {
   pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui", default_language: "zh", dedup_lookback: "30d" },
   storage: { work_dir: "", output_dir: "" },
   video: { resolution: "1080x1920", aspect_ratio: "9:16", fps: "30", scene_gap_ms: 500, transition: "crossfade" },
-  comfyui: { server_url: "http://127.0.0.1:8188", video_workflow: "wan5b", video_fps: 24 },
+  comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_workflow: "z_image", image_params: { z_image: { steps: 9, cfg: 1.0 }, qwen: { steps: 20, cfg: 2.5 } }, video_workflow: "wan5b", video_fps: 24, video_params: { wan5b: { steps: 30, cfg: 5.0 }, wan14b: { steps: 20, cfg: 3.5 }, wan14b_lightx2v: { steps: 4, cfg: 1.0 }, ltx: { steps: 4, cfg: 1.0 } } },
   prompts: {},
 };
 
@@ -258,7 +330,7 @@ export function SettingsPage() {
   const { data: promptDefs } = useSWR("prompt-defaults", api.settings.promptDefaults);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<"ai" | "pipeline" | "prompts" | "video">("ai");
+  const [activeTab, setActiveTab] = useState<"ai" | "pipeline" | "prompts" | "comfyui">("ai");
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -320,7 +392,7 @@ export function SettingsPage() {
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-2">
-        {([["ai", "AI 服务"], ["pipeline", "流水线"], ["prompts", "提示词"], ["video", "视频生成"]] as const).map(([k, label]) => (
+        {([["ai", "AI 服务"], ["pipeline", "流水线"], ["prompts", "提示词"], ["comfyui", "ComfyUI"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setActiveTab(k)}
             className={`px-3 py-1.5 text-sm rounded-md transition ${activeTab === k ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
             {label}
@@ -365,7 +437,8 @@ export function SettingsPage() {
       </Section>
 
       <ProviderSection title="文本模型" desc="用于脚本生成的 AI 文本模型" presets={TEXT_PRESETS} config={settings.text} onChange={(p) => patch("text", p)} />
-      <ProviderSection title="图片模型" desc="用于场景配图的 AI 图片模型" presets={IMAGE_PRESETS} config={settings.image} onChange={(p) => patch("image", p)} />
+      <ProviderSection title="图片模型" desc="用于场景配图的 AI 图片模型" presets={IMAGE_PRESETS} config={settings.image} onChange={(p) => patch("image", p)}
+        selfManagedProvider={{ value: "comfyui", note: "ComfyUI 的地址、图片 workflow 与生成参数请在「ComfyUI」标签页配置。" }} />
       <ProviderSection title="文档解析模型" desc="导入 PDF 时用的视觉模型（多模态）" presets={VISION_PRESETS} config={settings.vision} onChange={(p) => patch("vision", p)} />
 
       <Section title="语音合成" desc="视频旁白的文字转语音服务">
@@ -471,24 +544,54 @@ export function SettingsPage() {
 
       </>)}
 
-      {activeTab === "video" && (
-        <Section title="ComfyUI 视频生成" desc="本地 ComfyUI 图生视频（i2v）。需 ComfyUI 运行中。">
+      {activeTab === "comfyui" && (<>
+        <Section title="ComfyUI 连接" desc="本地 ComfyUI 服务，图片与视频生成共用。需 ComfyUI 运行中。">
           <Field label="ComfyUI 地址">
             <input value={settings.comfyui.server_url} onChange={(e) => patch("comfyui", { server_url: e.target.value })} className={monoInputCls} />
           </Field>
+          <Field label="默认负向提示词" desc="图片与视频生成共用，描述不想要的画面元素">
+            <input value={settings.comfyui.default_negative} onChange={(e) => patch("comfyui", { default_negative: e.target.value })} placeholder="模糊, 丑陋, 变形, 低质量, 水印" className={inputCls} />
+          </Field>
+        </Section>
+
+        <Section title="图片生成" desc="「AI 服务 → 图片模型」选择 ComfyUI 作为服务商时生效。">
+          <Field label="图片 workflow">
+            <Select value={settings.comfyui.image_workflow} onChange={(v) => patch("comfyui", { image_workflow: v })} options={[
+              { value: "z_image", label: "z_image turbo (默认/快)" }, { value: "qwen", label: "Qwen-Image (中文/版面强)" },
+            ]} />
+          </Field>
+          {(() => {
+            const wf = settings.comfyui.image_workflow;
+            const meta = IMAGE_PARAM_META[wf];
+            if (!meta) return null;
+            const p = settings.comfyui.image_params[wf] ?? { steps: 0, cfg: 0 };
+            return <ParamFields meta={meta} params={p}
+              onChange={(next) => patch("comfyui", { image_params: { ...settings.comfyui.image_params, [wf]: { ...p, ...next } } })} />;
+          })()}
+        </Section>
+
+        <Section title="视频生成" desc="本地 ComfyUI 图生视频（i2v）。">
           <Field label="视频模式">
             <Select value={settings.comfyui.video_workflow} onChange={(v) => patch("comfyui", { video_workflow: v })} options={[
               { value: "wan5b", label: "Wan2.2 5B (默认/快)" }, { value: "wan14b", label: "Wan2.2 14B (质量)" },
               { value: "wan14b_lightx2v", label: "Wan2.2 14B Lightx2v (4步快)" }, { value: "ltx", label: "LTX 2.3" },
             ]} />
           </Field>
+          {(() => {
+            const wf = settings.comfyui.video_workflow;
+            const meta = VIDEO_PARAM_META[wf];
+            if (!meta) return null;
+            const p = settings.comfyui.video_params[wf] ?? { steps: 0, cfg: 0 };
+            return <ParamFields meta={meta} params={p}
+              onChange={(next) => patch("comfyui", { video_params: { ...settings.comfyui.video_params, [wf]: { ...p, ...next } } })} />;
+          })()}
           <Field label="帧率">
             <Select value={String(settings.comfyui.video_fps)} onChange={(v) => patch("comfyui", { video_fps: Number(v) })} options={[
               { value: "16", label: "16" }, { value: "24", label: "24" }, { value: "25", label: "25" },
             ]} />
           </Field>
         </Section>
-      )}
+      </>)}
 
       {activeTab === "prompts" && (<>
       <Section title="提示词" desc="流水线各步骤的 AI 提示词；留空使用内置默认。改后点上方「保存」。">

@@ -30,9 +30,12 @@ const PLATFORM_FIELDS: Record<string, FieldDef[]> = {
     { key: "file_host_url", label: "视频公开 URL", placeholder: "https://your-cdn.com/video.mp4" },
   ],
   bilibili: [
-    { key: "sessdata", label: "SESSDATA", secret: true },
-    { key: "bili_jct", label: "bili_jct", secret: true },
-    { key: "buvid3", label: "buvid3", secret: true },
+    { key: "sessdata", label: "SESSDATA（必填）", secret: true },
+    { key: "bili_jct", label: "bili_jct（必填·CSRF）", secret: true },
+    { key: "dede_user_id", label: "DedeUserID（强烈建议·UID）", placeholder: "上传者 UID" },
+    { key: "buvid3", label: "buvid3（建议·设备指纹）", secret: true },
+    { key: "buvid4", label: "buvid4（建议·新版指纹）", secret: true },
+    { key: "ac_time_value", label: "ac_time_value（可选·续期）", secret: true },
     { key: "tid", label: "分区 ID", placeholder: "17 (科技>数码)" },
   ],
   douyin: [

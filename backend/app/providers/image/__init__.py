@@ -3,10 +3,14 @@ def build_image_provider(cfg):
     from app.providers.image.openai_image import OpenAIImageProvider
     if cfg.image.provider == "comfyui":
         from app.providers.image.comfyui_image import ComfyUIImageProvider
+        c = cfg.comfyui
+        params = c.image_params.get(c.image_workflow)
         return ComfyUIImageProvider(
-            server_url=cfg.image.base_url or "http://127.0.0.1:8188",
-            workflow=cfg.image.model or "z_image",
-            workflows_dir=cfg.comfyui.workflows_dir,
-            negative=cfg.comfyui.default_negative,
+            server_url=c.server_url,          # 图片与视频共用 comfyui.server_url
+            workflow=c.image_workflow,        # workflow 选择移到 comfyui 组
+            workflows_dir=c.workflows_dir,
+            negative=c.default_negative,
+            steps=params.steps if params else 9,
+            cfg=params.cfg if params else 1.0,
         )
     return OpenAIImageProvider(api_key=cfg.image.api_key, model=cfg.image.model, base_url=cfg.image.base_url)

@@ -136,8 +136,8 @@
       ],
       "add_noise": "enable",
       "noise_seed": "__SEED__",
-      "steps": 20,
-      "cfg": 3.5,
+      "steps": "__STEPS__",
+      "cfg": "__CFG__",
       "sampler_name": "euler",
       "scheduler": "simple",
       "positive": [
@@ -153,7 +153,7 @@
         2
       ],
       "start_at_step": 0,
-      "end_at_step": 10,
+      "end_at_step": "__SPLIT__",
       "return_with_leftover_noise": "enable"
     },
     "class_type": "KSamplerAdvanced",
@@ -169,8 +169,8 @@
       ],
       "add_noise": "disable",
       "noise_seed": "__SEED__",
-      "steps": 20,
-      "cfg": 3.5,
+      "steps": "__STEPS__",
+      "cfg": "__CFG__",
       "sampler_name": "euler",
       "scheduler": "simple",
       "positive": [
@@ -185,7 +185,7 @@
         "57",
         0
       ],
-      "start_at_step": 10,
+      "start_at_step": "__SPLIT__",
       "end_at_step": 10000,
       "return_with_leftover_noise": "disable"
     },

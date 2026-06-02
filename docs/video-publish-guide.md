@@ -23,18 +23,23 @@
 1. 打开 [Google Cloud Console](https://console.cloud.google.com/)，用你的 Google 账号登录
 2. 创建一个新项目（名字随意，比如 "NewsVid"）
 3. 在左侧菜单找到 **APIs & Services > Library**，搜索 **YouTube Data API v3**，点击启用
-4. 进入 **APIs & Services > Credentials**，点击 **Create Credentials > OAuth client ID**
-   - Application type 选 **Web application**
-   - 记下 `Client ID` 和 `Client Secret`
-5. 进入 **OAuth consent screen**，将应用状态从 "Testing" 改为 **"In production"**（否则 token 7 天过期）
+4. 进入 **APIs & Services > Credentials**，点击 **Create Credentials > OAuth client ID**。Google 现在用一个 5 步向导引导你完成（如下）：
+   1. **凭据类型** — 选择你要访问的数据类型（用户数据）
+   2. **OAuth 权限请求页面** — 填应用名称、用户支持邮箱等基本信息
+   3. **范围（可选）** — **直接点「保存并继续」跳过，无需添加任何范围**。系统会在首次运行授权时动态请求 YouTube 上传权限，不用在控制台预填
+   4. **OAuth 客户端 ID** — Application type 选 **Web application（Web 应用）**；如要求填重定向 URI，先填 `http://localhost`
+   5. **您的凭据** — 此步会显示 `Client ID` 和 `Client Secret`，**复制保存好**
+5. 确认应用的「用户类型」和发布状态（改版后的入口在 **Google Auth Platform > 目标对象 / Audience**）：
+   - **内部（Internal）** — 你用的是 Google Workspace 组织账号，且 YouTube 频道也在同一账号下：**无需任何操作**。内部应用 token 长期有效、无验证警告。
+   - **外部（External）** — YouTube 频道是个人 Gmail 等组织外账号：在「目标对象」点 **「发布应用」** 把状态从 **测试（Testing）** 改为 **正式版 / 生产（In production）**，否则 token 7 天过期。（或保持测试状态、把自己的邮箱加为"测试用户"，但仍有 7 天过期问题）
 6. 在 YouTube 上验证你的账号：打开 [youtube.com/verify](https://youtube.com/verify)，验证手机号（否则视频限 15 分钟）
 7. 首次运行时，系统会打开浏览器让你授权，之后自动续期
 
 ### 填入配置
 
 在 Settings 页面的 YouTube 区域填写：
-- **Client ID**: 第 4 步获取的 Client ID
-- **Client Secret**: 第 4 步获取的 Client Secret
+- **Client ID**: 第 4 步向导最后获取的 Client ID
+- **Client Secret**: 第 4 步向导最后获取的 Client Secret
 
 ### 注意
 
@@ -77,17 +82,28 @@
 
 1. 用你的 B 站账号登录 [bilibili.com](https://www.bilibili.com)
 2. 打开浏览器开发者工具（F12），切到 **Application > Cookies**
-3. 找到并复制这三个 Cookie 值：
-   - `SESSDATA`
-   - `bili_jct`
-   - `buvid3`
-4. 在系统 Settings 中填入这三个值
+3. 复制下列 Cookie 值（注意大小写，`SESSDATA`/`DedeUserID` 是大写）：
+
+| Cookie | 发布时重要性 | 作用 |
+|---|---|---|
+| `SESSDATA` | 🔴 必填 | 登录态凭证 |
+| `bili_jct` | 🔴 必填 | CSRF token，投稿所有 POST 接口都校验 |
+| `DedeUserID` | 🟠 强烈建议 | 上传者 UID，风控会校验它与 SESSDATA 是否一致 |
+| `buvid3` | 🟠 建议 | 设备指纹，过风控 |
+| `buvid4` | 🟡 建议 | 新版设备指纹，配合 buvid3 更像真实浏览器 |
+| `ac_time_value` | ⚪ 可选 | 登录态续期，长时间批量投稿减少掉登录 |
+
+4. 打开「发布管理」页 → 「+ 添加平台」 → 选 Bilibili，填入上述 Cookie。最低要求 `SESSDATA` + `bili_jct`；为提高过审/过风控成功率，建议再带上 `DedeUserID` + `buvid3` + `buvid4`。
+
+> 发布是写操作，与下载（读操作，看重画质鉴权）不同：`bili_jct` 是命脉（CSRF），`DedeUserID` 用于绑定上传者，因此比下载场景更重要。
 
 ### 填入配置
 
-- **SESSDATA**: Cookie 值
-- **bili_jct**: Cookie 值
-- **buvid3**: Cookie 值
+- **SESSDATA**: Cookie 值（必填）
+- **bili_jct**: Cookie 值（必填）
+- **DedeUserID**: 用户 UID（强烈建议）
+- **buvid3** / **buvid4**: 设备指纹（建议）
+- **ac_time_value**: 登录态续期（可选）
 
 ### 注意
 

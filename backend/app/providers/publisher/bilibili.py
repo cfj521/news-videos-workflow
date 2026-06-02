@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 from app.logging import get_logger
 from app.providers.base import PublisherAdapter, PublishResult
@@ -7,13 +8,48 @@ log = get_logger("publisher.bilibili")
 
 
 class BilibiliPublisher(PublisherAdapter):
-    def __init__(self, sessdata: str = "", bili_jct: str = "", buvid3: str = "", tid: int = 17):
-        self._cookie = {"sessdata": sessdata, "bili_jct": bili_jct, "buvid3": buvid3}
+    """B 站投稿（基于 biliup 逆向 Web API）。
+
+    Cookie 名按 B 站真实名称传给 biliup —— biliup 用 ``cookiejar_from_dict`` 原样转发给
+    B 站，**大小写敏感**，所以 ``SESSDATA`` / ``DedeUserID`` 必须保留大写，传小写会认证失败。
+
+    发布（写操作）推荐的 Cookie，重要性与下载场景不同：
+
+    ==============  ========  ==========================================================
+    Cookie          重要性    作用
+    ==============  ========  ==========================================================
+    SESSDATA        必填      登录态凭证，没有它一切免谈
+    bili_jct        必填      CSRF token；投稿全程是 POST 写操作，每个接口都校验 csrf=bili_jct
+    DedeUserID      强烈建议  上传者 UID，部分接口/风控会校验它与 SESSDATA 是否一致
+    buvid3          建议      设备指纹，过风控、降低被判异常登录的概率
+    buvid4          建议      新版设备指纹，配合 buvid3 让请求更像真实浏览器
+    ac_time_value   可选      登录态自动续期，长时间批量投稿减少掉登录
+    ==============  ========  ==========================================================
+    """
+
+    # 投稿写操作的硬性门槛：缺任一项直接拒绝（区别于下载场景的三件套）
+    REQUIRED = ("SESSDATA", "bili_jct")
+
+    def __init__(self, sessdata: str = "", bili_jct: str = "", dede_user_id: str = "",
+                 buvid3: str = "", buvid4: str = "", ac_time_value: str = "", tid: int = 17):
+        # 用 B 站真实 cookie 名（大小写敏感），并丢弃空值，避免发送空 cookie 干扰鉴权
+        raw = {
+            "SESSDATA": sessdata, "bili_jct": bili_jct, "DedeUserID": dede_user_id,
+            "buvid3": buvid3, "buvid4": buvid4, "ac_time_value": ac_time_value,
+        }
+        self._cookie = {k: v for k, v in raw.items() if v}
         self._tid = tid
 
+    def _missing_required(self) -> list[str]:
+        return [k for k in self.REQUIRED if not self._cookie.get(k)]
+
     async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str]) -> PublishResult:
-        if not self._cookie["sessdata"]:
-            return PublishResult(platform="bilibili", status="failed", error_message="Missing Bilibili cookies (sessdata)")
+        missing = self._missing_required()
+        if missing:
+            return PublishResult(platform="bilibili", status="failed",
+                                 error_message=f"缺少必填 Cookie: {', '.join(missing)}（投稿至少需 SESSDATA + bili_jct）")
+        if not self._cookie.get("DedeUserID"):
+            log.warning("Bilibili 未提供 DedeUserID，部分投稿接口/风控可能校验失败，强烈建议补上")
 
         log.info("Publishing to Bilibili: '%s'", title[:60])
         t0 = time.time()
@@ -29,16 +65,36 @@ class BilibiliPublisher(PublisherAdapter):
 
             with BiliBili(video) as bili:
                 bili.login_by_cookie(self._cookie)
+                # 封面非必需，失败则回退默认封面，不阻断投稿
+                if thumbnail_path and Path(thumbnail_path).exists():
+                    try:
+                        video.cover = bili.cover_up(thumbnail_path)
+                    except Exception as e:
+                        log.warning("Bilibili 封面上传失败，改用默认封面: %s", e)
                 video_part = bili.upload_file(video_path)
                 video.append(video_part)
                 result = bili.submit()
 
-            bvid = result if isinstance(result, str) else ""
+            bvid = self._extract_bvid(result)
             url = f"https://www.bilibili.com/video/{bvid}" if bvid else ""
-            log.info("Published to Bilibili in %.1fs: %s", time.time() - t0, url)
+            log.info("Published to Bilibili in %.1fs: %s", time.time() - t0, url or "(无 bvid 返回)")
             return PublishResult(platform="bilibili", status="success", url=url)
         except ImportError:
-            return PublishResult(platform="bilibili", status="failed", error_message="biliup not installed: pip install biliup")
+            return PublishResult(platform="bilibili", status="failed", error_message="biliup 未安装: pip install biliup")
         except Exception as e:
+            msg = str(e)
+            # -101 未登录 / 账号未登录 → Cookie 失效（约 30 天过期），给出可操作提示
+            if "-101" in msg or "未登录" in msg or "account not login" in msg.lower():
+                msg = "Cookie 已失效或过期（约 30 天有效），请重新从浏览器获取 SESSDATA / bili_jct 等并更新"
             log.exception("Bilibili publish failed")
-            return PublishResult(platform="bilibili", status="failed", error_message=str(e))
+            return PublishResult(platform="bilibili", status="failed", error_message=msg)
+
+    @staticmethod
+    def _extract_bvid(result) -> str:
+        """biliup.submit() 在不同版本返回 bvid 字符串或 {'data': {'bvid': ...}}，兼容两种。"""
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            data = result.get("data") if isinstance(result.get("data"), dict) else result
+            return data.get("bvid", "") if isinstance(data, dict) else ""
+        return ""

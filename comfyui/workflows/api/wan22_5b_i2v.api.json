@@ -117,8 +117,8 @@
         0
       ],
       "seed": "__SEED__",
-      "steps": 30,
-      "cfg": 5.0,
+      "steps": "__STEPS__",
+      "cfg": "__CFG__",
       "sampler_name": "uni_pc",
       "scheduler": "simple",
       "denoise": 1.0

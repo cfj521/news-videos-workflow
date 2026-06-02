@@ -99,12 +99,32 @@ class PromptsCfg(BaseModel):
     news_scoring: str = ""
 
 
+class WorkflowParams(BaseModel):
+    steps: int
+    cfg: float
+
+
 class ComfyuiCfg(BaseModel):
     workflows_dir: str = "comfyui/workflows/api"
     default_negative: str = "模糊, 丑陋, 变形, 低质量, 水印"
-    server_url: str = "http://127.0.0.1:8188"
+    server_url: str = "http://127.0.0.1:8188"  # 图片与视频生成共用一个 ComfyUI 地址
+    # ---- 图片生成（图片 provider 选 comfyui 时生效）----
+    image_workflow: str = "z_image"
+    image_params: dict[str, WorkflowParams] = {
+        "z_image": WorkflowParams(steps=9, cfg=1.0),   # turbo 蒸馏，低步数
+        "qwen": WorkflowParams(steps=20, cfg=2.5),
+    }
+    # ---- 视频生成 ----
     video_workflow: str = "wan5b"
     video_fps: int = 24
+    # 每种视频 workflow 一组生成参数。wan5b/wan14b 的 steps、cfg 均可调；
+    # wan14b_lightx2v 锁死（加速 LoRA 固定 4 步）、ltx 仅 cfg 生效（蒸馏固定 sigmas）。
+    video_params: dict[str, WorkflowParams] = {
+        "wan5b": WorkflowParams(steps=30, cfg=5.0),
+        "wan14b": WorkflowParams(steps=20, cfg=3.5),
+        "wan14b_lightx2v": WorkflowParams(steps=4, cfg=1.0),
+        "ltx": WorkflowParams(steps=4, cfg=1.0),
+    }
 
 
 class Settings(BaseModel):
