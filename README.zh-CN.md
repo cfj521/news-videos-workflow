@@ -86,6 +86,29 @@ cd frontend && pnpm build     # 前端类型检查 + 构建
 - **ComfyUI**：图片（z_image / qwen）与视频（wan5b / wan14b / lightx2v / ltx）的 workflow 选择与每流 steps/cfg 参数。
 - **发布平台**：凭证在「发布管理」页按平台配置（存 DB），不写在配置文件里。
 
+## ComfyUI 模型（本地图片/视频生成）
+
+默认的图片/视频路线跑在**本地 ComfyUI**（工作流见 `comfyui/workflows/api/*.json`）。模型需你**自行下载**并让 ComfyUI 识别。参考配置：**24GB 显存**；全量约 **180GB** 磁盘——只需下你实际用到的路线即可。下表文件名省略 `.safetensors` 后缀；完整清单与下载源以 `scripts/download-comfyui-models.ps1` 为准。
+
+| 路线 | ComfyUI 目录 | 模型文件 |
+|---|---|---|
+| **z_image** — 图片，默认/快 | `diffusion_models` · `text_encoders` · `vae` | `z_image_turbo_bf16` · `qwen_3_4b` · `ae` |
+| **Qwen-Image** — 图片，中文/版面强 | `diffusion_models` · `text_encoders` · `vae` | `qwen_image_fp8_e4m3fn` · `qwen_2.5_vl_7b_fp8_scaled` · `qwen_image_vae` |
+| **Wan 2.2 5B** — 视频，默认/快 | `diffusion_models` · `text_encoders` · `vae` | `wan2.2_ti2v_5B_fp16` · `umt5_xxl_fp8_e4m3fn_scaled` · `wan2.2_vae` |
+| **Wan 2.2 14B** — 视频，质量（i2v & t2v） | `diffusion_models` · `vae` | `wan2.2_{i2v,t2v}_{high,low}_noise_14B_fp8_scaled` · `wan_2.1_vae` |
+| **Wan 2.2 Lightning** — 视频，4 步 LoRA | `loras` | `wan2.2_{i2v,t2v}_lightx2v_4steps_lora_*` |
+| **LTX 2.3** — 视频 | `checkpoints` · `text_encoders` · `loras` · `latent_upscale_models` | `ltx-2.3-22b-dev-fp8` · `gemma_3_12B_it_fp4_mixed` · `ltx-2.3-22b-distilled-lora-384-1.1` · `ltx-2.3-{spatial,temporal}-upscaler-x2-1.0` |
+
+模型全部在 **ModelScope**（`Comfy-Org/*`、`Lightricks/LTX-2.3*`）。脚本会统一下载到一个目录：
+
+```powershell
+pip install modelscope
+powershell -ExecutionPolicy Bypass -File scripts/download-comfyui-models.ps1      # 图片 + Wan 2.2
+powershell -ExecutionPolicy Bypass -File scripts/download-ltx23-comfyui-models.ps1 # LTX 2.3（可选）
+```
+
+下完把 ComfyUI 的 `extra_model_paths.yaml` 的 `base_path` 指向该目录（脚本默认 `D:/models/comfyui/`），重启 ComfyUI，再到**设置 → ComfyUI**选对应 workflow。**没有 GPU？** 把视频路线设为 `hyperframes`（回退 FFmpeg）——ComfyUI 是可选的。
+
 ## 发布
 
 支持 YouTube、Bilibili 等。各平台所需账号/Cookie/Token 的申请与填写，见 **[docs/video-publish-guide.md](docs/video-publish-guide.md)**：

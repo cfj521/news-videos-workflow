@@ -87,6 +87,29 @@ cd frontend && pnpm build     # frontend type-check + build
 - **ComfyUI**: workflow selection for images (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx), plus per-workflow steps/cfg parameters.
 - **Publishing platforms**: credentials are configured per platform on the "Publishers" page (stored in the DB), not in the config file.
 
+## ComfyUI models (local image/video generation)
+
+The default image/video route runs on a **local ComfyUI** (workflows in `comfyui/workflows/api/*.json`). You must download the models yourself and let ComfyUI find them. Reference config: **24 GB VRAM**; full set ≈ **180 GB** disk — you only need the route(s) you actually use. File names below omit the `.safetensors` suffix; the authoritative list (with download sources) is `scripts/download-comfyui-models.ps1`.
+
+| Route | ComfyUI dir(s) | Model files |
+|---|---|---|
+| **z_image** — image, default/fast | `diffusion_models` · `text_encoders` · `vae` | `z_image_turbo_bf16` · `qwen_3_4b` · `ae` |
+| **Qwen-Image** — image, CN/layout | `diffusion_models` · `text_encoders` · `vae` | `qwen_image_fp8_e4m3fn` · `qwen_2.5_vl_7b_fp8_scaled` · `qwen_image_vae` |
+| **Wan 2.2 5B** — video, default/fast | `diffusion_models` · `text_encoders` · `vae` | `wan2.2_ti2v_5B_fp16` · `umt5_xxl_fp8_e4m3fn_scaled` · `wan2.2_vae` |
+| **Wan 2.2 14B** — video, quality (i2v & t2v) | `diffusion_models` · `vae` | `wan2.2_{i2v,t2v}_{high,low}_noise_14B_fp8_scaled` · `wan_2.1_vae` |
+| **Wan 2.2 Lightning** — video, 4-step LoRA | `loras` | `wan2.2_{i2v,t2v}_lightx2v_4steps_lora_*` |
+| **LTX 2.3** — video | `checkpoints` · `text_encoders` · `loras` · `latent_upscale_models` | `ltx-2.3-22b-dev-fp8` · `gemma_3_12B_it_fp4_mixed` · `ltx-2.3-22b-distilled-lora-384-1.1` · `ltx-2.3-{spatial,temporal}-upscaler-x2-1.0` |
+
+All models are on **ModelScope** (`Comfy-Org/*`, `Lightricks/LTX-2.3*`). The helper scripts download everything into one folder:
+
+```powershell
+pip install modelscope
+powershell -ExecutionPolicy Bypass -File scripts/download-comfyui-models.ps1      # image + Wan 2.2
+powershell -ExecutionPolicy Bypass -File scripts/download-ltx23-comfyui-models.ps1 # LTX 2.3 (optional)
+```
+
+Then point ComfyUI's `extra_model_paths.yaml` `base_path` at that folder (the scripts default to `D:/models/comfyui/`), restart ComfyUI, and pick the matching workflow under **Settings → ComfyUI**. **No GPU?** Set the video route to `hyperframes` (falls back to FFmpeg) — ComfyUI is optional.
+
 ## Publishing
 
 Supports YouTube, Bilibili, and more. For how to obtain and fill in each platform's account / cookie / token, see **[docs/video-publish-guide.md](docs/video-publish-guide.md)**:
