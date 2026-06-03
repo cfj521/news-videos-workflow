@@ -114,8 +114,10 @@ def delete_run(run_id: int, db: Session = Depends(get_db)):
 
 @router.get("/runs/{run_id}/assets/{filename:path}")
 def get_asset(run_id: int, filename: str):
-    path = _run_dir(run_id) / "assets" / filename
-    if not path.exists():
+    # 防路径穿越：解析后必须仍落在该任务的 assets/ 目录内，否则视为不存在。
+    assets_root = (_run_dir(run_id) / "assets").resolve()
+    path = (assets_root / filename).resolve()
+    if not path.is_relative_to(assets_root) or not path.is_file():
         raise HTTPException(status_code=404, detail="Asset not found")
     mime = "image/png" if path.suffix == ".png" else "audio/mpeg" if path.suffix == ".mp3" else "application/octet-stream"
     return FileResponse(path, media_type=mime)

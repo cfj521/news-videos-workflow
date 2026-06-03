@@ -1,3 +1,4 @@
+import asyncio
 import time
 from pathlib import Path
 
@@ -64,34 +65,10 @@ class BilibiliPublisher(PublisherAdapter):
         t0 = time.time()
 
         try:
-            from biliup.plugins.bili_webup import BiliBili, Data
-
-            video = Data()
-            video.title = title[:80]
-            video.desc = description[:250]
-            # B 站 tag 要逗号分隔字符串（biliup Data.tag 为 Union[list,str]，set_tag 即 join）
-            video.tag = ",".join(tags[:12] if tags else ["科技"])
-            video.tid = self._tid
-
-            with BiliBili(video) as bili:
-                # 覆盖 biliup 过旧 UA，避免 412 风控（私有属性，跨版本容错）
-                try:
-                    bili._BiliBili__session.headers["user-agent"] = _MODERN_UA
-                except Exception:
-                    pass
-                bili.login_by_cookies(self._biliup_cookie())
-                # 封面非必需，失败则回退默认封面，不阻断投稿
-                if thumbnail_path and Path(thumbnail_path).exists():
-                    try:
-                        video.cover = bili.cover_up(thumbnail_path)
-                    except Exception as e:
-                        log.warning("Bilibili 封面上传失败，改用默认封面: %s", e)
-                video_part = bili.upload_file(video_path)
-                video.append(video_part)
-                result = bili.submit()
-
-            bvid = self._extract_bvid(result)
-            url = f"https://www.bilibili.com/video/{bvid}" if bvid else ""
+            # biliup 是同步且内部自带 asyncio.run()，必须丢到独立线程跑——
+            # 否则在 pipeline 的事件循环里会抛 "asyncio.run() cannot be called from a running event loop"。
+            url = await asyncio.to_thread(
+                self._blocking_publish, video_path, thumbnail_path, title, description, tags)
             log.info("Published to Bilibili in %.1fs: %s", time.time() - t0, url or "(无 bvid 返回)")
             return PublishResult(platform="bilibili", status="success", url=url)
         except ImportError:
@@ -103,6 +80,38 @@ class BilibiliPublisher(PublisherAdapter):
                 msg = "Cookie 已失效或过期（约 30 天有效），请重新从浏览器获取 SESSDATA / bili_jct 等并更新"
             log.exception("Bilibili publish failed")
             return PublishResult(platform="bilibili", status="failed", error_message=msg)
+
+    def _blocking_publish(self, video_path: str, thumbnail_path: str | None,
+                          title: str, description: str, tags: list[str]) -> str:
+        """同步 biliup 投稿逻辑——只能在独立线程中调用（见 publish 中的说明）。返回稿件 URL。"""
+        from biliup.plugins.bili_webup import BiliBili, Data
+
+        video = Data()
+        video.title = title[:80]
+        video.desc = description[:250]
+        # B 站 tag 要逗号分隔字符串（biliup Data.tag 为 Union[list,str]，set_tag 即 join）
+        video.tag = ",".join(tags[:12] if tags else ["科技"])
+        video.tid = self._tid
+
+        with BiliBili(video) as bili:
+            # 覆盖 biliup 过旧 UA，避免 412 风控（私有属性，跨版本容错）
+            try:
+                bili._BiliBili__session.headers["user-agent"] = _MODERN_UA
+            except Exception:
+                pass
+            bili.login_by_cookies(self._biliup_cookie())
+            # 封面非必需，失败则回退默认封面，不阻断投稿
+            if thumbnail_path and Path(thumbnail_path).exists():
+                try:
+                    video.cover = bili.cover_up(thumbnail_path)
+                except Exception as e:
+                    log.warning("Bilibili 封面上传失败，改用默认封面: %s", e)
+            video_part = bili.upload_file(video_path)
+            video.append(video_part)
+            result = bili.submit()
+
+        bvid = self._extract_bvid(result)
+        return f"https://www.bilibili.com/video/{bvid}" if bvid else ""
 
     @staticmethod
     def _extract_bvid(result) -> str:
