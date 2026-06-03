@@ -1,0 +1,85 @@
+# 复制为 config.yaml（放在仓库根目录）后填入密钥即可运行（config.yaml 已被 .gitignore 忽略，不会入库）。
+# 未列出的字段会用代码内置默认值；推荐通过前端「设置」页可视化配置，保存时会写回本文件。
+
+# ---- 基础设施 ----
+infra:
+  database_url: sqlite:///../data/news_videos.db   # 单进程内置后台任务，SQLite 够用；高并发再换 PostgreSQL
+  data_dir: ../data
+
+# ---- 存储：work_dir 留空用默认 data/runs；output_dir 留空则不额外导出成品 ----
+storage:
+  work_dir: ""
+  output_dir: ""
+
+# ---- AI Provider（api_key 留空则该 provider 不可用）----
+text:                                   # 脚本 / 文案生成
+  provider: claude                      # claude | openai | dashscope | 自定义
+  base_url: https://api.anthropic.com
+  model: claude-sonnet-4-6
+  api_key: ""
+
+image:                                  # 场景配图；选 comfyui 则走本地 ComfyUI（见下方 comfyui 段）
+  provider: openai                      # openai | dashscope | comfyui
+  base_url: https://api.openai.com/v1
+  model: gpt-image-2
+  api_key: ""
+
+vision:                                 # 导入 PDF / 图片时的多模态解析
+  provider: openai
+  base_url: https://api.openai.com/v1
+  model: gpt-4o
+  api_key: ""
+
+tts:                                    # 文字转语音（edge-tts 免费、无需 key）
+  provider: edge-tts                    # edge-tts | openai-tts | dashscope-tts | azure-speech
+  base_url: ""
+  api_key: ""
+  model: ""
+  voice: zh-CN-XiaoxiaoNeural
+  speed: 1.0
+
+summary:                                # 文章摘要；provider 留空则复用上面 text 的配置
+  provider: ""
+  base_url: ""
+  model: ""
+  api_key: ""
+  max_length: 150
+
+# ---- 搜索类采集器 Key（按需；启用对应信息源时才需要）----
+collectors:
+  tavily_key: ""
+  brave_key: ""
+  serper_key: ""
+
+# ---- YouTube OAuth（也可改在「发布管理」页按平台配置，存 DB）----
+youtube:
+  client_id: ""
+  client_secret: ""
+
+# ---- 流水线默认参数 ----
+pipeline:
+  default_time_range: 7d                # 1d | 3d | 7d | 15d | 1m
+  default_max_articles: 5
+  default_video_route: comfyui          # comfyui | hyperframes | audio
+  default_language: zh
+  dedup_lookback: 30d
+
+# ---- 视频输出 ----
+video:
+  resolution: 1080x1920
+  aspect_ratio: "9:16"
+  fps: "30"
+  scene_gap_ms: 500
+  transition: crossfade                 # crossfade | fade | slide | cut
+
+# ---- ComfyUI 本地生成（image.provider 或 video_route 选 comfyui 时生效）----
+comfyui:
+  server_url: http://127.0.0.1:8188     # 图片与视频生成共用
+  default_negative: 模糊, 丑陋, 变形, 低质量, 水印
+  image_workflow: z_image               # z_image | qwen
+  video_workflow: wan5b                 # wan5b | wan14b | wan14b_lightx2v | ltx
+  video_fps: 24
+  # 各 workflow 的 steps/cfg（image_params / video_params）建议在「设置 → ComfyUI」页调整
+
+# ---- 可编辑提示词：留空用内置默认；建议在「设置 → 提示词」页编辑 ----
+prompts: {}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, errorTextCls } from "../styles";
 import { Select } from "./Select";
+import { PasswordInput } from "./PasswordInput";
 
 interface Props {
   onCreated: () => void;
@@ -90,7 +91,9 @@ export function AddSourceDialog({ onCreated, onClose }: Props) {
         {needsApiKey(type) && (
           <>
             <label className={labelCls}>API Key</label>
-            <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-... / tvly-... / BSA..." className={`${inputCls} mb-4 font-mono text-[13px]`} />
+            <div className="mb-4">
+              <PasswordInput value={apiKey} onChange={setApiKey} placeholder="sk-... / tvly-... / BSA..." className={`${inputCls} font-mono text-[13px]`} />
+            </div>
           </>
         )}
 

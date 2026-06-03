@@ -1,79 +1,81 @@
-# 新闻视频自动化工作流
+<p align="right"><b>English</b> | <a href="README.zh-CN.md">简体中文</a></p>
 
-从新闻采集到视频发布的全链路自动化平台：抓取新闻 → 生成脚本 → 生成图片/视频素材 → 合成配音视频 → 多平台发布。
+# News-to-Video Automation Workflow
 
-**技术栈**：Python（FastAPI + Celery）后端 · React（Vite + TypeScript）前端
+An end-to-end platform that turns news into published videos: scrape news → generate script → generate image/video assets → compose narrated video → publish to multiple platforms.
 
-## 流水线
+**Tech stack**: Python (FastAPI) backend · React (Vite + TypeScript) frontend
+
+## Pipeline
 
 ```
 [Collector] → [Processor] → [Generator] → [Composer] → [Publisher]
-   抓取新闻      整理/脚本      图片/视频素材    合成视频+配音      多平台发布
-   S1            S2/S3          S3/S5           S4/S5             S6
+   scrape       script       image/video    compose +       multi-platform
+   news         generation    assets         narration       publishing
+   S1           S2/S3         S3/S5          S4/S5           S6
 ```
 
-每个 stage 是独立的 Celery task，状态存 DB，支持从任意 stage 重试。
+Each stage runs sequentially inside the backend process (FastAPI background tasks), persists its state to the DB, and can be retried from any stage.
 
-## 环境准备
+## Setup
 
-### 后端（conda + requirements.txt）
+### Backend (conda + requirements.txt)
 
-依赖统一在根目录 `requirements.txt`，`backend/pyproject.toml` 只保留 ruff / pytest 配置。
+Dependencies live in the root `requirements.txt`; `backend/pyproject.toml` only keeps ruff / pytest config.
 
 ```bash
 conda create -n env_news_videos_wf python=3.12
 conda activate env_news_videos_wf
-pip install -r requirements.txt        # 含发布可选依赖 biliup / google-*
+pip install -r requirements.txt        # includes optional publishing deps: biliup / google-*
 ```
 
-### 前端
+### Frontend
 
 ```bash
 cd frontend
 pnpm install
 ```
 
-### 基础设施 / 外部依赖
+### Infrastructure / external dependencies
 
-- **Redis**（Celery broker）：`docker compose up -d redis`
-- **FFmpeg**：需在系统 PATH 中可用（视频合成）
-- **ComfyUI**（可选，默认的本地图片/视频生成路线）：本机运行 ComfyUI（默认 `http://127.0.0.1:8188`），模型见 `scripts/download-comfyui-models.ps1`
+- **FFmpeg**: must be available on the system PATH (video composition).
+- **ComfyUI** (optional, the default local image/video generation route): run ComfyUI locally (default `http://127.0.0.1:8188`); models via `scripts/download-comfyui-models.ps1`.
 
-## 运行
+## Run
 
 ```bash
-# 后端 API
+# Backend API (the pipeline runs as in-process background tasks — no extra worker/broker needed)
 cd backend && uvicorn app.main:app --reload          # http://127.0.0.1:8000
-# Celery worker（另开终端）
-cd backend && celery -A app.tasks worker -l info
-# 前端
+# Frontend
 cd frontend && pnpm dev                              # http://127.0.0.1:5173
 ```
 
-## 测试
+First launch seeds a default admin account **admin / admin** — change it under **Settings → Users** after logging in.
+
+## Test
 
 ```bash
-cd backend && pytest          # 后端
-cd frontend && pnpm build     # 前端类型检查 + 构建
+cd backend && pytest          # backend
+cd frontend && pnpm build     # frontend type-check + build
 ```
 
-## 配置
+## Configuration
 
-- 运行时配置走设置页（`/settings`）→ 持久化到 YAML，`backend/app/config.py`（pydantic-settings）加载。
-- **AI 服务**：文本 / 图片 / 视觉 / 语音 provider（商用 API 或本地 ComfyUI）。
-- **ComfyUI**：图片（z_image / qwen）与视频（wan5b / wan14b / lightx2v / ltx）的 workflow 选择与每流 steps/cfg 参数。
-- **发布平台**：凭证在「发布管理」页按平台配置（存 DB），不写在配置文件里。
+- First-time setup: copy the template in the repo root, `cp config.yaml.example config.yaml`, fill in your API keys, and start (`config.yaml` is gitignored). Afterwards, prefer the Settings page (`/settings`) for a visual editor that writes back to the file on save. Loading is handled by `backend/app/config.py` (pydantic + YAML) — **the project uses the root `config.yaml`, not `.env`**.
+- **AI services**: text / image / vision / TTS providers (commercial APIs or local ComfyUI).
+- **ComfyUI**: workflow selection for images (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx), plus per-workflow steps/cfg parameters.
+- **Publishing platforms**: credentials are configured per platform on the "Publishers" page (stored in the DB), not in the config file.
 
-## 发布
+## Publishing
 
-支持 YouTube、Bilibili 等。各平台所需账号/Cookie/Token 的申请与填写，见 **[docs/video-publish-guide.md](docs/video-publish-guide.md)**：
+Supports YouTube, Bilibili, and more. For how to obtain and fill in each platform's account / cookie / token, see **[docs/video-publish-guide.md](docs/video-publish-guide.md)**:
 
-- **YouTube**：OAuth（Client ID + Client Secret + Refresh Token），需先在 OAuth Playground 获取 refresh_token，应用须设「外部 + 正式版」。
-- **Bilibili**：浏览器 Cookie（SESSDATA + bili_jct 必填，DedeUserID/buvid3/buvid4 建议），基于 biliup 投稿。
+- **YouTube**: OAuth (Client ID + Client Secret + Refresh Token); obtain the refresh_token via the OAuth Playground, with the app set to "External + Production".
+- **Bilibili**: browser cookies (SESSDATA + bili_jct required; DedeUserID/buvid3/buvid4 recommended), uploaded via biliup.
 
-## 文档
+## Docs
 
-- [docs/video-publish-guide.md](docs/video-publish-guide.md) — 发布平台账号申请与配置（操作向）
-- [docs/video-publish-api-reference.md](docs/video-publish-api-reference.md) — 发布适配器 API 参考
-- [CLAUDE.md](CLAUDE.md) — 架构、模块划分、约定（开发者向）
-- `comfyui/` — ComfyUI 工作流 JSON 与调用说明
+- [docs/video-publish-guide.md](docs/video-publish-guide.md) — publishing platform account setup & configuration (how-to)
+- [docs/video-publish-api-reference.md](docs/video-publish-api-reference.md) — publishing adapter API reference
+- [CLAUDE.md](CLAUDE.md) — architecture, module layout, conventions (for developers)
+- `comfyui/` — ComfyUI workflow JSON and usage notes

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dependencies import get_session_factory
 from app.api.router import api_router
+from app.auth import seed_default_admin
 from app.config import get_settings
 from app.logging import setup_global_logger
 from app.models.base import Base
@@ -55,6 +56,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=factory.kw["bind"])
     _ensure_pipeline_run_columns(factory.kw["bind"])
     _seed_aihot_source(factory)
+    seed_default_admin(factory)
     yield
 
 

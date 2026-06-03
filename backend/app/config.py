@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"  # 仓库根目录
 
 
 class TimeRange(str, Enum):
@@ -51,7 +51,6 @@ class YouTubeCfg(BaseModel):
 
 
 class SummaryCfg(BaseModel):
-    enabled: bool = True  # 历史字段：摘要现按信息源组自动决定，此开关已不再生效
     provider: str = ""
     base_url: str = ""
     model: str = ""
@@ -77,7 +76,6 @@ class VideoCfg(BaseModel):
 
 class InfraCfg(BaseModel):
     database_url: str = "sqlite:///../data/news_videos.db"
-    redis_url: str = "redis://localhost:6379/0"
     data_dir: str = "../data"
 
 

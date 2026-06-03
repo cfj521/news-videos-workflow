@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 新闻视频自动化工作流系统：从新闻采集到视频发布的全链路自动化平台。
 
-**Tech Stack**: Python (FastAPI + Celery) backend, React (Vite + TypeScript) frontend
+**Tech Stack**: Python (FastAPI) backend, React (Vite + TypeScript) frontend
 
 ## Architecture
 
@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    抓取新闻      整理/生成脚本    生成图片素材     合成视频+配音      多平台发布
 ```
 
-每个 stage 是独立的 Celery task，通过 Redis 传递状态，pipeline 支持从任意 stage 重试。
+每个 stage 在后端进程内顺序执行（FastAPI BackgroundTasks，`app/pipeline/runner.py`），状态存 DB，pipeline 支持从任意 stage 重试。
 
 ### Core Modules
 
@@ -65,8 +65,7 @@ conda create -n env_news_videos_wf python=3.12 && conda activate env_news_videos
 pip install -r requirements.txt  # 安装依赖（含发布可选依赖 biliup / google-*）
 
 cd backend
-uvicorn app.main:app --reload    # 启动 API 服务 (默认 :8000)
-celery -A app.tasks worker -l info  # 启动 Celery worker
+uvicorn app.main:app --reload    # 启动 API 服务 (默认 :8000)；流水线跑在进程内的后台任务，无需独立 worker
 pytest                           # 运行全部测试
 pytest tests/test_collector.py -k "test_rss"  # 运行单个测试
 ruff check .                     # lint
@@ -84,34 +83,27 @@ pnpm lint                        # ESLint
 pnpm test                        # Vitest
 ```
 
-### Infrastructure
-
-```bash
-docker compose up -d redis       # 启动 Redis（Celery broker）
-docker compose up -d             # 启动全部服务
-```
-
 ## Dependencies
 
 - **Scrapling**: 新闻抓取框架，需 Python 3.10+，安装时用 `pip install "scrapling[all]"`，首次运行 `scrapling install` 下载浏览器
 - **FFmpeg**: 视频合成必须在系统 PATH 中可用（也是 Hyperframes/ComfyUI 渲染失败时的兜底合成器）
 - **Hyperframes**（hyperframes 视频路线）: 需 Node.js + `npx hyperframes`（npm 包，非 Python 依赖，不在 requirements.txt）。首次渲染由 npx 联网拉取，或预装 `npm i -g hyperframes`。缺失时自动回退到 FFmpeg 合成。
-- **Redis**: Celery 消息队列
 - **ComfyUI**（可选，本地图片/视频生成）: 默认视频路线，需本机运行 ComfyUI（默认 `http://127.0.0.1:8188`）+ 下载模型（见 `scripts/download-comfyui-models.ps1`）。工作流 JSON 在 `comfyui/workflows/api/`，配置在设置页「ComfyUI」标签。
 - **发布可选依赖**（按需）: B站投稿用 `biliup`；YouTube 用 `google-api-python-client` / `google-auth` / `google-auth-oauthlib`。均已列入 `requirements.txt`。发布平台凭证在「发布管理」页配置，详见 `docs/video-publish-guide.md`。
 
 ## Configuration
 
-环境变量通过 `.env` 文件管理，`backend/app/config.py` 使用 pydantic-settings 加载。关键配置：
+配置统一在**仓库根目录的 `config.yaml`**（不是 `.env`），由 `backend/app/config.py`（pydantic BaseModel + `yaml.safe_load`）加载，`CONFIG_PATH` 指向 `parents[2]/config.yaml`。首次复制 `config.yaml.example` 为 `config.yaml` 填入密钥；设置页保存时会写回该文件。关键分组：
 
-- `AI_TEXT_PROVIDER` / `AI_IMAGE_PROVIDER` / `AI_TTS_PROVIDER` — 选择 AI 服务 provider
-- `PUBLISH_PLATFORMS` — 启用的发布平台列表
-- 各 provider 的 API key 配置
+- `text` / `image` / `vision` / `tts` / `summary` — 各 AI provider 的 provider/base_url/model/api_key
+- `pipeline` — 默认时间范围、最大文章数、视频路线（comfyui | hyperframes | audio）等
+- `comfyui` — 本地图片/视频生成的 workflow 与每流 steps/cfg
+- 发布平台凭证不在此文件，存 DB（「发布管理」页配置）
 
 ## Conventions
 
 - 中文注释和文档，代码标识符用英文
 - Provider 接口用 `async def`，所有 AI 调用走异步
-- Pipeline stage 之间通过 Celery task chain 串联，每个 stage 是幂等的
+- Pipeline stage 在 runner 内顺序 await 串联，每个 stage 是幂等的（失败可单独重试）
 - 新增 AI provider 需实现 `base.py` 中对应的抽象类并在 `__init__.py` 注册
 - 新增发布平台需实现 `PublisherAdapter` 接口并加到 adapter registry

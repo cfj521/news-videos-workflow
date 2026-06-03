@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import get_db
+from app.auth import get_current_user
 from app.main import create_app
 from app.models import Base  # noqa: F401 – side-effect: registers all ORM models
 
@@ -33,6 +34,7 @@ def client():
             session.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: "admin"
     # 阻止创建 run 时触发真实后台流水线（会跑网络/卡住），测试只验证接口行为
     with patch("app.api.pipeline._run_pipeline_bg"):
         yield TestClient(app)

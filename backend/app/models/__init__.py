@@ -8,4 +8,5 @@ from .publish_record import PublishRecord as PublishRecord
 from .raw_article import RawArticle as RawArticle
 from .script import Script as Script
 from .timeline import Timeline as Timeline
+from .user import User as User
 from .video import Video as Video

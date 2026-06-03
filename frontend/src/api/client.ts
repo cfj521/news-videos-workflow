@@ -1,14 +1,45 @@
 import type { NewsSource, PipelineRun, PublishTarget } from "../types";
 
 const BASE = "/api";
+const TOKEN_KEY = "nv_token";
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+/** 登录失效时触发，由 App 监听以回到登录页。 */
+export function onUnauthorized(handler: () => void) {
+  window.addEventListener("nv-unauthorized", handler);
+  return () => window.removeEventListener("nv-unauthorized", handler);
+}
+
+function authHeaders(extra?: HeadersInit): HeadersInit {
+  const token = getToken();
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
+}
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers: authHeaders(init?.headers),
   });
+  if (res.status === 401) {
+    setToken(null);
+    window.dispatchEvent(new Event("nv-unauthorized"));
+    throw new Error("未登录或登录已失效");
+  }
   if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    const detail = (await res.json().catch(() => ({}))).detail;
+    throw new Error(`API error: ${res.status} ${detail ?? res.statusText}`);
   }
   return res.json();
 }
@@ -18,7 +49,7 @@ export interface AppSettings {
   image: { provider: string; base_url: string; model: string; api_key: string };
   vision: { provider: string; base_url: string; model: string; api_key: string };
   tts: { provider: string; base_url: string; api_key: string; model: string; voice: string; speed: number };
-  summary: { enabled: boolean; provider: string; base_url: string; model: string; api_key: string; max_length: number };
+  summary: { provider: string; base_url: string; model: string; api_key: string; max_length: number };
   collectors: { tavily_key: string; brave_key: string; serper_key: string };
   youtube: { client_id: string; client_secret: string };
   pipeline: { default_time_range: string; default_max_articles: number; default_video_route: string; default_language: string; dedup_lookback: string };
@@ -115,7 +146,12 @@ export const api = {
     importArticleFile: async (runId: number, file: File) => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`/api/pipeline/runs/${runId}/articles/import/file`, { method: "POST", body: fd });
+      const token = getToken();
+      const res = await fetch(`/api/pipeline/runs/${runId}/articles/import/file`, {
+        method: "POST",
+        body: fd,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!res.ok) {
         const detail = (await res.json().catch(() => ({}))).detail;
         throw new Error(`API error: ${res.status} ${detail ?? res.statusText}`);
@@ -172,4 +208,36 @@ export const api = {
       }),
     promptDefaults: () => fetchJSON<Record<string, { label: string; desc: string; default: string }>>("/settings/prompts/defaults"),
   },
+  auth: {
+    login: (username: string, password: string) =>
+      fetchJSON<{ token: string; username: string }>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      }),
+    me: () => fetchJSON<{ username: string }>("/auth/me"),
+    changePassword: (oldPassword: string, newPassword: string) =>
+      fetchJSON<{ status: string }>("/auth/password", {
+        method: "POST",
+        body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+      }),
+    users: () => fetchJSON<AuthUser[]>("/auth/users"),
+    createUser: (username: string, password: string) =>
+      fetchJSON<AuthUser>("/auth/users", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      }),
+    resetPassword: (id: number, newPassword: string) =>
+      fetchJSON<{ status: string }>(`/auth/users/${id}/password`, {
+        method: "POST",
+        body: JSON.stringify({ new_password: newPassword }),
+      }),
+    deleteUser: (id: number) =>
+      fetchJSON<{ status: string }>(`/auth/users/${id}`, { method: "DELETE" }),
+  },
 };
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  created_at: string;
+}

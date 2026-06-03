@@ -525,7 +525,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
           {!audioOnly && (
             <div>
               <div className="text-[11px] text-white/30 mb-1">图片提示词</div>
-              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} className={`${inputCls} text-[13px] text-white/50`} />
+              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={5} className={`${inputCls} text-[13px] text-white/50 resize-y`} />
               <div className="flex gap-2 mt-1.5">
                 <button onClick={handleRegenPrompt} disabled={regenPromptLoading} className={btnRegenPrompt}>
                   {regenPromptLoading ? "生成中..." : "重生成提示词"}

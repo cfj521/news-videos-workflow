@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import useSWR from "swr";
 import { api } from "../api/client";
-import { btnPrimary, btnCompact, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls, segItem } from "../styles";
+import { btnPrimary, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls, segItem } from "../styles";
 import { AddSourceDialog } from "../components/AddSourceDialog";
 import { EditSourceDialog } from "../components/EditSourceDialog";
 import { Select } from "../components/Select";
@@ -111,7 +111,7 @@ function SortTh({ label, sortKey, currentKey, currentDir, onSort }: {
   const active = currentKey === sortKey;
   return (
     <th
-      className={`text-left px-4 py-3 ${sectionTitleCls} cursor-pointer select-none hover:text-white/60 transition`}
+      className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap cursor-pointer select-none hover:text-white/60 transition`}
       onClick={() => onSort(sortKey)}
     >
       <span className="inline-flex items-center gap-1">
@@ -268,11 +268,14 @@ export function SourcesPage() {
               <SortTh label="分类" sortKey="category" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortTh label="语言" sortKey="language" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortTh label="优先级" sortKey="priority" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-              <th className={`text-left px-4 py-3 ${sectionTitleCls}`}>配置</th>
-              <th className={`text-left px-4 py-3 ${sectionTitleCls}`}>
-                <button onClick={toggleAllCustom} className={btnCompact} title="仅控制其他源（全部启用将关闭 AI HOT）">
-                  {allCustomEnabled ? "全部禁用" : "全部启用"}
-                </button>
+              <th className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>配置</th>
+              <th className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>
+                <div className="flex items-center gap-2">
+                  <span>全部启用</span>
+                  <button onClick={toggleAllCustom} className={toggleCls(allCustomEnabled)} title="全部启用/禁用（启用将关闭 AI HOT，与之互斥）">
+                    <span className={toggleThumbCls(allCustomEnabled)} />
+                  </button>
+                </div>
               </th>
             </tr>
           </thead>

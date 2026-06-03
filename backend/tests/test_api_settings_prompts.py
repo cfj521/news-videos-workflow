@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import get_db
+from app.auth import get_current_user
 from app.main import create_app
 from app.models import Base  # noqa: F401
 from app import config
@@ -27,6 +28,7 @@ def client(tmp_path, monkeypatch):
             s.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: "admin"
     return TestClient(app)
 
 

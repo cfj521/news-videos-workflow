@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
-import { api, type AppSettings } from "../api/client";
+import { api, type AppSettings, type AuthUser } from "../api/client";
 import { useToast } from "../components/Toast";
 import { Select } from "../components/Select";
+import { PasswordInput } from "../components/PasswordInput";
 import {
   inputCls as _inputCls,
   monoInputCls as _monoInputCls,
   btnPrimary,
-  btnCompact,
+  btnConfirm,
+  btnDeleteCompact,
+  btnAdd,
   sectionTitleCls,
   cx,
 } from "../styles";
@@ -24,14 +27,14 @@ interface ProviderPreset {
 }
 
 const TEXT_PRESETS: Record<string, ProviderPreset> = {
-  claude: { label: "Anthropic Claude", baseUrl: "https://api.anthropic.com", models: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"] },
-  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o"] },
-  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen-max", "qwen-plus", "qwen-turbo", "qwen-long"] },
+  claude: { label: "Anthropic Claude", baseUrl: "https://api.anthropic.com", models: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"] },
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-5.5", "gpt-5.5-pro", "gpt-5"] },
+  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen3.7-max", "qwen3.6-plus", "qwen3.6-flash"] },
 };
 
 const IMAGE_PRESETS: Record<string, ProviderPreset> = {
-  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-image-1", "dall-e-3"] },
-  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["wanx-v1", "wanx2.1-t2i-turbo"] },
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"] },
+  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["wan2.5-t2i-preview", "wanx2.1-t2i-turbo", "wanx2.1-t2i-plus"] },
   comfyui: { label: "ComfyUI 本地", baseUrl: "http://127.0.0.1:8188", models: ["z_image", "qwen"], needsKey: false },
 };
 
@@ -71,14 +74,14 @@ const VIDEO_PARAM_META: Record<string, ParamMeta> = {
 };
 
 const VISION_PRESETS: Record<string, ProviderPreset> = {
-  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini"] },
-  dashscope: { label: "阿里云 (Qwen-VL)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen-vl-max", "qwen-vl-plus"] },
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-5.5", "gpt-5", "gpt-4o"] },
+  dashscope: { label: "阿里云 (Qwen-VL)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen3-vl-plus", "qwen-vl-max", "qwen-vl-plus"] },
 };
 
 const TTS_PRESETS: Record<string, ProviderPreset> = {
   "edge-tts": { label: "Edge TTS", baseUrl: "", models: [], needsKey: false },
-  "openai-tts": { label: "OpenAI TTS", baseUrl: "https://api.openai.com/v1", models: ["tts-1-hd", "tts-1"], needsKey: true },
-  "dashscope-tts": { label: "阿里云 CosyVoice", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["cosyvoice-v1", "cosyvoice-v2"], needsKey: true },
+  "openai-tts": { label: "OpenAI TTS", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"], needsKey: true },
+  "dashscope-tts": { label: "阿里云 CosyVoice", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["cosyvoice-v2", "cosyvoice-v1"], needsKey: true },
   "azure-speech": { label: "Azure Speech", baseUrl: "https://{region}.tts.speech.microsoft.com", models: [], needsKey: true },
 };
 
@@ -172,21 +175,9 @@ function ParamFields({ meta, params, onChange }: {
 function SecretField({ label, value, onChange, placeholder }: {
   label: string; value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
-  const [show, setShow] = useState(false);
   return (
     <Field label={label}>
-      <div className="flex gap-2">
-        <input
-          type={show ? "text" : "password"}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? "sk-..."}
-          className={`flex-1 ${monoInputCls}`}
-        />
-        <button type="button" onClick={() => setShow((v) => !v)} className={btnCompact}>
-          {show ? "隐藏" : "显示"}
-        </button>
-      </div>
+      <PasswordInput value={value} onChange={onChange} placeholder={placeholder ?? "sk-..."} className={monoInputCls} />
     </Field>
   );
 }
@@ -305,17 +296,17 @@ function ProviderSection({ title, desc, presets, config, onChange, selfManagedPr
 
 const SUMMARY_PRESETS: Record<string, ProviderPreset> = {
   "": { label: "同文本模型", baseUrl: "", models: [] },
-  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"] },
-  claude: { label: "Anthropic Claude", baseUrl: "https://api.anthropic.com", models: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"] },
-  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen-turbo", "qwen-plus", "qwen-max"] },
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-5", "gpt-5.5", "gpt-4o-mini"] },
+  claude: { label: "Anthropic Claude", baseUrl: "https://api.anthropic.com", models: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-8"] },
+  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen3.6-flash", "qwen3.6-plus", "qwen3.7-max"] },
 };
 
 const EMPTY_SETTINGS: AppSettings = {
   text: { provider: "claude", base_url: "https://api.anthropic.com", model: "claude-sonnet-4-6", api_key: "" },
-  image: { provider: "openai", base_url: "https://api.openai.com/v1", model: "gpt-image-1", api_key: "" },
+  image: { provider: "openai", base_url: "https://api.openai.com/v1", model: "gpt-image-2", api_key: "" },
   vision: { provider: "openai", base_url: "https://api.openai.com/v1", model: "gpt-4o", api_key: "" },
   tts: { provider: "edge-tts", base_url: "", api_key: "", model: "", voice: "zh-CN-XiaoxiaoNeural", speed: 1.0 },
-  summary: { enabled: true, provider: "", base_url: "", model: "", api_key: "", max_length: 150 },
+  summary: { provider: "", base_url: "", model: "", api_key: "", max_length: 150 },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
   pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui", default_language: "zh", dedup_lookback: "30d" },
@@ -325,12 +316,149 @@ const EMPTY_SETTINGS: AppSettings = {
   prompts: {},
 };
 
+// ---------------------------------------------------------------------------
+// 用户管理 tab
+// ---------------------------------------------------------------------------
+
+function UsersTab() {
+  const { showToast } = useToast();
+  const { data: me } = useSWR("auth-me", api.auth.me);
+  const { data: users, mutate } = useSWR<AuthUser[]>("auth-users", api.auth.users);
+
+  // 修改自己的密码
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+
+  // 新增用户
+  const [newName, setNewName] = useState("");
+  const [newUserPw, setNewUserPw] = useState("");
+
+  // 重置某用户密码（行内展开）
+  const [resetId, setResetId] = useState<number | null>(null);
+  const [resetPw, setResetPw] = useState("");
+
+  const changeOwnPassword = async () => {
+    if (!oldPw || !newPw) return;
+    if (newPw !== confirmPw) { showToast("两次输入的新密码不一致", "error"); return; }
+    try {
+      await api.auth.changePassword(oldPw, newPw);
+      setOldPw(""); setNewPw(""); setConfirmPw("");
+      showToast("密码已修改", "success");
+    } catch {
+      showToast("修改失败，请检查原密码", "error");
+    }
+  };
+
+  const addUser = async () => {
+    if (!newName.trim() || !newUserPw) return;
+    try {
+      await api.auth.createUser(newName.trim(), newUserPw);
+      setNewName(""); setNewUserPw("");
+      mutate();
+      showToast("用户已添加", "success");
+    } catch {
+      showToast("添加失败，用户名可能已存在", "error");
+    }
+  };
+
+  const resetUserPassword = async (id: number) => {
+    if (!resetPw) return;
+    try {
+      await api.auth.resetPassword(id, resetPw);
+      setResetId(null); setResetPw("");
+      showToast("密码已重置", "success");
+    } catch {
+      showToast("重置失败", "error");
+    }
+  };
+
+  const removeUser = async (u: AuthUser) => {
+    if (!window.confirm(`确认删除用户「${u.username}」？`)) return;
+    try {
+      await api.auth.deleteUser(u.id);
+      mutate();
+      showToast("用户已删除", "success");
+    } catch {
+      showToast("删除失败", "error");
+    }
+  };
+
+  return (
+    <>
+      <Section title="修改密码" desc="修改当前登录账号的密码">
+        <Field label="原密码">
+          <PasswordInput value={oldPw} onChange={setOldPw} placeholder="原密码" autoComplete="current-password" className={inputCls} />
+        </Field>
+        <Field label="新密码">
+          <PasswordInput value={newPw} onChange={setNewPw} placeholder="新密码" autoComplete="new-password" className={inputCls} />
+        </Field>
+        <Field label="确认新密码">
+          <PasswordInput value={confirmPw} onChange={setConfirmPw} placeholder="再次输入新密码" autoComplete="new-password" className={inputCls} />
+        </Field>
+        <div className="flex justify-end">
+          <button onClick={changeOwnPassword} disabled={!oldPw || !newPw} className={cx(btnConfirm, (!oldPw || !newPw) && "opacity-40 cursor-default")}>
+            修改密码
+          </button>
+        </div>
+      </Section>
+
+      <Section title="用户列表" desc="管理可登录系统的账号">
+        <div className="space-y-2">
+          {(users ?? []).map((u) => (
+            <div key={u.id} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-white/80">{u.username}</span>
+                  {me?.username === u.username && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300">当前</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setResetId(resetId === u.id ? null : u.id); setResetPw(""); }} className={btnAdd}>
+                    重置密码
+                  </button>
+                  <button onClick={() => removeUser(u)} disabled={me?.username === u.username} className={btnDeleteCompact}>
+                    删除
+                  </button>
+                </div>
+              </div>
+              {resetId === u.id && (
+                <div className="flex items-center gap-2 mt-3">
+                  <PasswordInput value={resetPw} onChange={setResetPw} placeholder={`为 ${u.username} 设置新密码`} autoComplete="new-password" className={inputCls} />
+                  <button onClick={() => resetUserPassword(u.id)} disabled={!resetPw} className={cx(btnConfirm, !resetPw && "opacity-40 cursor-default")}>
+                    确认
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="新增用户" desc="创建新的登录账号">
+        <Field label="用户名">
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="用户名" className={inputCls} />
+        </Field>
+        <Field label="密码">
+          <PasswordInput value={newUserPw} onChange={setNewUserPw} placeholder="密码" autoComplete="new-password" className={inputCls} />
+        </Field>
+        <div className="flex justify-end">
+          <button onClick={addUser} disabled={!newName.trim() || !newUserPw} className={cx(btnConfirm, (!newName.trim() || !newUserPw) && "opacity-40 cursor-default")}>
+            添加用户
+          </button>
+        </div>
+      </Section>
+    </>
+  );
+}
+
 export function SettingsPage() {
   const { data: remote, error: loadError, mutate } = useSWR("settings", api.settings.get);
   const { data: promptDefs } = useSWR("prompt-defaults", api.settings.promptDefaults);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<"ai" | "pipeline" | "prompts" | "comfyui">("ai");
+  const [activeTab, setActiveTab] = useState<"ai" | "pipeline" | "prompts" | "comfyui" | "users">("ai");
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -386,13 +514,15 @@ export function SettingsPage() {
     <div className="space-y-4 pb-12">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tight">设置</h1>
-        <button onClick={handleSave} disabled={!dirty} className={`${btnPrimary} ${dirty ? "" : "opacity-40 cursor-default"}`}>
-          保存
-        </button>
+        {activeTab !== "users" && (
+          <button onClick={handleSave} disabled={!dirty} className={`${btnPrimary} ${dirty ? "" : "opacity-40 cursor-default"}`}>
+            保存
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-2">
-        {([["ai", "AI 服务"], ["pipeline", "流水线"], ["prompts", "提示词"], ["comfyui", "ComfyUI"]] as const).map(([k, label]) => (
+        {([["ai", "AI 服务"], ["pipeline", "流水线"], ["prompts", "提示词"], ["comfyui", "ComfyUI"], ["users", "用户"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setActiveTab(k)}
             className={`px-3 py-1.5 text-sm rounded-md transition ${activeTab === k ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
             {label}
@@ -555,7 +685,7 @@ export function SettingsPage() {
         </Section>
 
         <Section title="图片生成" desc="「AI 服务 → 图片模型」选择 ComfyUI 作为服务商时生效。">
-          <Field label="图片 workflow">
+          <Field label="图片模型">
             <Select value={settings.comfyui.image_workflow} onChange={(v) => patch("comfyui", { image_workflow: v })} options={[
               { value: "z_image", label: "z_image turbo (默认/快)" }, { value: "qwen", label: "Qwen-Image (中文/版面强)" },
             ]} />
@@ -595,30 +725,33 @@ export function SettingsPage() {
 
       {activeTab === "prompts" && (<>
       <Section title="提示词" desc="流水线各步骤的 AI 提示词；留空使用内置默认。改后点上方「保存」。">
-        {promptDefs && Object.entries(promptDefs).map(([key, def]) => (
+        {promptDefs && Object.entries(promptDefs).map(([key, def], idx) => (
           <div key={key} className="mb-4">
             <div className="flex items-center justify-between mb-1">
               <label className="text-sm text-white/70">{def.label}<span className="text-white/30 text-xs ml-2">{def.desc}</span></label>
               <button
-                onClick={() => patch("prompts", { [key]: "" })}
+                onClick={() => patch("prompts", { [key]: def.default })}
                 className="text-xs text-white/30 hover:text-white/60 transition"
               >恢复默认</button>
             </div>
             <textarea
-              value={settings.prompts?.[key] ?? ""}
-              placeholder={def.default}
+              value={settings.prompts?.[key] ?? def.default}
               onChange={(e) => patch("prompts", { [key]: e.target.value })}
-              rows={6}
-              className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40"
+              rows={[0, 1, 6].includes(idx) ? 16 : 8}
+              className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/80 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40"
             />
           </div>
         ))}
       </Section>
       </>)}
 
-      <p className="text-xs text-white/20 text-center pt-2">
-        设置保存在 backend/config.yaml
-      </p>
+      {activeTab === "users" && <UsersTab />}
+
+      {activeTab !== "users" && (
+        <p className="text-xs text-white/20 text-center pt-2">
+          设置保存在 config.yaml
+        </p>
+      )}
     </div>
   );
 }

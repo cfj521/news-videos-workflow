@@ -4,10 +4,11 @@ import { api } from "../api/client";
 import type { PublishTarget } from "../types";
 import { PLATFORM_LABELS, PLATFORM_MEDIA } from "../types";
 import {
-  btnPrimary, btnSecondary, btnDanger, btnCompact, cardCls, chipCls,
+  btnPrimary, btnSecondary, btnDanger, btnDeleteCompact, cardCls, chipCls,
   inputCls, labelCls, dialogOverlayCls, dialogPanelCls, errorTextCls,
 } from "../styles";
 import { Select } from "../components/Select";
+import { PasswordInput } from "../components/PasswordInput";
 
 // ── Platform config field definitions ───────────────────
 
@@ -98,7 +99,7 @@ function TargetDialog({ target, onSave, onClose }: {
   const [platform, setPlatform] = useState(target?.platform ?? "youtube");
   const [enabled, setEnabled] = useState(target?.enabled ?? true);
   const [fields, setFields] = useState<Record<string, string>>(() => parseConfig(target?.config_json ?? null));
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [confirmDisable, setConfirmDisable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -139,20 +140,22 @@ function TargetDialog({ target, onSave, onClose }: {
         {fieldDefs.map((fd) => (
           <div key={fd.key} className="mb-3">
             <label className={labelCls}>{fd.label}</label>
-            <div className="flex gap-2">
+            {fd.secret ? (
+              <PasswordInput
+                value={fields[fd.key] ?? ""}
+                onChange={(v) => setFields((prev) => ({ ...prev, [fd.key]: v }))}
+                placeholder={fd.placeholder}
+                className={`${inputCls} font-mono text-[13px]`}
+              />
+            ) : (
               <input
-                type={fd.secret && !showSecrets[fd.key] ? "password" : "text"}
+                type="text"
                 value={fields[fd.key] ?? ""}
                 onChange={(e) => setFields((prev) => ({ ...prev, [fd.key]: e.target.value }))}
                 placeholder={fd.placeholder}
-                className={`flex-1 ${inputCls} font-mono text-[13px]`}
+                className={`${inputCls} font-mono text-[13px]`}
               />
-              {fd.secret && (
-                <button type="button" onClick={() => setShowSecrets((p) => ({ ...p, [fd.key]: !p[fd.key] }))} className={btnCompact}>
-                  {showSecrets[fd.key] ? "隐藏" : "显示"}
-                </button>
-              )}
-            </div>
+            )}
           </div>
         ))}
 
@@ -160,15 +163,19 @@ function TargetDialog({ target, onSave, onClose }: {
 
         <div className="flex justify-between items-center mt-4">
           <div>
-            {isEdit && (
-              <button
-                type="button"
-                onClick={() => setEnabled(!enabled)}
-                className={`text-xs transition ${enabled ? "text-white/40 hover:text-red-300" : "text-emerald-300 hover:text-emerald-200"}`}
-              >
-                {enabled ? "禁用" : "启用"}
-              </button>
-            )}
+            {isEdit && (enabled ? (
+              confirmDisable ? (
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs ${errorTextCls}`}>确认禁用此平台？</span>
+                  <button type="button" onClick={() => { setEnabled(false); setConfirmDisable(false); }} className={btnDeleteCompact}>确认</button>
+                  <button type="button" onClick={() => setConfirmDisable(false)} className="px-2 py-1 text-xs text-white/30 hover:text-white/50 transition">取消</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setConfirmDisable(true)} className={btnDanger}>禁用</button>
+              )
+            ) : (
+              <button type="button" onClick={() => setEnabled(true)} className="text-xs text-emerald-300 hover:text-emerald-200 transition">启用</button>
+            ))}
           </div>
           <div className="flex gap-3">
             <button onClick={onClose} className={btnSecondary}>取消</button>
