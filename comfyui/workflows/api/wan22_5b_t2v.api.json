@@ -103,15 +103,23 @@
   "28": {
     "inputs": {
       "images": ["8", 0],
-      "filename_prefix": "ComfyUI",
-      "fps": 24.0,
-      "lossless": false,
-      "quality": 80,
-      "method": "default"
+      "fps": 24.0
     },
-    "class_type": "SaveAnimatedWEBP",
+    "class_type": "CreateVideo",
     "_meta": {
-      "title": "Save AnimatedWEBP"
+      "title": "Create Video"
+    }
+  },
+  "59": {
+    "inputs": {
+      "video": ["28", 0],
+      "filename_prefix": "video/wan22_5b_t2v",
+      "format": "mp4",
+      "codec": "h264"
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Save Video"
     }
   }
 }

@@ -12,6 +12,9 @@ log = get_logger("provider.video.comfyui")
 
 _WORKFLOW_MAP = {"wan5b": "wan22_5b_i2v", "wan14b": "wan22_14b_i2v",
                  "wan14b_lightx2v": "wan22_14b_i2v_lightx2v", "ltx": "ltx23_i2v"}
+# 文生视频（t2v）工作流：无 INPUT_IMAGE / STEPS / CFG 占位符，步数 cfg 写死在 json。
+_T2V_WORKFLOW_MAP = {"wan5b": "wan22_5b_t2v", "wan14b": "wan22_14b_t2v",
+                     "wan14b_lightx2v": "wan22_14b_t2v_lightx2v", "ltx": "ltx23_t2v"}
 
 
 def _snap16(v: int) -> int:
@@ -26,9 +29,13 @@ def _snap_frames(n: int, step: int = 4) -> int:
 class ComfyUIVideoProvider(VideoClipProvider):
     def __init__(self, server_url: str, workflow: str = "wan5b",
                  workflows_dir: str = "comfyui/workflows/api", fps: int = 24, negative: str = "",
-                 steps: int = 20, cfg: float = 5.0):
-        self._client = ComfyUIClient(server_url=server_url)
-        self._wf = _WORKFLOW_MAP.get(workflow, "wan22_5b_i2v")
+                 steps: int = 20, cfg: float = 5.0, mode: str = "i2v"):
+        # 视频生成远慢于图片：14B 满帧单段可达 10+ 分钟。默认 600s 会让 ComfyUI 已成功的
+        # 结果被客户端提前丢弃（实测 wan14b 即如此），故视频 provider 用更长的轮询超时。
+        self._client = ComfyUIClient(server_url=server_url, timeout=1800.0)
+        self._mode = mode
+        wfmap = _T2V_WORKFLOW_MAP if mode == "t2v" else _WORKFLOW_MAP
+        self._wf = wfmap.get(workflow, "wan22_5b_t2v" if mode == "t2v" else "wan22_5b_i2v")
         self._dir = workflows_dir
         self._fps = fps
         self._negative = negative
@@ -43,20 +50,30 @@ class ComfyUIVideoProvider(VideoClipProvider):
             w, h = _snap16(int(parts[0])), _snap16(int(parts[1]))
         except Exception:
             w, h = 704, 480
-        # LTX 时间 VAE 需 8n+1 帧、内部 25fps；wan 系列 4n+1、用配置 fps
-        is_ltx = self._wf == "ltx23_i2v"
-        eff_fps = 25 if is_ltx else self._fps
+        # 各模型原生帧率不同：wan2.2 5B=24fps、14B=16fps、LTX=25fps（内部 8n+1 帧）。
+        # 必须按原生帧率算帧数+转码——否则帧数(按 24 算)与 workflow 内 CreateVideo 标注的 fps 不符，
+        # 时长会偏（实测 14b 每段变 15s/10s）。14B 的 i2v/t2v workflow 名均含 "14b"。
+        is_ltx = self._wf in ("ltx23_i2v", "ltx23_t2v")
+        if is_ltx:
+            eff_fps = 25
+        elif "14b" in self._wf:
+            eff_fps = 16
+        else:
+            eff_fps = self._fps
         frames = _snap_frames(round(duration * eff_fps), 8 if is_ltx else 4)
         tmp = None
         try:
-            server_name = await self._client.upload_image(image_path)
-            graph = fill_placeholders(load_api_workflow(self._wf, self._dir), {
-                "INPUT_IMAGE": server_name, "POSITIVE_PROMPT": prompt, "NEGATIVE_PROMPT": self._negative,
+            values = {
+                "POSITIVE_PROMPT": prompt, "NEGATIVE_PROMPT": self._negative,
                 "SEED": random.randint(0, 2**31 - 1), "WIDTH": w, "HEIGHT": h, "LENGTH": frames,
                 # wan5b/wan14b 用 STEPS/CFG；wan14b 双段切换点 SPLIT=steps//2；ltx 仅用 CFG。
                 # 各 workflow 只填自身存在的占位符，多传的 key 无害。
                 "STEPS": self._steps, "CFG": self._cfg, "SPLIT": max(1, self._steps // 2),
-            })
+            }
+            # i2v 需上传源图并填 INPUT_IMAGE；t2v 无图，直接文生视频。
+            if self._mode != "t2v":
+                values["INPUT_IMAGE"] = await self._client.upload_image(image_path)
+            graph = fill_placeholders(load_api_workflow(self._wf, self._dir), values)
             files = await self._client.run(graph)
             pick = None
             for kind in ("videos", "gifs", "images"):
