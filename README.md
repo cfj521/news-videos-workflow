@@ -2,6 +2,12 @@
 
 # News-to-Video Automation Workflow
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+
 An end-to-end platform that turns news into published videos: scrape news → generate script → generate image/video assets → compose narrated video → publish to multiple platforms.
 
 **Tech stack**: Python (FastAPI) backend · React (Vite + TypeScript) frontend

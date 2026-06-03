@@ -2,6 +2,12 @@
 
 # 新闻视频自动化工作流
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+
 从新闻采集到视频发布的全链路自动化平台：抓取新闻 → 生成脚本 → 生成图片/视频素材 → 合成配音视频 → 多平台发布。
 
 **技术栈**：Python（FastAPI）后端 · React（Vite + TypeScript）前端
