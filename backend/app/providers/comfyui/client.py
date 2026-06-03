@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 import uuid
 
@@ -13,7 +14,9 @@ log = get_logger("provider.comfyui.client")
 
 class ComfyUIClient:
     def __init__(self, server_url: str = "http://127.0.0.1:8188", timeout: float = 600.0, poll_interval: float = 1.5):
-        self._url = server_url.rstrip("/")
+        # NV_COMFYUI_URL 环境变量优先于 config.yaml 的 comfyui.server_url。
+        # 主要用于 docker：容器内 127.0.0.1 连不到宿主机 ComfyUI，需注入 host.docker.internal。
+        self._url = (os.getenv("NV_COMFYUI_URL") or server_url).rstrip("/")
         self._timeout = timeout
         self._poll = poll_interval
 
@@ -68,7 +71,6 @@ class ComfyUIClient:
             raise self._err(e) from e
 
     async def upload_image(self, image_path: str) -> str:
-        import os
         try:
             async with httpx.AsyncClient(timeout=60) as c:
                 with open(image_path, "rb") as fh:

@@ -1,0 +1,32 @@
+# 构建上下文裁剪（后端镜像 context 为仓库根）
+.git/
+.claude/
+**/__pycache__/
+*.py[cod]
+**/*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.pytest_tmp/
+.ruff_cache/
+.mypy_cache/
+
+# 密钥与本地数据（绝不进镜像；运行时用挂载）
+config.yaml
+.auth_secret
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# 前端产物/依赖（前端镜像单独构建）
+frontend/node_modules/
+frontend/dist/
+
+# ComfyUI 本地样张（仅工作流 JSON 需进镜像）
+comfyui/samples/
+
+# 文档与杂项
+docs/
+*.md
+scripts/

@@ -52,6 +52,21 @@ cd frontend && pnpm dev                              # http://127.0.0.1:5173
 
 First launch seeds a default admin account **admin / admin** — change it under **Settings → Users** after logging in.
 
+## Docker
+
+One-shot deployment (backend + frontend with Nginx reverse proxy). The pipeline runs as in-process background tasks — no worker/broker container needed.
+
+```bash
+cp config.yaml.example config.yaml   # fill in your API keys
+cp .env.example .env                  # Docker ports + ComfyUI URL (optional; sane defaults)
+docker compose up -d --build
+# open http://localhost:8190  (default login: admin / admin)
+```
+
+- Ports and the ComfyUI URL live in `.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `COMFYUI_URL`). `COMFYUI_URL` is injected into the backend and **overrides** `comfyui.server_url` — no need to edit `config.yaml`.
+- `config.yaml` and `data/` are bind-mounted — secrets stay out of the image; the SQLite DB and run artifacts persist on the host.
+- ComfyUI is expected on the host (needs GPU + models); the backend reaches it via `host.docker.internal`.
+
 ## Test
 
 ```bash

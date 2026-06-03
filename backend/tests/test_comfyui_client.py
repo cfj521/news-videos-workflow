@@ -24,6 +24,20 @@ def _mock_client(mock_cls):
     return c
 
 
+def test_server_url_env_override(monkeypatch):
+    """NV_COMFYUI_URL 覆盖传入的 server_url（docker 场景注入 host.docker.internal）。"""
+    monkeypatch.setenv("NV_COMFYUI_URL", "http://host.docker.internal:8188")
+    c = ComfyUIClient(server_url="http://127.0.0.1:8188")
+    assert c._url == "http://host.docker.internal:8188"
+
+
+def test_server_url_without_env(monkeypatch):
+    """无环境变量时用传入的 server_url，并去掉尾部斜杠。"""
+    monkeypatch.delenv("NV_COMFYUI_URL", raising=False)
+    c = ComfyUIClient(server_url="http://127.0.0.1:8188/")
+    assert c._url == "http://127.0.0.1:8188"
+
+
 @pytest.mark.asyncio
 async def test_submit_returns_prompt_id():
     with patch("app.providers.comfyui.client.httpx.AsyncClient") as mc:

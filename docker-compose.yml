@@ -1,0 +1,48 @@
+# 新闻视频自动化工作流 —— 一体化部署
+#
+# 首次使用：
+#   1) cp config.yaml.example config.yaml  并填入密钥（该文件挂载进后端容器）
+#   2) 若 ComfyUI 跑在宿主机，把 config.yaml 的 comfyui.server_url 改为
+#        http://host.docker.internal:8188
+#   3) docker compose up -d --build
+#   4) 浏览器打开 http://localhost:5173 （默认登录 admin / admin）
+#
+# 说明：流水线跑在后端进程内的后台任务，无需独立 worker/broker。
+#      ComfyUI 需 GPU + 模型，建议留在宿主机，容器经 host.docker.internal 访问。
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: nvw-backend
+    container_name: nvw-backend
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/app/config.yaml    # 含密钥：挂载而非打进镜像
+      - ./data:/app/data                  # SQLite 库 + 运行产物，持久化
+    environment:
+      # 覆盖 config.yaml 的 comfyui.server_url（容器内不能用 127.0.0.1 连宿主 ComfyUI）
+      NV_COMFYUI_URL: ${COMFYUI_URL:-http://host.docker.internal:8188}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # 容器内访问宿主机服务（如 ComfyUI）
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"      # 可选：直连后端 API 调试
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health').status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: nvw-frontend
+    container_name: nvw-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8190}:80"       # 浏览器入口，默认 8190（见 .env）

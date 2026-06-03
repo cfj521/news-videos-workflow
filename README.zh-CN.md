@@ -51,6 +51,21 @@ cd frontend && pnpm dev                              # http://127.0.0.1:5173
 
 首次启动会播种默认管理员账号 **admin / admin**，登录后请在「设置 → 用户」修改密码。
 
+## Docker 一键部署
+
+后端 + 前端（Nginx 反代）一键起；流水线跑在后端进程内的后台任务，无需 worker/broker 容器。
+
+```bash
+cp config.yaml.example config.yaml   # 填入密钥
+cp .env.example .env                  # Docker 端口 + ComfyUI 地址（可选，已有合理默认）
+docker compose up -d --build
+# 浏览器打开 http://localhost:8190 （默认登录 admin / admin）
+```
+
+- 端口与 ComfyUI 地址在 `.env` 配置（`FRONTEND_PORT`、`BACKEND_PORT`、`COMFYUI_URL`）。`COMFYUI_URL` 会注入后端并**覆盖** `comfyui.server_url`——无需手改 `config.yaml`。
+- `config.yaml` 与 `data/` 以挂载方式注入——密钥不进镜像；SQLite 库与运行产物持久化在宿主机。
+- ComfyUI 建议留在宿主机（需 GPU + 模型），后端经 `host.docker.internal` 访问。
+
 ## 测试
 
 ```bash
