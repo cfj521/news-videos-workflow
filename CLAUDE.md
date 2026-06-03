@@ -94,7 +94,8 @@ docker compose up -d             # 启动全部服务
 ## Dependencies
 
 - **Scrapling**: 新闻抓取框架，需 Python 3.10+，安装时用 `pip install "scrapling[all]"`，首次运行 `scrapling install` 下载浏览器
-- **FFmpeg**: 视频合成必须在系统 PATH 中可用
+- **FFmpeg**: 视频合成必须在系统 PATH 中可用（也是 Hyperframes/ComfyUI 渲染失败时的兜底合成器）
+- **Hyperframes**（hyperframes 视频路线）: 需 Node.js + `npx hyperframes`（npm 包，非 Python 依赖，不在 requirements.txt）。首次渲染由 npx 联网拉取，或预装 `npm i -g hyperframes`。缺失时自动回退到 FFmpeg 合成。
 - **Redis**: Celery 消息队列
 - **ComfyUI**（可选，本地图片/视频生成）: 默认视频路线，需本机运行 ComfyUI（默认 `http://127.0.0.1:8188`）+ 下载模型（见 `scripts/download-comfyui-models.ps1`）。工作流 JSON 在 `comfyui/workflows/api/`，配置在设置页「ComfyUI」标签。
 - **发布可选依赖**（按需）: B站投稿用 `biliup`；YouTube 用 `google-api-python-client` / `google-auth` / `google-auth-oauthlib`。均已列入 `requirements.txt`。发布平台凭证在「发布管理」页配置，详见 `docs/video-publish-guide.md`。

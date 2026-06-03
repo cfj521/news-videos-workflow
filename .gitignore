@@ -4,9 +4,7 @@ __pycache__/
 *.egg-info/
 .env
 config.yaml
-data/runs/
-data/history/
-data/logs/
+data/
 node_modules/
 dist/
 .ruff_cache/

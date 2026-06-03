@@ -1,10 +1,14 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.providers.collector.rss import RSSCollector
 
-SAMPLE_RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+# 「最近」文章用相对当下的动态日期，避免硬编码日期随时间推移被 7d 过滤掉（陈旧测试）。
+_RECENT_PUBDATE = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%a, %d %b %Y %H:%M:%S +0000")
+
+SAMPLE_RSS_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
 <channel>
     <title>Test Feed</title>
@@ -12,7 +16,7 @@ SAMPLE_RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
         <title>AI Breakthrough</title>
         <link>https://example.com/article-1</link>
         <description>A major AI breakthrough was announced today.</description>
-        <pubDate>Mon, 26 May 2026 08:00:00 +0000</pubDate>
+        <pubDate>{_RECENT_PUBDATE}</pubDate>
         <category>AI</category>
     </item>
     <item>
