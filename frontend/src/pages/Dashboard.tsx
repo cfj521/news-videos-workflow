@@ -13,7 +13,7 @@ import { CreateRunDialog } from "../components/CreateRunDialog";
 import { SourceSummary } from "../components/SourceSummary";
 import { useToast } from "../components/Toast";
 import type { PipelineRun } from "../types";
-import { STAGE_LABELS, VISIBLE_STAGES, BACKEND_STAGE_MAP } from "../types";
+import { STAGE_LABELS, VISIBLE_STAGES, BACKEND_STAGE_MAP, PLATFORM_LABELS } from "../types";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "等待中",
@@ -99,7 +99,7 @@ function PresetInput({ value, onChange, presets, className }: {
 
 // ─── Stepper ────────────────────────────────────────────
 
-function Stepper({ run, onSelect, activeStage }: { run: PipelineRun; onSelect: (s: number) => void; activeStage: number }) {
+function Stepper({ run, onSelect, activeStage, locked = false }: { run: PipelineRun; onSelect: (s: number) => void; activeStage: number; locked?: boolean }) {
   const selected: number[] = (() => { try { return JSON.parse(run.selected_stages); } catch { return []; } })();
 
   const audioOnly = run.video_route === "audio";
@@ -130,7 +130,8 @@ function Stepper({ run, onSelect, activeStage }: { run: PipelineRun; onSelect: (
       {stages.map((s, i) => {
         const ss = statusOf(s);
         const isActive = s === activeStage;
-        const clickable = ss !== "skipped";
+        // 锁定（自动模式进行中）时，尚未到达的阶段不可点击查看
+        const clickable = ss !== "skipped" && !(locked && ss === "pending");
         return (
           <div key={s} className="flex items-center flex-1">
             <button
@@ -1024,16 +1025,29 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
 // ─── S6: 发布 ──────────────────────────────────────────
 
 function S6Panel({ run }: { run: PipelineRun }) {
-  const platforms: string[] = (() => { try { return JSON.parse(run.publish_platforms); } catch { return []; } })();
-  if (platforms.length === 0) return <p className="text-white/30 text-sm">未选择发布平台</p>;
+  const { data: targets } = useSWR("publishers", api.publishers.list);
+  // publish_platforms 存的是发布账号 id
+  const ids: string[] = (() => { try { return JSON.parse(run.publish_platforms); } catch { return []; } })();
+  if (ids.length === 0) return <p className="text-white/30 text-sm">未选择发布账号</p>;
+  const byId = new Map((targets ?? []).map((t) => [String(t.id), t]));
   return (
     <div className="space-y-2">
-      {platforms.map((p) => (
-        <div key={p} className={`${cardCls} p-4 flex justify-between items-center`}>
-          <span className="text-sm">{p}</span>
-          <span className={`${chipCls} bg-white/[0.06] text-white/40`}>等待中</span>
-        </div>
-      ))}
+      {ids.map((id) => {
+        const t = byId.get(String(id));
+        return (
+          <div key={id} className={`${cardCls} p-4 flex justify-between items-center`}>
+            <div className="flex items-center gap-2">
+              <span className="text-sm">{t ? t.name : `账号 #${id}`}</span>
+              {t && (
+                <span className={`${chipCls} bg-white/[0.06] text-white/40`}>
+                  {PLATFORM_LABELS[t.platform] ?? t.platform}
+                </span>
+              )}
+            </div>
+            <span className={`${chipCls} bg-white/[0.06] text-white/40`}>等待中</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1078,6 +1092,9 @@ function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () =>
     mutateRuns();
   };
 
+  // 自动模式且流程进行中：各阶段面板只读、不可切到尚未到达的阶段（仅可回看已完成）
+  const locked = r.mode === "auto" && (r.status === "processing" || r.status === "pending");
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -1099,8 +1116,10 @@ function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () =>
         </div>
       )}
 
-      <Stepper run={r} onSelect={setActiveStage} activeStage={activeStage} />
-      <StagePanel stage={activeStage} runId={r.id} run={r} />
+      <Stepper run={r} onSelect={setActiveStage} activeStage={activeStage} locked={locked} />
+      <fieldset disabled={locked} className="min-w-0 border-0 p-0 m-0">
+        <StagePanel stage={activeStage} runId={r.id} run={r} />
+      </fieldset>
     </div>
   );
 }
