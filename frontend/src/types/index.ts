@@ -11,6 +11,7 @@ export interface PipelineRun {
   progress_detail: string | null;
   preview_path: string | null;
   output_path: string | null;
+  resolution: string | null;
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;

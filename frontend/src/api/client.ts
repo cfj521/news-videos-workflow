@@ -54,7 +54,7 @@ export interface AppSettings {
   youtube: { client_id: string; client_secret: string };
   pipeline: { default_time_range: string; default_max_articles: number; default_video_route: string; default_language: string; dedup_lookback: string };
   storage: { work_dir: string; output_dir: string };
-  video: { resolution: string; aspect_ratio: string; fps: string; scene_gap_ms: number; transition: string };
+  video: { fps: string; scene_gap_ms: number; transition: string };
   comfyui: { server_url: string; default_negative: string; image_workflow: string; image_params: Record<string, { steps: number; cfg: number }>; video_workflow: string; video_fps: number; video_params: Record<string, { steps: number; cfg: number }> };
   prompts: Record<string, string>;
 }
@@ -94,12 +94,13 @@ export const api = {
       publish_platforms?: string[];
       auto_collect?: boolean;
       resolution?: string;
-      aspect_ratio?: string;
     }) =>
       fetchJSON<PipelineRun>("/pipeline/runs", {
         method: "POST",
         body: JSON.stringify(body),
       }),
+    update: (id: number, body: { resolution?: string }) =>
+      fetchJSON<PipelineRun>(`/pipeline/runs/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     resume: (id: number) =>
       fetchJSON<{ status: string }>(`/pipeline/runs/${id}/resume`, {
         method: "POST",

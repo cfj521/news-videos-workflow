@@ -311,7 +311,7 @@ const EMPTY_SETTINGS: AppSettings = {
   youtube: { client_id: "", client_secret: "" },
   pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui", default_language: "zh", dedup_lookback: "30d" },
   storage: { work_dir: "", output_dir: "" },
-  video: { resolution: "1080x1920", aspect_ratio: "9:16", fps: "30", scene_gap_ms: 500, transition: "crossfade" },
+  video: { fps: "30", scene_gap_ms: 500, transition: "crossfade" },
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_workflow: "z_image", image_params: { z_image: { steps: 9, cfg: 1.0 }, qwen: { steps: 20, cfg: 2.5 } }, video_workflow: "wan5b", video_fps: 24, video_params: { wan5b: { steps: 30, cfg: 5.0 }, wan14b: { steps: 20, cfg: 3.5 }, wan14b_lightx2v: { steps: 4, cfg: 1.0 }, ltx: { steps: 4, cfg: 1.0 } } },
   prompts: {},
 };
@@ -631,19 +631,7 @@ export function SettingsPage() {
         </Field>
       </Section>
 
-      <Section title="视频输出">
-        <Field label="分辨率">
-          <Select value={settings.video.resolution} onChange={(v) => patch("video", { resolution: v })} options={[
-            { value: "1080x1920", label: "1080 × 1920" }, { value: "1920x1080", label: "1920 × 1080" },
-            { value: "1024x1024", label: "1024 × 1024" }, { value: "720x1280", label: "720 × 1280" },
-          ]} />
-        </Field>
-        <Field label="画面比例">
-          <Select value={settings.video.aspect_ratio} onChange={(v) => patch("video", { aspect_ratio: v })} options={[
-            { value: "9:16", label: "9:16 (竖屏)" }, { value: "16:9", label: "16:9 (横屏)" },
-            { value: "1:1", label: "1:1 (方形)" }, { value: "4:3", label: "4:3" },
-          ]} />
-        </Field>
+      <Section title="Hyperframes 配置">
         <Field label="帧率">
           <Select value={settings.video.fps} onChange={(v) => patch("video", { fps: v })} options={[
             { value: "24", label: "24" }, { value: "25", label: "25" }, { value: "30", label: "30" },

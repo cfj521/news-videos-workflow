@@ -57,11 +57,29 @@ def create_run(body: PipelineRunCreate, background_tasks: BackgroundTasks, db: S
         max_articles=body.max_articles, selected_stages=body.selected_stages,
         publish_platforms=body.publish_platforms,
         auto_collect=body.auto_collect,
-        resolution=body.resolution, aspect_ratio=body.aspect_ratio,
+        resolution=body.resolution,
     )
     session_factory = get_session_factory()
     background_tasks.add_task(_run_pipeline_bg, run.id, session_factory)
     log.info("Pipeline run #%d queued", run.id)
+    return run
+
+
+class _RunUpdate(BaseModel):
+    resolution: str | None = None
+
+
+@router.patch("/runs/{run_id}", response_model=PipelineRunRead)
+def update_run(run_id: int, body: _RunUpdate, db: Session = Depends(get_db)):
+    """更新任务级参数（目前仅分辨率）。图片阶段改分辨率会回写到这里，作为后续各阶段的权威值。"""
+    run = db.get(PipelineRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if body.resolution is not None:
+        run.resolution = body.resolution or None
+    db.commit()
+    db.refresh(run)
+    log.info("Updated run #%d resolution=%s", run_id, run.resolution)
     return run
 
 

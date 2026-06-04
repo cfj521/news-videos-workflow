@@ -12,7 +12,6 @@ class PipelineRunCreate(BaseModel):
     publish_platforms: list[str] = []
     auto_collect: bool = True
     resolution: str = ""
-    aspect_ratio: str = ""
 
 
 class PipelineRunRead(BaseModel):
@@ -33,7 +32,6 @@ class PipelineRunRead(BaseModel):
     error_message: str | None
     auto_collect: bool
     resolution: str | None
-    aspect_ratio: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

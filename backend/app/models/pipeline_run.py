@@ -29,8 +29,7 @@ class PipelineRun(Base, TimestampMixin):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     auto_collect: Mapped[bool] = mapped_column(Boolean, default=True)
-    # 任务级分辨率/比例（图片与视频共用）。留空 = 用全局 video 设置
+    # 任务级分辨率（图片与视频共用），创建时必填
     resolution: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    aspect_ratio: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     articles: Mapped[list["RawArticle"]] = relationship(back_populates="run")

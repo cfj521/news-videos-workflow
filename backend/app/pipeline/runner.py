@@ -402,8 +402,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
     cfg = get_settings()
     cfg.ensure_data_dirs()
     selected = json.loads(run.selected_stages)
-    # 任务级分辨率（图片与视频共用），留空回退全局 video 设置
-    resolution = run.resolution or cfg.video.resolution
+    # 任务级分辨率（图片与视频共用），创建时必填；防御性兜底
+    resolution = run.resolution or "1080x1920"
 
     run_dir = cfg.runs_root() / str(run.id)
     assets_dir = run_dir / "assets"

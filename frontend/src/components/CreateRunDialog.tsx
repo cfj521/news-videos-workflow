@@ -41,24 +41,17 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   // null = 用户尚未手动改动 → 默认全选所有可用账号；非 null = 用户的具体选择
   const [targetIds, setTargetIds] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [resolution, setResolution] = useState("");
-  const [aspectRatio, setAspectRatio] = useState("");
+  const [resolution, setResolution] = useState("1080x1920");
 
   const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
-  // 任务级分辨率/比例：未选则回退全局 video 设置
-  const effRes = resolution || settings?.video.resolution || "1080x1920";
-  const effAr = aspectRatio || settings?.video.aspect_ratio || "9:16";
+  // 任务级分辨率：建任务时必填（默认 1080x1920），不再回退全局；比例由分辨率隐含
+  const effRes = resolution || "1080x1920";
   // 新建任务默认 hyperframes；用户可在弹窗内切换
   const effVideoRoute = videoRoute || settings?.pipeline?.default_video_route || "comfyui";
   const resOptions = (RES_PRESETS_DLG.some((o) => o.value === effRes)
     ? RES_PRESETS_DLG
-    : [{ value: effRes, ar: effAr, label: effRes }, ...RES_PRESETS_DLG]
+    : [{ value: effRes, label: effRes }, ...RES_PRESETS_DLG]
   ).map((o) => ({ value: o.value, label: o.label }));
-  const onResChange = (v: string) => {
-    setResolution(v);
-    const p = RES_PRESETS_DLG.find((o) => o.value === v);
-    if (p) setAspectRatio(p.ar);
-  };
 
   const { data: sources } = useSWR("sources", api.sources.list);
   const { data: publishTargets } = useSWR("publishers", api.publishers.list);
@@ -133,7 +126,6 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         selected_stages: toBackendStages(effectiveVisual),
         publish_platforms: Array.from(effectiveTargetIds),
         resolution: effRes,
-        aspect_ratio: effAr,
         auto_collect: autoCollect,
       });
       onCreated();
@@ -198,8 +190,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         </div>
 
         <div className="mb-4">
-          <label className={labelCls}>分辨率 / 比例（图片与视频共用）</label>
-          <Select value={effRes} onChange={onResChange} options={resOptions} />
+          <label className={labelCls}>分辨率（图片与视频共用）</label>
+          <Select value={effRes} onChange={setResolution} options={resOptions} />
         </div>
 
         <div className="mb-4">

@@ -67,8 +67,6 @@ class PipelineCfg(BaseModel):
 
 
 class VideoCfg(BaseModel):
-    resolution: str = "1080x1920"
-    aspect_ratio: str = "9:16"
     fps: str = "30"
     scene_gap_ms: int = 500
     transition: str = "crossfade"

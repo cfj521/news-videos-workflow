@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { api, type ScriptData, type TimelineData, type AppSettings } from "../api/client";
 import {
   btnPrimary, btnSecondary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
@@ -33,20 +33,12 @@ const RES_PRESETS = [
   { value: "1280x720", label: "1280x720  横屏 HD" },
 ];
 
-function resolutionToAspect(res: string): string {
-  const [w, h] = res.split("x").map(Number);
-  if (!w || !h) return "";
-  if (w === h) return "1:1";
-  if (w * 16 === h * 9) return "9:16";
-  if (w * 9 === h * 16) return "16:9";
-  return `${w}:${h}`;
-}
-
 // ─── PresetInput (editable dropdown) ────────────────────
 
-function PresetInput({ value, onChange, presets, className }: {
+function PresetInput({ value, onChange, onCommit, presets, className }: {
   value: string;
   onChange: (v: string) => void;
+  onCommit?: (v: string) => void;
   presets: { value: string; label: string }[];
   className?: string;
 }) {
@@ -67,6 +59,7 @@ function PresetInput({ value, onChange, presets, className }: {
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onCommit?.(e.target.value)}
           className={`${inputCls} !rounded-r-none !border-r-0 text-xs`}
         />
         <button
@@ -83,7 +76,7 @@ function PresetInput({ value, onChange, presets, className }: {
             <button
               key={p.value}
               type="button"
-              onClick={() => { onChange(p.value); setOpen(false); }}
+              onClick={() => { onChange(p.value); onCommit?.(p.value); setOpen(false); }}
               className={`w-full px-3 py-1.5 text-left text-xs transition hover:bg-white/[0.06] ${
                 value === p.value ? "text-blue-300 bg-white/[0.04]" : "text-white/60"
               }`}
@@ -349,16 +342,35 @@ function AddSceneDialog({ runId, groupId, onDone, onClose }: { runId: number; gr
   );
 }
 
-function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
-  const { data: script, mutate: mutateScript } = useSWR<ScriptData>(`script-${runId}`, () => api.runs.script(runId).catch(() => null as unknown as ScriptData));
-  const { data: timeline } = useSWR<TimelineData>(`timeline-${runId}`, () => api.runs.timeline(runId).catch(() => null as unknown as TimelineData));
-  const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
+function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; audioOnly: boolean }) {
+  const live = run.status === "processing";
+  const { data: script, mutate: mutateScript } = useSWR<ScriptData>(`script-${runId}`, () => api.runs.script(runId).catch(() => null as unknown as ScriptData), { refreshInterval: live ? 3000 : 0 });
+  const { data: timeline } = useSWR<TimelineData>(`timeline-${runId}`, () => api.runs.timeline(runId).catch(() => null as unknown as TimelineData), { refreshInterval: live ? 3000 : 0 });
   const [imgSize, setImgSize] = useState("");
   const [addGroup, setAddGroup] = useState<number | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [regenning, setRegenning] = useState(false);
+  const [liveTick, setLiveTick] = useState(0);
   const { showToast } = useToast();
-  useEffect(() => { if (settings && !imgSize) setImgSize(settings.video.resolution); }, [settings, imgSize]);
+  const { mutate: globalMutate } = useSWRConfig();
+  // 图片生成尺寸 = 任务级分辨率（建任务时已必填）
+  useEffect(() => { if (!imgSize) setImgSize(run.resolution || ""); }, [run.resolution, imgSize]);
+  // 在图片阶段改分辨率会回写 run.resolution，成为后续各阶段（渲染/合成）的权威值。
+  // 仅在选预设/输入失焦时回写，并校验 WxH 格式，避免逐字符写入无效中间值
+  const handleImgSizeCommit = async (v: string) => {
+    if (!/^\d+x\d+$/.test(v) || v === run.resolution) return;
+    try {
+      await api.runs.update(runId, { resolution: v });
+      globalMutate(`run-${runId}`);
+    } catch { showToast("更新分辨率失败", "error"); }
+  };
+  // 运行中每 3s 递增，给图片/音频 URL 加 cache-bust，使陆续生成的素材自动可见
+  // （图片/音频是独立文件，脚本 JSON 内容不变，故不能依赖数据变化触发）
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => setLiveTick((t) => t + 1), 3000);
+    return () => clearInterval(id);
+  }, [live]);
 
   const handleRegenScript = async () => {
     setRegenning(true);
@@ -399,7 +411,7 @@ function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
           {!audioOnly && (
             <>
               <label className="text-[11px] text-white/30 whitespace-nowrap">图片尺寸</label>
-              <PresetInput value={imgSize} onChange={setImgSize} presets={RES_PRESETS} className="w-40" />
+              <PresetInput value={imgSize} onChange={setImgSize} onCommit={handleImgSizeCommit} presets={RES_PRESETS} className="w-40" />
             </>
           )}
           <button onClick={() => setConfirmRegen(true)} disabled={regenning} className={btnRegen}>
@@ -422,7 +434,7 @@ function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
                 const durS = entry ? ((entry.end_ms - entry.start_ms) / 1000).toFixed(1) : null;
                 return (
                   <SceneEditor key={scene.id} runId={runId} scene={scene} durationS={durS} mutateScript={mutateScript} imgSize={imgSize}
-                    onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} audioOnly={audioOnly} />
+                    liveTick={liveTick} onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} audioOnly={audioOnly} />
                 );
               })}
             </div>
@@ -450,8 +462,8 @@ function S2Panel({ runId, audioOnly }: { runId: number; audioOnly: boolean }) {
   );
 }
 
-function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete, canDelete, audioOnly }: {
-  runId: number; scene: ScriptData["scenes"][0]; durationS: string | null; mutateScript: () => void; imgSize: string; onDelete?: () => void; canDelete?: boolean; audioOnly?: boolean;
+function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, liveTick = 0, onDelete, canDelete, audioOnly }: {
+  runId: number; scene: ScriptData["scenes"][0]; durationS: string | null; mutateScript: () => void; imgSize: string; liveTick?: number; onDelete?: () => void; canDelete?: boolean; audioOnly?: boolean;
 }) {
   const [narration, setNarration] = useState(scene.narration);
   const [prompt, setPrompt] = useState(scene.image_prompt);
@@ -500,9 +512,9 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, onDelete,
       <div className="flex gap-4">
         <div className="w-[200px] shrink-0">
           {!audioOnly && (
-            <img src={imgTs ? `${imgSrc}?t=${imgTs}` : imgSrc} className="w-full rounded-lg bg-white/[0.02]" onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
+            <img src={(imgTs || liveTick) ? `${imgSrc}?t=${imgTs || liveTick}` : imgSrc} className="w-full rounded-lg bg-white/[0.02]" onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
           )}
-          <audio controls src={audioTs ? `${audioSrc}?t=${audioTs}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-2"}`} />
+          <audio controls src={(audioTs || liveTick) ? `${audioSrc}?t=${audioTs || liveTick}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-2"}`} />
         </div>
         <div className="flex-1 space-y-3 min-w-0">
           <div className="flex justify-between items-center">
@@ -674,8 +686,6 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
 
   const [transition, setTransition] = useState("");
   const [sceneGap, setSceneGap] = useState(500);
-  const [resolution, setResolution] = useState("");
-  const [aspectRatio, setAspectRatio] = useState("");
   const [fps, setFps] = useState("");
   const [inited, setInited] = useState(false);
 
@@ -688,8 +698,6 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     if (settings && !inited) {
       setTransition(settings.video.transition);
       setSceneGap(settings.video.scene_gap_ms);
-      setResolution(settings.video.resolution);
-      setAspectRatio(settings.video.aspect_ratio);
       setFps(settings.video.fps);
       setInited(true);
     }
@@ -714,17 +722,9 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const isHyperframes = run.video_route === "hyperframes";
   const settingsLabel = isHyperframes ? "HTML 设置" : "视频设置";
 
-  const handleResolutionChange = (v: string) => {
-    setResolution(v);
-    const ar = resolutionToAspect(v);
-    if (ar) setAspectRatio(ar);
-  };
-
   const isDirty = !!settings && (
     transition !== settings.video.transition ||
     sceneGap !== settings.video.scene_gap_ms ||
-    resolution !== settings.video.resolution ||
-    aspectRatio !== settings.video.aspect_ratio ||
     fps !== settings.video.fps
   );
 
@@ -734,7 +734,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     if (!settings) return;
     setRegenerating(true);
     try {
-      await api.settings.save({ video: { ...settings.video, transition, scene_gap_ms: sceneGap, resolution, aspect_ratio: aspectRatio, fps } });
+      await api.settings.save({ video: { ...settings.video, transition, scene_gap_ms: sceneGap, fps } });
       mutateSettings();
       setIframeKey((k) => k + 1);
       setPlaying(false);
@@ -771,7 +771,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const isExpanded = isBrowserFs || isViewportFs;
 
   const [canvasW, canvasH] = (() => {
-    const parts = resolution.split("x").map(Number);
+    const parts = (run.resolution || "1080x1920").split("x").map(Number);
     return parts.length === 2 && parts[0] > 0 && parts[1] > 0 ? parts : [1080, 1920];
   })();
   const CONTAINER_H = isExpanded ? window.innerHeight - 60 : 540;
@@ -890,18 +890,10 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
         </div>
 
         {isHyperframes ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className={labelCls}>分辨率</label>
-              <PresetInput value={resolution} onChange={handleResolutionChange} presets={RES_PRESETS} />
-            </div>
-            <div>
-              <label className={labelCls}>画面比例</label>
-              <Select value={aspectRatio} onChange={setAspectRatio} options={[
-                { value: "9:16", label: "9:16 竖屏" },
-                { value: "16:9", label: "16:9 横屏" },
-                { value: "1:1", label: "1:1 方形" },
-              ]} />
+              <div className="text-sm text-white/60 font-mono mt-2">{run.resolution || "—"}</div>
             </div>
             <div>
               <label className={labelCls}>转场效果</label>
@@ -921,18 +913,10 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className={labelCls}>分辨率</label>
-              <PresetInput value={resolution} onChange={handleResolutionChange} presets={RES_PRESETS} />
-            </div>
-            <div>
-              <label className={labelCls}>画面比例</label>
-              <Select value={aspectRatio} onChange={setAspectRatio} options={[
-                { value: "9:16", label: "9:16 竖屏" },
-                { value: "16:9", label: "16:9 横屏" },
-                { value: "1:1", label: "1:1 方形" },
-              ]} />
+              <div className="text-sm text-white/60 font-mono mt-2">{run.resolution || "—"}</div>
             </div>
             <div>
               <label className={labelCls}>帧率</label>
@@ -986,6 +970,9 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     catch { showToast(`${actionLabel}启动失败`, "error"); setRendering(false); }
   };
 
+  // 重新渲染后完成时间变化 → cache-bust，确保播放器加载新成片而非旧缓存
+  const mediaSrc = `${api.runs.videoUrl(runId)}?t=${encodeURIComponent(run.finished_at ?? "")}`;
+
   if (!run.output_path) {
     const isRendering = (run.current_stage === 5 && run.status === "processing") || rendering;
     return (
@@ -1008,9 +995,9 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   return (
     <div className={`${cardCls} p-5`}>
       {audioOnly ? (
-        <audio controls className="w-full max-w-2xl mx-auto" src={api.runs.videoUrl(runId)} />
+        <audio controls className="w-full max-w-2xl mx-auto" src={mediaSrc} />
       ) : (
-        <video controls className="w-full max-w-2xl mx-auto rounded-lg" src={api.runs.videoUrl(runId)} />
+        <video controls className="w-full max-w-2xl mx-auto rounded-lg" src={mediaSrc} />
       )}
       <div className="flex justify-center gap-3 mt-4">
         <a href={api.runs.videoUrl(runId)} download className={btnPrimary}>{audioOnly ? "下载 MP3" : "下载 MP4"}</a>
@@ -1057,7 +1044,7 @@ function S6Panel({ run }: { run: PipelineRun }) {
 function StagePanel({ stage, runId, run }: { stage: number; runId: number; run: PipelineRun }) {
   switch (stage) {
     case 1: return <S1Panel runId={runId} />;
-    case 2: return <S2Panel runId={runId} audioOnly={run.video_route === "audio"} />;
+    case 2: return <S2Panel runId={runId} run={run} audioOnly={run.video_route === "audio"} />;
     case 4: return <S4Panel runId={runId} run={run} />;
     case 5: return <S5Panel runId={runId} run={run} />;
     case 6: return <S6Panel run={run} />;
