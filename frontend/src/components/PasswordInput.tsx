@@ -21,6 +21,7 @@ export function PasswordInput({ value, onChange, placeholder, className, autoCom
       />
       <button
         type="button"
+        tabIndex={-1}
         onClick={() => setShow((v) => !v)}
         title={show ? "隐藏" : "显示"}
         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition"

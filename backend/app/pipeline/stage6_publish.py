@@ -1,5 +1,5 @@
 from app.logging import get_logger
-from app.providers.base import PublisherAdapter, PublishResult
+from app.providers.base import PublishResult
 
 log = get_logger("stage6")
 
@@ -10,26 +10,26 @@ async def run_stage6(
     title: str,
     description: str,
     tags: list[str],
-    publishers: dict[str, PublisherAdapter],
-    platforms: list[str] | None = None,
+    publishers: list,
 ) -> list[PublishResult]:
-    platforms = platforms or list(publishers.keys())
-    log.info("Publishing to %d platforms: %s", len(platforms), platforms)
+    """逐个发布账号执行（publishers: [(PublishTarget, PublisherAdapter)]）。
+
+    以账号为单位，同一平台的多个账号各自独立发布，结果用 target_name 区分。
+    """
+    log.info("Publishing to %d account(s)", len(publishers))
     results: list[PublishResult] = []
 
-    for platform in platforms:
-        publisher = publishers.get(platform)
-        if not publisher:
-            log.warning("No publisher adapter for '%s'", platform)
-            results.append(PublishResult(platform=platform, status="failed", error_message=f"No publisher for {platform}"))
-            continue
-
-        log.info("Publishing to %s...", platform)
-        result = await publisher.publish(video_path=video_path, thumbnail_path=thumbnail_path, title=title, description=description, tags=tags)
+    for target, publisher in publishers:
+        log.info("Publishing to %s (%s)...", target.name, target.platform)
+        result = await publisher.publish(
+            video_path=video_path, thumbnail_path=thumbnail_path,
+            title=title, description=description, tags=tags,
+        )
+        result.target_name = target.name
         if result.status == "success":
-            log.info("Published to %s: %s", platform, result.url)
+            log.info("Published to %s: %s", target.name, result.url)
         else:
-            log.error("Publish to %s failed: %s", platform, result.error_message)
+            log.error("Publish to %s failed: %s", target.name, result.error_message)
         results.append(result)
 
     return results

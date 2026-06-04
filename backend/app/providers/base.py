@@ -61,6 +61,7 @@ class PublishResult:
     status: str
     url: str | None = None
     error_message: str | None = None
+    target_name: str | None = None  # 发布账号名（区分同平台多账号）
 
 
 class CollectorProvider(ABC):

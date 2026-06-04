@@ -5,13 +5,14 @@ from app.logging import get_logger
 log = get_logger("publisher.factory")
 
 
-def build_publishers(targets) -> dict:
-    """从 PublishTarget 记录构造平台 adapter，返回 {platform: adapter}。
+def build_publishers(targets) -> list:
+    """从 PublishTarget 记录构造发布 adapter，返回 [(target, adapter)] 列表。
 
-    禁用、配置缺失或暂不支持的平台跳过（Stage6 会对缺失平台报 "No publisher"）。
+    以「账号」为单位（不按 platform 去重），因此同一平台的多个账号都会保留、
+    各自独立发布。禁用、配置缺失或暂不支持的平台跳过。
     targets: list[PublishTarget]
     """
-    pubs: dict = {}
+    pubs: list = []
     for t in targets:
         if not t.enabled:
             continue
@@ -21,9 +22,9 @@ def build_publishers(targets) -> dict:
             cfg = {}
         adapter = _build_one(t.platform, cfg)
         if adapter is not None:
-            pubs[t.platform] = adapter
+            pubs.append((t, adapter))
         else:
-            log.warning("暂不支持构造 '%s' publisher，跳过", t.platform)
+            log.warning("暂不支持构造 '%s' publisher（账号 %s），跳过", t.platform, t.name)
     return pubs
 
 

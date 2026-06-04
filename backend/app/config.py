@@ -162,6 +162,14 @@ class Settings(BaseModel):
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    # Docker bind 挂载 ./config.yaml 时，若宿主机缺少该文件，Docker 会自动建一个
+    # 空目录顶替，导致这里 open() 抛 IsADirectoryError 且报错难懂。提前给出可操作的提示。
+    if path.is_dir():
+        raise RuntimeError(
+            f"配置文件 {path} 是一个目录，通常是 Docker 在宿主机缺少 config.yaml 时"
+            f"自动创建了挂载目录。请在项目根目录执行 `cp config.yaml.example config.yaml` "
+            f"生成配置文件，再用 `docker compose up -d --force-recreate backend` 重建容器。"
+        )
     if path.exists():
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}

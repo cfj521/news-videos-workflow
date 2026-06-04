@@ -271,7 +271,6 @@ export function SourcesPage() {
               <th className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>配置</th>
               <th className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>
                 <div className="flex items-center gap-2">
-                  <span>全部启用</span>
                   <button onClick={toggleAllCustom} className={toggleCls(allCustomEnabled)} title="全部启用/禁用（启用将关闭 AI HOT，与之互斥）">
                     <span className={toggleThumbCls(allCustomEnabled)} />
                   </button>

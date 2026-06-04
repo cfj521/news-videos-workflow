@@ -732,16 +732,27 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
     # ─── Stage 6: 发布 ────────────────────────────────────
     if 6 in selected:
-        platforms = json.loads(run.publish_platforms)
-        if platforms:
-            _update(db, run, current_stage=6,
-                    progress_detail=f"S6 发布到 {', '.join(platforms)}...")
-            log.info("[S6] Publishing to: %s", platforms)
+        # publish_platforms 现存「发布账号 id」列表；容错旧数据（平台名字符串）跳过
+        target_ids: set[int] = set()
+        for x in json.loads(run.publish_platforms):
+            try:
+                target_ids.add(int(x))
+            except (ValueError, TypeError):
+                continue
+        if target_ids:
             from dataclasses import asdict
 
             from app.models.publish_target import PublishTarget
             from app.pipeline.stage6_publish import run_stage6
             from app.providers.publisher import build_publishers
+
+            targets = [
+                t for t in db.query(PublishTarget).filter(PublishTarget.enabled.is_(True)).all()
+                if t.id in target_ids]
+            names = [t.name for t in targets]
+            _update(db, run, current_stage=6,
+                    progress_detail=f"S6 发布到 {', '.join(names)}...")
+            log.info("[S6] Publishing to accounts: %s", names)
 
             video_path = run.output_path or ""
             meta = script if isinstance(script, dict) else {}
@@ -750,18 +761,18 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 if sj.exists():
                     meta = json.loads(sj.read_text(encoding="utf-8"))
 
-            targets = [
-                t for t in db.query(PublishTarget).filter(PublishTarget.enabled.is_(True)).all()
-                if t.platform in platforms]
             publishers = build_publishers(targets)
             results = await run_stage6(
                 video_path=video_path, thumbnail_path=None,
                 title=meta.get("title", ""), description=meta.get("description", ""),
-                tags=meta.get("tags", []), publishers=publishers, platforms=platforms,
+                tags=meta.get("tags", []), publishers=publishers,
             )
 
-            ok = [r.platform for r in results if r.status == "success"]
-            fail = [f"{r.platform}({r.error_message})" for r in results if r.status != "success"]
+            def _label(r):
+                return r.target_name or r.platform
+
+            ok = [_label(r) for r in results if r.status == "success"]
+            fail = [f"{_label(r)}({r.error_message})" for r in results if r.status != "success"]
             summary = "S6 发布完成 — 成功: " + (", ".join(ok) or "无")
             if fail:
                 summary += " | 失败: " + ", ".join(fail)

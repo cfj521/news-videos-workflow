@@ -1,8 +1,9 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { api, type AppSettings } from "../api/client";
-import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, selectCls, segItem } from "../styles";
+import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, selectCls } from "../styles";
 import { Select } from "./Select";
+import { MultiSelect } from "./MultiSelect";
 import { SourceSummary } from "./SourceSummary";
 import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isAihotSource } from "../types";
 
@@ -22,8 +23,6 @@ function toBackendStages(visual: Set<number>): number[] {
   return [...new Set(backend)].sort();
 }
 
-const ALL_PLATFORMS = Object.keys(PLATFORM_MEDIA).map((k) => ({ value: k, label: PLATFORM_LABELS[k] ?? k }));
-
 // 分辨率预设（图片与视频共用）；选中时同时确定画面比例
 const RES_PRESETS_DLG = [
   { value: "1080x1920", ar: "9:16", label: "1080×1920 · 9:16 竖屏" },
@@ -37,9 +36,9 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [timeRange, setTimeRange] = useState("7d");
   const [maxArticles, setMaxArticles] = useState(5);
   const [autoCollect, setAutoCollect] = useState(true);
-  const [videoRoute, setVideoRoute] = useState("");
+  const [videoRoute, setVideoRoute] = useState("hyperframes");
   const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5]));
-  const [platforms, setPlatforms] = useState<Set<string>>(new Set());
+  const [targetIds, setTargetIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [resolution, setResolution] = useState("");
   const [aspectRatio, setAspectRatio] = useState("");
@@ -48,7 +47,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   // 任务级分辨率/比例：未选则回退全局 video 设置
   const effRes = resolution || settings?.video.resolution || "1080x1920";
   const effAr = aspectRatio || settings?.video.aspect_ratio || "9:16";
-  // 未手动选则用全局默认视频路线
+  // 新建任务默认 hyperframes；用户可在弹窗内切换
   const effVideoRoute = videoRoute || settings?.pipeline?.default_video_route || "comfyui";
   const resOptions = (RES_PRESETS_DLG.some((o) => o.value === effRes)
     ? RES_PRESETS_DLG
@@ -61,6 +60,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   };
 
   const { data: sources } = useSWR("sources", api.sources.list);
+  const { data: publishTargets } = useSWR("publishers", api.publishers.list);
   const enabledSources = (sources ?? []).filter((s) => s.enabled);
   // 后端互斥：只要有启用的 AI HOT 源，就只走 AI HOT 组
   const aihotSource = enabledSources.find(isAihotSource);
@@ -74,7 +74,13 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
   const audioOnly = effVideoRoute === "audio";
   const excludedMedia = audioOnly ? "video" : "audio";
-  const platformOptions = ALL_PLATFORMS.filter((p) => PLATFORM_MEDIA[p.value] !== excludedMedia);
+  // 可选发布账号：仅启用、且媒体类型与当前路线匹配（纯语音排除视频平台，反之亦然）
+  const availableTargets = (publishTargets ?? []).filter(
+    (t) => t.enabled && PLATFORM_MEDIA[t.platform] !== excludedMedia
+  );
+  const targetOptions = availableTargets.map((t) => ({
+    value: String(t.id), label: t.name, hint: PLATFORM_LABELS[t.platform] ?? t.platform,
+  }));
   const dialogStages = audioOnly ? VISIBLE_STAGES.filter((s) => s !== 4) : VISIBLE_STAGES;
   const stageLabel = (s: number) => (audioOnly && s === 2 ? "脚本/语音生成" : STAGE_LABELS[s]);
 
@@ -82,9 +88,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const effectiveVisual = audioOnly && selectedVisual.has(4)
     ? new Set([...selectedVisual].filter((s) => s !== 4))
     : selectedVisual;
-  const effectivePlatforms = new Set(
-    [...platforms].filter((p) => PLATFORM_MEDIA[p] !== excludedMedia)
-  );
+  const availableIdSet = new Set(availableTargets.map((t) => String(t.id)));
+  const effectiveTargetIds = new Set([...targetIds].filter((id) => availableIdSet.has(id)));
 
   const toggleStage = (s: number) => {
     setSelectedVisual((prev) => {
@@ -103,10 +108,10 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
     });
   };
 
-  const togglePlatform = (p: string) => {
-    setPlatforms((prev) => {
+  const toggleTarget = (id: string) => {
+    setTargetIds((prev) => {
       const next = new Set(prev);
-      if (next.has(p)) next.delete(p); else next.add(p);
+      if (next.has(id)) next.delete(id); else next.add(id);
       if (next.size > 0) {
         setSelectedVisual(new Set(VISIBLE_STAGES));
       }
@@ -123,7 +128,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         time_range: timeRange,
         max_articles: maxArticles,
         selected_stages: toBackendStages(effectiveVisual),
-        publish_platforms: Array.from(effectivePlatforms),
+        publish_platforms: Array.from(effectiveTargetIds),
         resolution: effRes,
         aspect_ratio: effAr,
         auto_collect: autoCollect,
@@ -159,21 +164,16 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         </div>
 
         {effectiveVisual.has(6) && (
-          <>
-            <label className={labelCls}>发布平台</label>
-            <div className="flex gap-2 mb-4">
-              {platformOptions.map((p) => (
-                <button
-                  key={p.value}
-                  type="button"
-                  onClick={() => togglePlatform(p.value)}
-                  className={segItem(effectivePlatforms.has(p.value))}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </>
+          <div className="mb-4">
+            <label className={labelCls}>发布账号</label>
+            <MultiSelect
+              values={[...effectiveTargetIds]}
+              onToggle={toggleTarget}
+              options={targetOptions}
+              placeholder="选择发布账号..."
+              emptyHint="暂无可用发布账号，请先到「发布管理」添加"
+            />
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-3 mb-4">
