@@ -735,7 +735,7 @@ export function SettingsPage() {
               >恢复默认</button>
             </div>
             <textarea
-              value={settings.prompts?.[key] ?? def.default}
+              value={settings.prompts?.[key] || def.default}
               onChange={(e) => patch("prompts", { [key]: e.target.value })}
               rows={[0, 1, 6].includes(idx) ? 16 : 8}
               className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/80 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40"

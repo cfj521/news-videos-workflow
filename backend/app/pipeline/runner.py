@@ -15,25 +15,27 @@ from sqlalchemy.orm import Session
 from app.config import get_settings, reload_settings
 from app.logging import get_logger, get_run_logger
 from app.models.pipeline_run import PipelineRun
-from app.providers.base import ImageProvider, ProviderError
-from app.providers.collector.hackernews import HackerNewsCollector
-from app.providers.composer.hyperframes_composer import HyperframesComposer
-from app.providers.image.openai_image import OpenAIImageProvider
-from app.providers.tts.edge_tts_provider import EdgeTTSProvider
-
 from app.pipeline.stage1_collect import run_stage1
 from app.pipeline.stage3_assets import run_stage3
 from app.pipeline.stage4_timeline import run_stage4
 from app.pipeline.stage5_compose import run_stage5
+from app.providers.base import ImageProvider, ProviderError
+from app.providers.collector.hackernews import HackerNewsCollector
+from app.providers.composer.hyperframes_composer import HyperframesComposer
+from app.providers.tts.edge_tts_provider import EdgeTTSProvider
 
 
 def _build_text_provider():
     cfg = get_settings()
     if cfg.text.provider == "claude":
         from app.providers.text.claude import ClaudeTextProvider
-        return ClaudeTextProvider(api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url)
+        return ClaudeTextProvider(
+            api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url
+        )
     from app.providers.text.openai_text import OpenAITextProvider
-    return OpenAITextProvider(api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url)
+    return OpenAITextProvider(
+        api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url
+    )
 
 
 TYPE_TO_COLLECTOR: dict[str, type] = {}
@@ -42,13 +44,13 @@ TYPE_TO_COLLECTOR: dict[str, type] = {}
 def _ensure_collector_registry():
     if TYPE_TO_COLLECTOR:
         return
-    from app.providers.collector.rss import RSSCollector
-    from app.providers.collector.google_news import GoogleNewsCollector
-    from app.providers.collector.tavily import TavilyCollector
-    from app.providers.collector.brave_search import BraveSearchCollector
-    from app.providers.collector.serper import SerperCollector
-    from app.providers.collector.duckduckgo import DuckDuckGoCollector
     from app.providers.collector.aihot import AIHotCollector
+    from app.providers.collector.brave_search import BraveSearchCollector
+    from app.providers.collector.duckduckgo import DuckDuckGoCollector
+    from app.providers.collector.google_news import GoogleNewsCollector
+    from app.providers.collector.rss import RSSCollector
+    from app.providers.collector.serper import SerperCollector
+    from app.providers.collector.tavily import TavilyCollector
     TYPE_TO_COLLECTOR.update({
         "hackernews_algolia": HackerNewsCollector,
         "rss": RSSCollector,
@@ -216,7 +218,9 @@ def _save_articles(articles, run_dir):
             "aihot_method": a.metadata.get("aihot_method"),
             "daily_sections": a.metadata.get("daily_sections"),
         })
-    (run_dir / "articles.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    (run_dir / "articles.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def _article_from_dict(d: dict):
@@ -257,10 +261,46 @@ def _update(db: Session, run: PipelineRun, **kwargs) -> None:
     db.refresh(run)
 
 
+def _load_history_fingerprints(db: Session, limit: int = 30) -> list[str]:
+    """取最近 limit 期已完成生成的文章指纹，喂给 Stage1 去重 Layer1，跨期不重复选题。"""
+    from app.models.issue_summary import IssueSummary
+
+    rows = db.query(IssueSummary).order_by(IssueSummary.id.desc()).limit(limit).all()
+    fps: list[str] = []
+    for r in rows:
+        try:
+            fps.extend(json.loads(r.article_fingerprints_json))
+        except Exception:
+            continue
+    return fps
+
+
+def _record_issue_history(db: Session, run: PipelineRun, articles: list, script, log) -> None:
+    """整条流水线成功后，把本期用到的文章指纹写入 issue_summaries（去重历史）。失败不影响主流程。"""
+    from app.models.issue_summary import IssueSummary
+    from app.services.dedup import DedupService
+
+    dedup = DedupService()
+    fps = [dedup.fingerprint(a.title) for a in articles if getattr(a, "title", "")]
+    summary_text = script.get("title", "") if isinstance(script, dict) else ""
+    try:
+        db.add(IssueSummary(
+            run_id=run.id,
+            summary_text=summary_text,
+            article_fingerprints_json=json.dumps(fps, ensure_ascii=False),
+        ))
+        db.commit()
+        log.info("Issue history recorded — %d fingerprints (run #%d)", len(fps), run.id)
+    except Exception:
+        db.rollback()
+        log.exception("Failed to record issue history for run #%d", run.id)
+
+
 def export_final(run_id: int, final_path: str | None, title: str = "") -> str | None:
     """渲染完成后把成品（mp4/mp3）额外复制一份到 storage.output_dir 归档。
 
-    未配置 output_dir 或源文件不存在则跳过。文件名为 run_{id}_{标题}.{ext}（标题做了文件名安全清洗）。
+    未配置 output_dir 或源文件不存在则跳过。
+    文件名为 run_{id}_{标题}.{ext}（标题做了文件名安全清洗）。
     """
     import re
     import shutil
@@ -301,9 +341,11 @@ def _reason_text(exc: Exception) -> str:
 
     if "timeout" in name or "timed out" in low:
         return "调用超时——可能是网络不通、代理未开启或服务地址不可达。"
-    if "connect" in name or "connection" in low or "getaddrinfo" in low or "name or service not known" in low:
+    if ("connect" in name or "connection" in low or "getaddrinfo" in low
+            or "name or service not known" in low):
         return "无法建立连接——请检查网络、代理与服务地址。"
-    if "authentication" in name or "unauthorized" in low or "401" in low or "invalid api key" in low:
+    if ("authentication" in name or "unauthorized" in low or "401" in low
+            or "invalid api key" in low):
         return "认证失败——请检查 API Key 是否正确或已过期。"
     if "ratelimit" in name or "429" in low or "rate limit" in low:
         return "触发限流（429）——请稍后重试或降低请求频率。"
@@ -339,12 +381,15 @@ async def execute_pipeline(run_id: int, db_factory) -> None:
     except Exception as e:
         run = db.get(PipelineRun, run_id)
         if run:
-            _update(db, run, status="failed", error_message=_humanize_error(e, run.current_stage)[:1000], finished_at=datetime.now(timezone.utc))
+            _update(db, run, status="failed",
+                    error_message=_humanize_error(e, run.current_stage)[:1000],
+                    finished_at=datetime.now(timezone.utc))
             try:
                 rlog = get_run_logger(run_id, get_settings().runs_root() / str(run_id))
                 rlog.exception("Pipeline failed with unhandled exception")
             except Exception:
-                get_logger("runner").exception("Pipeline run #%d failed (could not write run log)", run_id)
+                get_logger("runner").exception(
+                    "Pipeline run #%d failed (could not write run log)", run_id)
     finally:
         db.close()
 
@@ -388,19 +433,26 @@ async def _run_inner(run_id: int, db: Session) -> None:
             run = db.get(PipelineRun, run_id)
         else:
             _update(db, run, current_stage=1, progress_detail="S1 采集新闻中...")
-            log.info("[S1] Collecting news — time_range=%s max=%d", run.time_range, run.max_articles)
-            db_sources = db.query(NewsSource).filter(NewsSource.enabled == True).all()
+            log.info("[S1] Collecting news — time_range=%s max=%d",
+                     run.time_range, run.max_articles)
+            db_sources = db.query(NewsSource).filter(NewsSource.enabled.is_(True)).all()
             if db_sources:
                 source_configs, collectors = build_collectors_from_db(db_sources)
-                log.info("[S1] Using %d DB sources: %s", len(source_configs), [s["name"] for s in source_configs])
+                log.info("[S1] Using %d DB sources: %s", len(source_configs),
+                         [s["name"] for s in source_configs])
             else:
                 source_configs, collectors = build_collectors(cfg)
                 log.info("[S1] No DB sources, using defaults")
             digest_method = next((sc.get("method") for sc in source_configs
                                   if sc.get("method") in ("daily", "weekly")), None)
+            history_fps = _load_history_fingerprints(db)
+            if history_fps:
+                log.info("[S1] Loaded %d history fingerprints (recent issues) for dedup",
+                         len(history_fps))
             articles = await run_stage1(
                 sources=source_configs, collectors=collectors,
                 time_range=run.time_range, max_articles=run.max_articles,
+                history_fingerprints=history_fps,
             )
             for i, a in enumerate(articles, 1):
                 log.info("[S1]   [%d] %s (%s)", i, a.title, a.source_name)
@@ -415,7 +467,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             log.info("[S1] Done — %d articles in %.1fs", len(articles), elapsed)
             _save_articles(articles, run_dir)
             if run.mode == "manual":
-                _update(db, run, status="review", progress_detail=f"S1 采集完成 ({len(articles)} 篇)，等待审核")
+                _update(db, run, status="review",
+                        progress_detail=f"S1 采集完成 ({len(articles)} 篇)，等待审核")
                 log.info("[S1] Paused for review")
                 await _wait_for_resume(run_id, db)
                 run = db.get(PipelineRun, run_id)
@@ -438,33 +491,39 @@ async def _run_inner(run_id: int, db: Session) -> None:
     # ─── Stage 2: 脚本生成 ─────────────────────────────────
     if 2 in selected:
         t0 = time.time()
-        _update(db, run, current_stage=2, progress_detail=f"S2 生成脚本 — {len(articles)} 篇文章...")
+        _update(db, run, current_stage=2,
+                progress_detail=f"S2 生成脚本 — {len(articles)} 篇文章...")
         log.info("[S2] Generating multi-article script for %d articles", len(articles))
 
         text_provider = _build_text_provider()
         log.info("[S2] Provider: %s / %s", cfg.text.provider, cfg.text.model)
 
         from app.pipeline.stage2_script import run_stage2_multi
-        script = await run_stage2_multi(articles, text_provider, language=cfg.pipeline.default_language)
+        script = await run_stage2_multi(
+            articles, text_provider, language=cfg.pipeline.default_language)
 
-        (run_dir / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
+        (run_dir / "script.json").write_text(
+            json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
         scene_count = len(script.get("scenes", []))
         elapsed = time.time() - t0
         detail = f"S2 完成 — 《{script.get('title', '')}》{scene_count} 个分镜 ({elapsed:.1f}s)"
         _update(db, run, progress_detail=detail)
-        log.info("[S2] Done — \"%s\" %d scenes in %.1fs", script.get("title", ""), scene_count, elapsed)
+        log.info("[S2] Done — \"%s\" %d scenes in %.1fs",
+                 script.get("title", ""), scene_count, elapsed)
 
         for s in script.get("scenes", []):
             log.debug("[S2]   S%d: %s", s["id"], s["narration"][:60])
 
         if run.mode == "manual":
-            _update(db, run, status="review", progress_detail=f"S2 脚本完成 ({scene_count} 分镜)，等待审核")
+            _update(db, run, status="review",
+                    progress_detail=f"S2 脚本完成 ({scene_count} 分镜)，等待审核")
             log.info("[S2] Paused for review")
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
 
     if not script:
-        _update(db, run, status="failed", error_message="No script generated", finished_at=datetime.now(timezone.utc))
+        _update(db, run, status="failed", error_message="No script generated",
+                finished_at=datetime.now(timezone.utc))
         log.error("No script — aborting")
         return
 
@@ -473,7 +532,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
         t0 = time.time()
         total = len(script.get("scenes", []))
         _update(db, run, current_stage=3, progress_detail=f"S3 生成素材 0/{total}")
-        log.info("[S3] Generating assets — %d scenes, provider: %s/%s", total, cfg.image.provider, cfg.image.model)
+        log.info("[S3] Generating assets — %d scenes, provider: %s/%s",
+                 total, cfg.image.provider, cfg.image.model)
 
         from app.providers.image import build_image_provider
         image_provider = build_image_provider(cfg)
@@ -491,8 +551,10 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 _update(db, run, progress_detail=f"S3 生成图片 {img_count}/{total}...")
                 log.info("[S3] Image %d/%d: %s", img_count, total, prompt[:60])
                 t = time.time()
-                result = await self._inner.generate(prompt=prompt, size=size, output_path=output_path)
-                log.info("[S3] Image %d/%d done (%.1fs, %s)", img_count, total, time.time() - t, result.file_path)
+                result = await self._inner.generate(
+                    prompt=prompt, size=size, output_path=output_path)
+                log.info("[S3] Image %d/%d done (%.1fs, %s)",
+                         img_count, total, time.time() - t, result.file_path)
                 return result
 
         class TrackedTTSProvider:
@@ -505,7 +567,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 _update(db, run, progress_detail=f"S3 生成语音 {tts_count}/{total}...")
                 log.info("[S3] TTS %d/%d: %s...", tts_count, total, text[:30])
                 t = time.time()
-                result = await self._inner.synthesize(text=text, voice=voice, speed=speed, output_path=output_path)
+                result = await self._inner.synthesize(
+                    text=text, voice=voice, speed=speed, output_path=output_path)
                 log.info("[S3] TTS %d/%d done (%.1fs)", tts_count, total, time.time() - t)
                 return result
 
@@ -529,7 +592,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             log.warning("[S3] Scene %d error: %s", err["scene_id"], err["error"])
 
         if run.mode == "manual":
-            _update(db, run, status="review", progress_detail=f"S3 素材完成 ({ok}/{total})，等待审核")
+            _update(db, run, status="review",
+                    progress_detail=f"S3 素材完成 ({ok}/{total})，等待审核")
             log.info("[S3] Paused for review")
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
@@ -540,9 +604,12 @@ async def _run_inner(run_id: int, db: Session) -> None:
         _update(db, run, current_stage=4, progress_detail="S4 生成时间轴...")
         log.info("[S4] Building timeline + preview (route=%s)", run.video_route)
 
-        timeline = run_stage4(script=script, scene_assets=scene_assets, scene_gap_ms=cfg.video.scene_gap_ms)
-        (run_dir / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
-        log.info("[S4] Timeline: %.1fs total, %d entries", timeline["total_duration_ms"] / 1000, len(timeline["entries"]))
+        timeline = run_stage4(
+            script=script, scene_assets=scene_assets, scene_gap_ms=cfg.video.scene_gap_ms)
+        (run_dir / "timeline.json").write_text(
+            json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
+        log.info("[S4] Timeline: %.1fs total, %d entries",
+                 timeline["total_duration_ms"] / 1000, len(timeline["entries"]))
 
         _update(db, run, progress_detail="S4 生成分镜审核页...")
         preview_html = _generate_storyboard_html(script, scene_assets, timeline)
@@ -553,7 +620,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             _update(db, run, progress_detail="S4 生成 Hyperframes 预览...")
             composer = HyperframesComposer()
             try:
-                hyperframes_html = composer._render_html(timeline, resolution, run_dir, transition=cfg.video.transition)
+                hyperframes_html = composer._render_html(
+                    timeline, resolution, run_dir, transition=cfg.video.transition)
                 (run_dir / "index.html").write_text(hyperframes_html, encoding="utf-8")
                 log.info("[S4] Hyperframes HTML generated at %s/index.html", run_dir)
             except Exception as e:
@@ -583,16 +651,19 @@ async def _run_inner(run_id: int, db: Session) -> None:
             try:
                 final_path = _ffmpeg_merge_audio(script, assets_dir, run_dir)
             except Exception as e:
-                _update(db, run, status="failed", error_message=f"音频合成失败: {e}", finished_at=datetime.now(timezone.utc))
+                _update(db, run, status="failed", error_message=f"音频合成失败: {e}",
+                        finished_at=datetime.now(timezone.utc))
                 log.exception("[S5] Audio merge failed")
                 return
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
-                _update(db, run, progress_detail=f"S5 合成完成 — {size_mb:.1f} MB ({time.time()-t0:.1f}s)", output_path=final_path)
+                _update(db, run, output_path=final_path,
+                        progress_detail=f"S5 合成完成 — {size_mb:.1f} MB ({time.time()-t0:.1f}s)")
                 log.info("[S5] Audio merged — %.1f MB", size_mb)
                 export_final(run.id, final_path, script.get("title", ""))
             else:
-                _update(db, run, status="failed", error_message="音频文件未生成", finished_at=datetime.now(timezone.utc))
+                _update(db, run, status="failed", error_message="音频文件未生成",
+                        finished_at=datetime.now(timezone.utc))
                 return
             if run.mode == "manual":
                 _update(db, run, status="review", progress_detail="S5 合成完成，等待审核")
@@ -600,7 +671,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 run = db.get(PipelineRun, run_id)
         else:
             if not timeline:
-                _update(db, run, status="failed", error_message="No timeline for rendering", finished_at=datetime.now(timezone.utc))
+                _update(db, run, status="failed", error_message="No timeline for rendering",
+                        finished_at=datetime.now(timezone.utc))
                 log.error("No timeline — cannot render")
                 return
 
@@ -610,8 +682,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 _update(db, run, current_stage=5, progress_detail="S5 ComfyUI 视频生成中...")
                 log.info("[S5] ComfyUI rendering — output=%s", output_mp4)
                 try:
-                    from app.providers.video import build_video_provider
                     from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
+                    from app.providers.video import build_video_provider
                     vp = build_video_provider(cfg)
                     result = await ComfyUIVideoComposer(vp, fps=cfg.comfyui.video_fps).compose(
                         timeline_json=timeline, assets_dir=str(assets_dir),
@@ -628,7 +700,9 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
                 composer = HyperframesComposer()
                 try:
-                    result = await run_stage5(timeline=timeline, composer=composer, assets_dir=str(assets_dir), output_path=output_mp4, resolution=resolution)
+                    result = await run_stage5(
+                        timeline=timeline, composer=composer, assets_dir=str(assets_dir),
+                        output_path=output_mp4, resolution=resolution)
                     final_path = result.file_path
                     log.info("[S5] Hyperframes render ok — %s", final_path)
                 except Exception as e:
@@ -645,7 +719,9 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 export_final(run.id, final_path, script.get("title", ""))
             else:
                 log.error("[S5] Output file not found: %s", final_path)
-                _update(db, run, status="failed", error_message=f"Video output not found: {final_path}", finished_at=datetime.now(timezone.utc))
+                _update(db, run, status="failed",
+                        error_message=f"Video output not found: {final_path}",
+                        finished_at=datetime.now(timezone.utc))
                 return
 
             if run.mode == "manual":
@@ -658,7 +734,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
     if 6 in selected:
         platforms = json.loads(run.publish_platforms)
         if platforms:
-            _update(db, run, current_stage=6, progress_detail=f"S6 发布到 {', '.join(platforms)}...")
+            _update(db, run, current_stage=6,
+                    progress_detail=f"S6 发布到 {', '.join(platforms)}...")
             log.info("[S6] Publishing to: %s", platforms)
             from dataclasses import asdict
 
@@ -673,8 +750,9 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 if sj.exists():
                     meta = json.loads(sj.read_text(encoding="utf-8"))
 
-            targets = [t for t in db.query(PublishTarget).filter(PublishTarget.enabled.is_(True)).all()
-                       if t.platform in platforms]
+            targets = [
+                t for t in db.query(PublishTarget).filter(PublishTarget.enabled.is_(True)).all()
+                if t.platform in platforms]
             publishers = build_publishers(targets)
             results = await run_stage6(
                 video_path=video_path, thumbnail_path=None,
@@ -688,18 +766,22 @@ async def _run_inner(run_id: int, db: Session) -> None:
             if fail:
                 summary += " | 失败: " + ", ".join(fail)
             (run_dir / "publish_results.json").write_text(
-                json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2), encoding="utf-8")
+                json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2),
+                encoding="utf-8")
             _update(db, run, progress_detail=summary[:500])
             log.info("[S6] %s", summary)
 
     # ─── Finish ────────────────────────────────────────────
     now = datetime.now(timezone.utc)
     if run.started_at:
-        started = run.started_at if run.started_at.tzinfo else run.started_at.replace(tzinfo=timezone.utc)
+        started = (run.started_at if run.started_at.tzinfo
+                   else run.started_at.replace(tzinfo=timezone.utc))
         total_elapsed = (now - started).total_seconds()
     else:
         total_elapsed = 0
-    _update(db, run, status="done", finished_at=datetime.now(timezone.utc), progress_detail=f"全部完成 ({total_elapsed:.0f}s)")
+    _update(db, run, status="done", finished_at=datetime.now(timezone.utc),
+            progress_detail=f"全部完成 ({total_elapsed:.0f}s)")
+    _record_issue_history(db, run, articles, script, log)
     log.info("Pipeline finished — total %.1fs", total_elapsed)
 
 
@@ -713,6 +795,18 @@ async def _wait_for_resume(run_id: int, db: Session, timeout: int = 3600) -> Non
     raise TimeoutError(f"Run {run_id} not resumed within {timeout}s")
 
 
+# 分镜预览页内联样式（抽成常量，避免超长行）
+_PV_CARD = ("background:#1a1a2e;border:1px solid #333;border-radius:12px;"
+            "padding:16px;margin-bottom:12px")
+_PV_NOIMG = ("width:100%;height:200px;background:#222;border-radius:8px;"
+             "display:flex;align-items:center;justify-content:center;color:#555")
+_PV_BODY = ("background:#0f0f1a;color:#ddd;font-family:system-ui;"
+            "padding:32px;max-width:900px;margin:0 auto")
+_PV_META = "color:#888;font-size:12px;margin-bottom:4px"
+_PV_PROMPT = "color:#666;font-size:11px;margin-top:8px;font-style:italic"
+_PV_SUB = "color:#666;font-size:13px;margin-bottom:24px"
+
+
 def _generate_storyboard_html(script: dict, scene_assets: list[dict], timeline: dict) -> str:
     scenes_html = ""
     for scene in script.get("scenes", []):
@@ -723,28 +817,37 @@ def _generate_storyboard_html(script: dict, scene_assets: list[dict], timeline: 
         entry = next((e for e in timeline["entries"] if e["scene_id"] == sid), {})
         dur = (entry.get("end_ms", 0) - entry.get("start_ms", 0)) / 1000
 
-        img_tag = f'<img src="file:///{img}" style="max-width:100%;border-radius:8px">' if img else '<div style="width:100%;height:200px;background:#222;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#555">No image</div>'
-        audio_tag = f'<audio controls src="file:///{audio}" style="width:100%;margin-top:8px"></audio>' if audio else ""
+        img_tag = (
+            f'<img src="file:///{img}" style="max-width:100%;border-radius:8px">'
+            if img else f'<div style="{_PV_NOIMG}">No image</div>'
+        )
+        audio_tag = (
+            f'<audio controls src="file:///{audio}" style="width:100%;margin-top:8px"></audio>'
+            if audio else ""
+        )
 
         scenes_html += f"""
-        <div style="background:#1a1a2e;border:1px solid #333;border-radius:12px;padding:16px;margin-bottom:12px">
+        <div style="{_PV_CARD}">
           <div style="display:flex;gap:16px">
             <div style="width:280px;flex-shrink:0">{img_tag}{audio_tag}</div>
             <div style="flex:1">
-              <div style="color:#888;font-size:12px;margin-bottom:4px">Scene {sid} · {dur:.1f}s</div>
+              <div style="{_PV_META}">Scene {sid} · {dur:.1f}s</div>
               <div style="color:#ddd;font-size:14px;line-height:1.6">{scene['narration']}</div>
-              <div style="color:#666;font-size:11px;margin-top:8px;font-style:italic">{scene.get('image_prompt', '')}</div>
+              <div style="{_PV_PROMPT}">{scene.get('image_prompt', '')}</div>
             </div>
           </div>
         </div>"""
 
     total_s = timeline["total_duration_ms"] / 1000
+    title = script.get("title", "")
+    desc = script.get("description", "")
+    n_scenes = len(script.get("scenes", []))
     return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>{script.get('title', 'Preview')}</title>
-<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{background:#0f0f1a;color:#ddd;font-family:system-ui;padding:32px;max-width:900px;margin:0 auto}}</style>
+<html><head><meta charset="utf-8"><title>{title or 'Preview'}</title>
+<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{{_PV_BODY}}}</style>
 </head><body>
-<h1 style="font-size:24px;margin-bottom:4px">{script.get('title', '')}</h1>
-<p style="color:#666;font-size:13px;margin-bottom:24px">{script.get('description', '')} · {total_s:.0f}s · {len(script.get('scenes', []))} scenes</p>
+<h1 style="font-size:24px;margin-bottom:4px">{title}</h1>
+<p style="{_PV_SUB}">{desc} · {total_s:.0f}s · {n_scenes} scenes</p>
 {scenes_html}
 </body></html>"""
 
@@ -777,7 +880,9 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) ->
         inputs.extend(["-loop", "1", "-t", str(dur_s), "-i", entry["image_path"]])
         inputs.extend(["-i", entry["audio_path"]])
         vi, ai = idx * 2, idx * 2 + 1
-        filter_parts.append(f"[{vi}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}[v{idx}]")
+        filter_parts.append(
+            f"[{vi}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
+            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}[v{idx}]")
         filter_parts.append(f"[{ai}:a]apad=whole_dur={dur_s}[a{idx}]")
         concat_inputs.append(f"[v{idx}][a{idx}]")
 
@@ -786,7 +891,10 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) ->
 
     n = len(concat_inputs)
     fc = ";".join(filter_parts) + f";{''.join(concat_inputs)}concat=n={n}:v=1:a=1[outv][outa]"
-    cmd = ["ffmpeg", "-y", *inputs, "-filter_complex", fc, "-map", "[outv]", "-map", "[outa]", "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-shortest", output_path]
+    cmd = ["ffmpeg", "-y", *inputs, "-filter_complex", fc,
+           "-map", "[outv]", "-map", "[outa]",
+           "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+           "-c:a", "aac", "-b:a", "128k", "-shortest", output_path]
     _run_ffmpeg(cmd, service="视频合成", shell=True)
     return output_path
 
