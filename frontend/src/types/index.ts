@@ -94,6 +94,80 @@ export const PLATFORM_MEDIA: Record<string, MediaType> = {
   apple_podcasts: "audio",
 };
 
+// ── 各平台配置字段定义（发布管理表单 + 账号可用性校验共用）──
+// required=true 的字段为「必要信息」：全部填齐，该账号才算可用（可在新建任务里选）。
+export interface FieldDef {
+  key: string;
+  label: string;
+  required?: boolean;
+  secret?: boolean;
+  placeholder?: string;
+}
+
+export const PLATFORM_FIELDS: Record<string, FieldDef[]> = {
+  youtube: [
+    { key: "client_id", label: "Client ID", required: true, placeholder: "xxxxx.apps.googleusercontent.com" },
+    { key: "client_secret", label: "Client Secret", required: true, secret: true, placeholder: "GOCSPX-..." },
+    { key: "refresh_token", label: "Refresh Token", required: true, secret: true },
+  ],
+  instagram: [
+    { key: "user_id", label: "User ID", required: true, placeholder: "Instagram 商业账号 ID" },
+    { key: "access_token", label: "Access Token", required: true, secret: true },
+    { key: "file_host_url", label: "视频公开 URL", required: true, placeholder: "https://your-cdn.com/video.mp4" },
+  ],
+  bilibili: [
+    { key: "sessdata", label: "SESSDATA（必填）", required: true, secret: true },
+    { key: "bili_jct", label: "bili_jct（必填·CSRF）", required: true, secret: true },
+    { key: "dede_user_id", label: "DedeUserID（强烈建议·UID）", placeholder: "上传者 UID" },
+    { key: "buvid3", label: "buvid3（建议·设备指纹）", secret: true },
+    { key: "buvid4", label: "buvid4（建议·新版指纹）", secret: true },
+    { key: "ac_time_value", label: "ac_time_value（可选·续期）", secret: true },
+    { key: "tid", label: "分区 ID", placeholder: "17 (科技>数码)" },
+  ],
+  douyin: [
+    { key: "method", label: "接入方式", placeholder: "api / playwright" },
+    { key: "client_key", label: "Client Key", required: true },
+    { key: "client_secret", label: "Client Secret", required: true, secret: true },
+    { key: "access_token", label: "Access Token", required: true, secret: true },
+  ],
+  kuaishou: [
+    { key: "method", label: "接入方式", placeholder: "api / playwright" },
+    { key: "app_id", label: "App ID", required: true },
+    { key: "app_secret", label: "App Secret", required: true, secret: true },
+    { key: "access_token", label: "Access Token", required: true, secret: true },
+  ],
+  ximalaya: [
+    { key: "access_token", label: "Access Token", required: true, secret: true },
+  ],
+  xiaoyuzhou: [
+    { key: "cookie", label: "Cookie", required: true, secret: true },
+  ],
+  netease_music: [
+    { key: "cookie", label: "Cookie", required: true, secret: true },
+  ],
+  apple_podcasts: [
+    { key: "rss_url", label: "RSS URL", required: true, placeholder: "https://feeds.example.com/podcast.xml" },
+  ],
+};
+
+/** 账号必要凭证是否齐全（required 字段全部有非空值）→ 决定账号是否可用。 */
+export function isTargetReady(platform: string, configJson: string | null): boolean {
+  const fields = PLATFORM_FIELDS[platform];
+  if (!fields) return false;
+  let cfg: Record<string, unknown> = {};
+  try {
+    cfg = configJson ? JSON.parse(configJson) : {};
+  } catch {
+    return false;
+  }
+  return fields
+    .filter((f) => f.required)
+    .every((f) => {
+      const v = cfg[f.key];
+      return typeof v === "string" ? v.trim() !== "" : Boolean(v);
+    });
+}
+
 export const BACKEND_STAGE_MAP: Record<number, number[]> = {
   1: [1],
   2: [2, 3],

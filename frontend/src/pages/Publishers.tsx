@@ -2,68 +2,14 @@ import { useState } from "react";
 import useSWR from "swr";
 import { api } from "../api/client";
 import type { PublishTarget } from "../types";
-import { PLATFORM_LABELS, PLATFORM_MEDIA } from "../types";
+import { PLATFORM_LABELS, PLATFORM_MEDIA, PLATFORM_FIELDS } from "../types";
 import {
-  btnPrimary, btnSecondary, btnDanger, btnDeleteCompact, cardCls, chipCls,
+  btnPrimary, btnSecondary, btnDanger, cardCls, chipCls,
   inputCls, labelCls, dialogOverlayCls, dialogPanelCls, errorTextCls,
+  toggleCls, toggleThumbCls,
 } from "../styles";
 import { Select } from "../components/Select";
 import { PasswordInput } from "../components/PasswordInput";
-
-// ── Platform config field definitions ───────────────────
-
-interface FieldDef {
-  key: string;
-  label: string;
-  secret?: boolean;
-  placeholder?: string;
-}
-
-const PLATFORM_FIELDS: Record<string, FieldDef[]> = {
-  youtube: [
-    { key: "client_id", label: "Client ID", placeholder: "xxxxx.apps.googleusercontent.com" },
-    { key: "client_secret", label: "Client Secret", secret: true, placeholder: "GOCSPX-..." },
-    { key: "refresh_token", label: "Refresh Token", secret: true },
-  ],
-  instagram: [
-    { key: "user_id", label: "User ID", placeholder: "Instagram 商业账号 ID" },
-    { key: "access_token", label: "Access Token", secret: true },
-    { key: "file_host_url", label: "视频公开 URL", placeholder: "https://your-cdn.com/video.mp4" },
-  ],
-  bilibili: [
-    { key: "sessdata", label: "SESSDATA（必填）", secret: true },
-    { key: "bili_jct", label: "bili_jct（必填·CSRF）", secret: true },
-    { key: "dede_user_id", label: "DedeUserID（强烈建议·UID）", placeholder: "上传者 UID" },
-    { key: "buvid3", label: "buvid3（建议·设备指纹）", secret: true },
-    { key: "buvid4", label: "buvid4（建议·新版指纹）", secret: true },
-    { key: "ac_time_value", label: "ac_time_value（可选·续期）", secret: true },
-    { key: "tid", label: "分区 ID", placeholder: "17 (科技>数码)" },
-  ],
-  douyin: [
-    { key: "method", label: "接入方式", placeholder: "api / playwright" },
-    { key: "client_key", label: "Client Key" },
-    { key: "client_secret", label: "Client Secret", secret: true },
-    { key: "access_token", label: "Access Token", secret: true },
-  ],
-  kuaishou: [
-    { key: "method", label: "接入方式", placeholder: "api / playwright" },
-    { key: "app_id", label: "App ID" },
-    { key: "app_secret", label: "App Secret", secret: true },
-    { key: "access_token", label: "Access Token", secret: true },
-  ],
-  ximalaya: [
-    { key: "access_token", label: "Access Token", secret: true },
-  ],
-  xiaoyuzhou: [
-    { key: "cookie", label: "Cookie", secret: true },
-  ],
-  netease_music: [
-    { key: "cookie", label: "Cookie", secret: true },
-  ],
-  apple_podcasts: [
-    { key: "rss_url", label: "RSS URL", placeholder: "https://feeds.example.com/podcast.xml" },
-  ],
-};
 
 const PLATFORM_OPTIONS = Object.entries(PLATFORM_LABELS).map(([k, v]) => ({ value: k, label: v }));
 
@@ -97,9 +43,9 @@ function TargetDialog({ target, onSave, onClose }: {
   const isEdit = !!target;
   const [name, setName] = useState(target?.name ?? "");
   const [platform, setPlatform] = useState(target?.platform ?? "youtube");
-  const [enabled, setEnabled] = useState(target?.enabled ?? true);
+  // 启用/禁用不在本窗口内改，由列表外侧的开关按 target 控制；这里仅在保存时透传原值
+  const [enabled] = useState(target?.enabled ?? true);
   const [fields, setFields] = useState<Record<string, string>>(() => parseConfig(target?.config_json ?? null));
-  const [confirmDisable, setConfirmDisable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -161,28 +107,11 @@ function TargetDialog({ target, onSave, onClose }: {
 
         {error && <p className={`${errorTextCls} mb-3`}>{error}</p>}
 
-        <div className="flex justify-between items-center mt-4">
-          <div>
-            {isEdit && (enabled ? (
-              confirmDisable ? (
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs ${errorTextCls}`}>确认禁用此平台？</span>
-                  <button type="button" onClick={() => { setEnabled(false); setConfirmDisable(false); }} className={btnDeleteCompact}>确认</button>
-                  <button type="button" onClick={() => setConfirmDisable(false)} className="px-2 py-1 text-xs text-white/30 hover:text-white/50 transition">取消</button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => setConfirmDisable(true)} className={btnDanger}>禁用</button>
-              )
-            ) : (
-              <button type="button" onClick={() => setEnabled(true)} className="text-xs text-emerald-300 hover:text-emerald-200 transition">启用</button>
-            ))}
-          </div>
-          <div className="flex gap-3">
-            <button onClick={onClose} className={btnSecondary}>取消</button>
-            <button onClick={handleSubmit} disabled={loading} className={btnPrimary}>
-              {loading ? "保存中..." : isEdit ? "保存" : "添加"}
-            </button>
-          </div>
+        <div className="flex justify-end gap-3 mt-4">
+          <button onClick={onClose} className={btnSecondary}>取消</button>
+          <button onClick={handleSubmit} disabled={loading} className={btnPrimary}>
+            {loading ? "保存中..." : isEdit ? "保存" : "添加"}
+          </button>
         </div>
       </div>
     </div>
@@ -211,6 +140,11 @@ export function PublishersPage() {
 
   const handleDelete = async (id: number) => {
     await api.publishers.remove(id);
+    mutate();
+  };
+
+  const handleToggleEnabled = async (t: PublishTarget) => {
+    await api.publishers.update(t.id, { enabled: !t.enabled });
     mutate();
   };
 
@@ -255,12 +189,17 @@ export function PublishersPage() {
                     })}
                   </div>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
-                  className={btnDanger}
-                >
-                  删除
-                </button>
+                <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleEnabled(t)}
+                    className={toggleCls(t.enabled)}
+                    title={t.enabled ? "已启用（点击禁用此账号）" : "已禁用（点击启用此账号）"}
+                  >
+                    <span className={toggleThumbCls(t.enabled)} />
+                  </button>
+                  <button onClick={() => handleDelete(t.id)} className={btnDanger}>删除</button>
+                </div>
               </div>
             </div>
           );

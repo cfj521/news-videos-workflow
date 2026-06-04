@@ -5,7 +5,7 @@ import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogP
 import { Select } from "./Select";
 import { MultiSelect } from "./MultiSelect";
 import { SourceSummary } from "./SourceSummary";
-import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isAihotSource } from "../types";
+import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isTargetReady, isAihotSource } from "../types";
 
 interface Props {
   onCreated: () => void;
@@ -37,8 +37,9 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [maxArticles, setMaxArticles] = useState(5);
   const [autoCollect, setAutoCollect] = useState(true);
   const [videoRoute, setVideoRoute] = useState("hyperframes");
-  const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5]));
-  const [targetIds, setTargetIds] = useState<Set<string>>(new Set());
+  const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5, 6]));
+  // null = 用户尚未手动改动 → 默认全选所有可用账号；非 null = 用户的具体选择
+  const [targetIds, setTargetIds] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(false);
   const [resolution, setResolution] = useState("");
   const [aspectRatio, setAspectRatio] = useState("");
@@ -74,9 +75,9 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
   const audioOnly = effVideoRoute === "audio";
   const excludedMedia = audioOnly ? "video" : "audio";
-  // 可选发布账号：仅启用、且媒体类型与当前路线匹配（纯语音排除视频平台，反之亦然）
+  // 可选发布账号：启用 + 必要凭证齐全（isTargetReady）+ 媒体类型与当前路线匹配
   const availableTargets = (publishTargets ?? []).filter(
-    (t) => t.enabled && PLATFORM_MEDIA[t.platform] !== excludedMedia
+    (t) => t.enabled && isTargetReady(t.platform, t.config_json) && PLATFORM_MEDIA[t.platform] !== excludedMedia
   );
   const targetOptions = availableTargets.map((t) => ({
     value: String(t.id), label: t.name, hint: PLATFORM_LABELS[t.platform] ?? t.platform,
@@ -88,8 +89,11 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const effectiveVisual = audioOnly && selectedVisual.has(4)
     ? new Set([...selectedVisual].filter((s) => s !== 4))
     : selectedVisual;
+  // targetIds 为 null（用户未手动改动）时默认全选所有可用账号；否则用其选择并过滤掉已不可用的
   const availableIdSet = new Set(availableTargets.map((t) => String(t.id)));
-  const effectiveTargetIds = new Set([...targetIds].filter((id) => availableIdSet.has(id)));
+  const effectiveTargetIds = targetIds === null
+    ? new Set(availableIdSet)
+    : new Set([...targetIds].filter((id) => availableIdSet.has(id)));
 
   const toggleStage = (s: number) => {
     setSelectedVisual((prev) => {
@@ -110,11 +114,10 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
   const toggleTarget = (id: string) => {
     setTargetIds((prev) => {
-      const next = new Set(prev);
+      // 首次手动操作前，以「全选可用账号」为基准再 toggle
+      const base = prev ?? new Set(availableTargets.map((t) => String(t.id)));
+      const next = new Set(base);
       if (next.has(id)) next.delete(id); else next.add(id);
-      if (next.size > 0) {
-        setSelectedVisual(new Set(VISIBLE_STAGES));
-      }
       return next;
     });
   };
