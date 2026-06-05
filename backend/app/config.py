@@ -30,11 +30,20 @@ class ProviderCfg(BaseModel):
     api_key: str = ""
 
 
+class ProviderModels(BaseModel):
+    """某供应商按类型分组的可用模型名列表（用户可增删，供流水线选型作候选）。"""
+    text: list[str] = []
+    image: list[str] = []
+    vision: list[str] = []
+    tts: list[str] = []
+
+
 class ProviderCreds(BaseModel):
     """单个供应商的连接凭证与参数。供应商参数库 providers 的一项，被各用途按需引用。"""
     base_url: str = ""
     api_key: str = ""
     max_output_tokens: int = 4096  # 文本/视觉模型单次生成的输出 token 上限
+    models: ProviderModels = ProviderModels()
 
 
 # 各供应商默认 base_url（初始化供应商库 / 旧配置迁移用）
@@ -47,9 +56,30 @@ _PROVIDER_DEFAULTS: dict[str, str] = {
     "azure-speech": "",
 }
 
+# 各供应商默认模型列表（按类型分组）；用户可在「模型配置」页增删
+_PROVIDER_DEFAULT_MODELS: dict[str, dict[str, list[str]]] = {
+    "claude": {"text": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]},
+    "openai": {
+        "text": ["gpt-5.5", "gpt-5.5-pro", "gpt-5"],
+        "image": ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"],
+        "vision": ["gpt-5.5", "gpt-5", "gpt-4o"],
+    },
+    "dashscope": {
+        "text": ["qwen3.7-max", "qwen3.6-plus", "qwen3.6-flash"],
+        "image": ["wan2.5-t2i-preview", "wanx2.1-t2i-turbo", "wanx2.1-t2i-plus"],
+        "vision": ["qwen3-vl-plus", "qwen-vl-max", "qwen-vl-plus"],
+    },
+    "openai-tts": {"tts": ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"]},
+    "dashscope-tts": {"tts": ["cosyvoice-v2", "cosyvoice-v1"]},
+}
+
+
+def _default_provider_models(name: str) -> ProviderModels:
+    return ProviderModels(**_PROVIDER_DEFAULT_MODELS.get(name, {}))
+
 
 def _default_providers() -> dict[str, ProviderCreds]:
-    return {k: ProviderCreds(base_url=v) for k, v in _PROVIDER_DEFAULTS.items()}
+    return {k: ProviderCreds(base_url=v, models=_default_provider_models(k)) for k, v in _PROVIDER_DEFAULTS.items()}
 
 
 class TTSCfg(BaseModel):
@@ -222,7 +252,10 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
     if not any(k in raw for k in legacy_keys):
         return raw
 
-    providers: dict[str, dict] = {k: {"base_url": v} for k, v in _PROVIDER_DEFAULTS.items()}
+    providers: dict[str, dict] = {
+        k: {"base_url": v, "models": _PROVIDER_DEFAULT_MODELS.get(k, {})}
+        for k, v in _PROVIDER_DEFAULTS.items()
+    }
     pipe: dict[str, Any] = dict(raw.get("pipeline", {}))
 
     def _put_creds(prov: str, base_url: str, api_key: str) -> None:
@@ -300,11 +333,20 @@ def _save_yaml(path: Path, data: dict[str, Any]) -> None:
 _settings: Settings | None = None
 
 
+def _ensure_default_models(s: Settings) -> None:
+    """为预设供应商补默认模型列表（兼容旧 config 无 models 字段）；仅在该供应商 models 全空时填。"""
+    for name in _PROVIDER_DEFAULTS:
+        creds = s.providers.get(name)
+        if creds and not (creds.models.text or creds.models.image or creds.models.vision or creds.models.tts):
+            creds.models = _default_provider_models(name)
+
+
 def get_settings() -> Settings:
     global _settings
     if _settings is None:
         raw = _migrate_legacy(_load_yaml(CONFIG_PATH))
         _settings = Settings(**raw)
+        _ensure_default_models(_settings)
         import logging
         logging.getLogger("nv.config").info("Loaded config from %s", CONFIG_PATH)
     return _settings

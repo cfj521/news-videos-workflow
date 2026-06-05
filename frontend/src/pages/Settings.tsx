@@ -26,18 +26,6 @@ interface ProviderPreset {
   needsKey?: boolean;
 }
 
-const TEXT_PRESETS: Record<string, ProviderPreset> = {
-  claude: { label: "Anthropic Claude", baseUrl: "https://api.anthropic.com", models: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"] },
-  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-5.5", "gpt-5.5-pro", "gpt-5"] },
-  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen3.7-max", "qwen3.6-plus", "qwen3.6-flash"] },
-};
-
-const IMAGE_PRESETS: Record<string, ProviderPreset> = {
-  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"] },
-  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["wan2.5-t2i-preview", "wanx2.1-t2i-turbo", "wanx2.1-t2i-plus"] },
-  comfyui: { label: "ComfyUI 本地", baseUrl: "http://127.0.0.1:8188", models: ["z_image", "qwen"], needsKey: false },
-};
-
 // 每种 workflow 可调的生成参数 + 范围/说明。无 steps/cfg 字段表示该项锁死，note 给出原因。
 type ParamMeta = {
   steps?: { min: number; max: number; desc: string };
@@ -71,11 +59,6 @@ const VIDEO_PARAM_META: Record<string, ParamMeta> = {
     cfg: { min: 1, max: 5, desc: "提示词遵循强度（默认 1.0）" },
     note: "蒸馏模型步数固定（约 4 步），无法调整。",
   },
-};
-
-const VISION_PRESETS: Record<string, ProviderPreset> = {
-  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-5.5", "gpt-5", "gpt-4o"] },
-  dashscope: { label: "阿里云 (Qwen-VL)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen3-vl-plus", "qwen-vl-max", "qwen-vl-plus"] },
 };
 
 const TTS_PRESETS: Record<string, ProviderPreset> = {
@@ -246,17 +229,50 @@ function TabStrip({ tabs, active, onSelect }: {
   );
 }
 
-// 流水线选型一行：供应商下拉 + 模型输入（带建议）
-function PurposeSelect({ label, desc, providers, provider, model, onProvider, onModel }: {
-  label: string; desc?: string; providers: Record<string, string[]>;
-  provider: string; model: string; onProvider: (v: string) => void; onModel: (v: string) => void;
+// 模型名列表编辑：tag 形式增删，回车/＋ 添加
+function ModelListEditor({ label, models, onChange }: {
+  label: string; models: string[]; onChange: (m: string[]) => void;
 }) {
-  const provOptions = Object.keys(providers).map((k) => ({ value: k, label: k }));
+  const [input, setInput] = useState("");
+  const add = () => {
+    const v = input.trim();
+    if (v && !models.includes(v)) onChange([...models, v]);
+    setInput("");
+  };
+  return (
+    <Field label={label}>
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-1.5">
+          {models.map((m) => (
+            <span key={m} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.06] text-xs text-white/70 font-mono">
+              {m}
+              <button onClick={() => onChange(models.filter((x) => x !== m))} className="text-white/30 hover:text-red-300">×</button>
+            </span>
+          ))}
+          {models.length === 0 && <span className="text-xs text-white/25">暂无，下方添加模型名</span>}
+        </div>
+        <div className="flex gap-2">
+          <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+            placeholder="模型名，回车添加" className={inputCls} />
+          <button onClick={add} className={btnPrimary}>+</button>
+        </div>
+      </div>
+    </Field>
+  );
+}
+
+// 流水线选型一行：供应商下拉 + 模型输入（候选来自该供应商对应类型的模型列表）
+function PurposeSelect({ label, desc, providerKeys, provider, model, modelOptions, onProvider, onModel }: {
+  label: string; desc?: string; providerKeys: string[];
+  provider: string; model: string; modelOptions: string[];
+  onProvider: (v: string) => void; onModel: (v: string) => void;
+}) {
+  const provOptions = providerKeys.map((k) => ({ value: k, label: PROVIDER_LABELS[k] ?? k }));
   return (
     <Field label={label} desc={desc}>
       <div className="grid grid-cols-2 gap-2">
-        <Select value={provider} onChange={(v) => { onProvider(v); const ms = providers[v] ?? []; if (ms.length) onModel(ms[0]); }} options={provOptions} />
-        <ModelInput value={model} onChange={onModel} suggestions={providers[provider] ?? []} />
+        <Select value={provider} onChange={onProvider} options={provOptions} />
+        <ModelInput value={model} onChange={onModel} suggestions={modelOptions} />
       </div>
     </Field>
   );
@@ -264,12 +280,12 @@ function PurposeSelect({ label, desc, providers, provider, model, onProvider, on
 
 const EMPTY_SETTINGS: AppSettings = {
   providers: {
-    claude: { base_url: "https://api.anthropic.com", api_key: "", max_output_tokens: 4096 },
-    openai: { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 4096 },
-    dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 4096 },
-    "openai-tts": { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 4096 },
-    "dashscope-tts": { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 4096 },
-    "azure-speech": { base_url: "", api_key: "", max_output_tokens: 4096 },
+    claude: { base_url: "https://api.anthropic.com", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
+    openai: { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
+    dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
+    "openai-tts": { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
+    "dashscope-tts": { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
+    "azure-speech": { base_url: "", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
   },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
@@ -300,22 +316,6 @@ const PROVIDER_TABS: { key: string; label: string }[] = [
 ];
 const PRESET_PROVIDER_KEYS = PROVIDER_TABS.map((t) => t.key);
 const PROVIDER_LABELS: Record<string, string> = Object.fromEntries(PROVIDER_TABS.map((t) => [t.key, t.label]));
-
-// 流水线选型：各用途可选「供应商 → 模型建议」。tts 单独处理（供应商 + 音色）。
-const PURPOSE_PROVIDERS: Record<string, Record<string, string[]>> = {
-  summary: {
-    openai: TEXT_PRESETS.openai.models, claude: TEXT_PRESETS.claude.models, dashscope: TEXT_PRESETS.dashscope.models,
-  },
-  script: {
-    claude: TEXT_PRESETS.claude.models, openai: TEXT_PRESETS.openai.models, dashscope: TEXT_PRESETS.dashscope.models,
-  },
-  image: {
-    comfyui: IMAGE_PRESETS.comfyui.models, openai: IMAGE_PRESETS.openai.models, dashscope: IMAGE_PRESETS.dashscope.models,
-  },
-  vision: {
-    openai: VISION_PRESETS.openai.models, dashscope: VISION_PRESETS.dashscope.models,
-  },
-};
 
 // ---------------------------------------------------------------------------
 // 用户管理 tab
@@ -481,7 +481,7 @@ export function SettingsPage() {
   const patchProvider = (name: string, p: Partial<ProviderCreds>) => {
     setSettings((prev) => ({
       ...prev,
-      providers: { ...prev.providers, [name]: { ...(prev.providers[name] ?? { base_url: "", api_key: "", max_output_tokens: 4096 }), ...p } },
+      providers: { ...prev.providers, [name]: { ...(prev.providers[name] ?? { base_url: "", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } }), ...p } },
     }));
     setDirty(true);
   };
@@ -490,10 +490,10 @@ export function SettingsPage() {
   const customKeys = Object.keys(settings.providers).filter((k) => !PRESET_PROVIDER_KEYS.includes(k));
   const providerTabs = [...PRESET_PROVIDER_KEYS, ...customKeys].map((k) => ({ key: k, label: PROVIDER_LABELS[k] ?? k }));
   const activeProvider = providerTabs.some((t) => t.key === providerTab) ? providerTab : providerTabs[0].key;
-  const withCustom = (preset: Record<string, string[]>) => ({
-    ...preset,
-    ...Object.fromEntries(customKeys.filter((k) => !(k in preset)).map((k) => [k, [] as string[]])),
-  });
+  const allProviderKeys = [...PRESET_PROVIDER_KEYS, ...customKeys];
+  // 文本/图片/视觉用途的可选供应商：排除纯 TTS 供应商
+  const llmProviderKeys = allProviderKeys.filter((k) => !["openai-tts", "dashscope-tts", "azure-speech"].includes(k));
+  const modelsOf = (p: string, t: "text" | "image" | "vision" | "tts") => settings.providers[p]?.models?.[t] ?? [];
   const addProvider = () => {
     const name = newProvider.trim();
     if (!name || settings.providers[name]) { setNewProvider(""); return; }
@@ -552,8 +552,10 @@ export function SettingsPage() {
           <button onClick={addProvider} className={btnPrimary}>+ 添加</button>
         </div>
         {(() => {
-          const creds = settings.providers[activeProvider] ?? { base_url: "", api_key: "", max_output_tokens: 4096 };
+          const creds = settings.providers[activeProvider] ?? { base_url: "", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } };
           const isCustom = !PRESET_PROVIDER_KEYS.includes(activeProvider);
+          const cm = creds.models ?? { text: [], image: [], vision: [], tts: [] };
+          const setModels = (t: keyof typeof cm, list: string[]) => patchProvider(activeProvider, { models: { ...cm, [t]: list } });
           return (
             <>
               <Field label="接口地址">
@@ -564,6 +566,10 @@ export function SettingsPage() {
                 <input type="number" value={creds.max_output_tokens} min={256} max={32000} step={256}
                   onChange={(e) => patchProvider(activeProvider, { max_output_tokens: Number(e.target.value) })} className={inputCls} />
               </Field>
+              <ModelListEditor label="文本模型" models={cm.text ?? []} onChange={(l) => setModels("text", l)} />
+              <ModelListEditor label="图片模型" models={cm.image ?? []} onChange={(l) => setModels("image", l)} />
+              <ModelListEditor label="多模态模型" models={cm.vision ?? []} onChange={(l) => setModels("vision", l)} />
+              <ModelListEditor label="TTS 模型" models={cm.tts ?? []} onChange={(l) => setModels("tts", l)} />
               {isCustom && (
                 <button
                   onClick={() => {
@@ -597,17 +603,21 @@ export function SettingsPage() {
             { value: "1080x1080", label: "1080×1080 方形" }, { value: "720x1280", label: "720×1280 竖屏HD" }, { value: "1280x720", label: "1280×720 横屏HD" },
           ]} />
         </Field>
-        <PurposeSelect label="文章总结模型" providers={withCustom(PURPOSE_PROVIDERS.summary)}
+        <PurposeSelect label="文章总结模型" providerKeys={llmProviderKeys}
           provider={settings.pipeline.summary_provider} model={settings.pipeline.summary_model}
+          modelOptions={modelsOf(settings.pipeline.summary_provider, "text")}
           onProvider={(v) => patch("pipeline", { summary_provider: v })} onModel={(v) => patch("pipeline", { summary_model: v })} />
-        <PurposeSelect label="文案脚本模型" providers={withCustom(PURPOSE_PROVIDERS.script)}
+        <PurposeSelect label="文案脚本模型" providerKeys={llmProviderKeys}
           provider={settings.pipeline.script_provider} model={settings.pipeline.script_model}
+          modelOptions={modelsOf(settings.pipeline.script_provider, "text")}
           onProvider={(v) => patch("pipeline", { script_provider: v })} onModel={(v) => patch("pipeline", { script_model: v })} />
-        <PurposeSelect label="图片生成模型" providers={withCustom(PURPOSE_PROVIDERS.image)} desc="comfyui 时为图片 workflow"
+        <PurposeSelect label="图片生成模型" providerKeys={["comfyui", ...llmProviderKeys]} desc="comfyui 时为图片 workflow"
           provider={settings.pipeline.image_provider} model={settings.pipeline.image_model}
+          modelOptions={settings.pipeline.image_provider === "comfyui" ? ["z_image", "qwen"] : modelsOf(settings.pipeline.image_provider, "image")}
           onProvider={(v) => patch("pipeline", { image_provider: v })} onModel={(v) => patch("pipeline", { image_model: v })} />
-        <PurposeSelect label="文档解析模型" providers={withCustom(PURPOSE_PROVIDERS.vision)}
+        <PurposeSelect label="文档解析模型" providerKeys={llmProviderKeys}
           provider={settings.pipeline.vision_provider} model={settings.pipeline.vision_model}
+          modelOptions={modelsOf(settings.pipeline.vision_provider, "vision")}
           onProvider={(v) => patch("pipeline", { vision_provider: v })} onModel={(v) => patch("pipeline", { vision_model: v })} />
         <Field label="语音生成模型"
           desc={settings.pipeline.default_language === "en" && !settings.pipeline.tts_voice.startsWith("en") ? "⚠ 当前语言为英文，建议选英文音色（en-US-*）" : "供应商 + 音色"}>
