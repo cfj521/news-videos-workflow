@@ -144,4 +144,16 @@ async def test_gen_article_scenes_uses_prompt_override(monkeypatch):
     tp.generate.return_value = json.dumps({"scenes": [{"narration": "x", "image_prompt": "p", "motion_prompt": "m", "duration_hint": 5}]})
     art = RawArticleData(title="t", content="c", source_url="u", source_name="s")
     await _gen_article_scenes(art, tp)
-    assert tp.generate.call_args.kwargs["system_prompt"] == "MY_OVERRIDE_PROMPT"
+    # system_prompt = 覆盖的提示词 + 语言/画面风格指令
+    assert tp.generate.call_args.kwargs["system_prompt"].startswith("MY_OVERRIDE_PROMPT")
+
+
+@pytest.mark.asyncio
+async def test_gen_article_scenes_english_directive(monkeypatch):
+    monkeypatch.setattr(config, "_settings", config.Settings(prompts={"roundup_article": "BASE"}))
+    tp = AsyncMock()
+    tp.generate.return_value = json.dumps({"scenes": [{"narration": "x", "image_prompt": "p", "motion_prompt": "m", "duration_hint": 5}]})
+    art = RawArticleData(title="t", content="c", source_url="u", source_name="s")
+    await _gen_article_scenes(art, tp, language="en")
+    sp = tp.generate.call_args.kwargs["system_prompt"]
+    assert "English" in sp and "Western" in sp  # 英文模式注入英文 + 西方场景指令

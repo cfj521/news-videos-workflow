@@ -54,13 +54,15 @@ def _reap_orphan(run: PipelineRun, db: Session) -> PipelineRun:
 @router.post("/runs", response_model=PipelineRunRead, status_code=201)
 def create_run(body: PipelineRunCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     log.info("POST /runs — mode=%s stages=%s platforms=%s", body.mode, body.selected_stages, body.publish_platforms)
+    cfg = get_settings()
     engine = PipelineEngine(db)
     run = engine.create_run(
         mode=body.mode, video_route=body.video_route, time_range=body.time_range,
         max_articles=body.max_articles, selected_stages=body.selected_stages,
         publish_platforms=body.publish_platforms,
         auto_collect=body.auto_collect,
-        resolution=body.resolution,
+        resolution=body.resolution or cfg.pipeline.resolution,
+        language=body.language or cfg.pipeline.default_language,
     )
     session_factory = get_session_factory()
     background_tasks.add_task(_run_pipeline_bg, run.id, session_factory)
@@ -248,7 +250,7 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
 
     from app.pipeline.stage2_script import run_stage2_multi
     log.info("Regenerating multi-article script for run #%d (%d articles)", run_id, len(arts))
-    script = await run_stage2_multi(arts, tp, language=cfg.pipeline.default_language)
+    script = await run_stage2_multi(arts, tp, language=(run.language or cfg.pipeline.default_language))
     (rd / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
     return script
 

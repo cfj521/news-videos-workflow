@@ -31,5 +31,7 @@ class PipelineRun(Base, TimestampMixin):
     auto_collect: Mapped[bool] = mapped_column(Boolean, default=True)
     # 任务级分辨率（图片与视频共用），创建时必填
     resolution: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # 任务级语言（zh|en），影响脚本/字幕/图片风格；创建时从流水线配置默认读取
+    language: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     articles: Mapped[list["RawArticle"]] = relationship(back_populates="run")

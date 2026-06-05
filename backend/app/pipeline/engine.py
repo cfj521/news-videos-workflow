@@ -23,6 +23,7 @@ class PipelineEngine:
         publish_platforms: list[str] | None = None,
         auto_collect: bool = True,
         resolution: str = "",
+        language: str = "",
     ) -> PipelineRun:
         stages = selected_stages or [1, 2, 3, 4, 5]
         platforms = publish_platforms or []
@@ -33,6 +34,7 @@ class PipelineEngine:
             publish_platforms=json.dumps(platforms),
             auto_collect=auto_collect,
             resolution=resolution or None,
+            language=language or None,
         )
         self.db.add(run)
         self.db.commit()

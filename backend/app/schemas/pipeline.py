@@ -12,6 +12,7 @@ class PipelineRunCreate(BaseModel):
     publish_platforms: list[str] = []
     auto_collect: bool = True
     resolution: str = ""
+    language: str = ""
 
 
 class PipelineRunRead(BaseModel):
@@ -32,6 +33,7 @@ class PipelineRunRead(BaseModel):
     error_message: str | None
     auto_collect: bool
     resolution: str | None
+    language: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

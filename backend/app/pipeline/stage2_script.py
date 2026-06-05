@@ -82,9 +82,19 @@ def _batch_items(n: int) -> list[int]:
     return sizes
 
 
-async def _gen_article_scenes(article, tp) -> list[dict]:
+def _lang_directive(language: str) -> str:
+    """追加到各生成 prompt 末尾的语言/画面风格指令（明确覆盖模板内默认，优先级最高）。"""
+    if (language or "zh").lower().startswith("en"):
+        return ("\n\n[LANGUAGE OVERRIDE] Ignore any language instruction above. Output ALL "
+                "narration / title / description / tags in natural, fluent English. For image_prompt, "
+                "depict Western / European faces and real-world settings (NOT Asian/Chinese faces).")
+    return ("\n\n[语言要求] narration / 标题 / 简介 / 标签 一律用简体中文；"
+            "image_prompt 画面人物为亚洲/中国面孔、中式真实场景。")
+
+
+async def _gen_article_scenes(article, tp, language: str = "zh") -> list[dict]:
     prompt = f"标题：{article.title}\n来源：{article.source_name}\n内容：\n{(article.content or article.title)[:2000]}"
-    resp = await tp.generate(prompt=prompt, system_prompt=resolve_prompt("roundup_article"))
+    resp = await tp.generate(prompt=prompt, system_prompt=resolve_prompt("roundup_article") + _lang_directive(language))
     try:
         scenes = _parse_json(resp).get("scenes", [])
     except Exception:
@@ -95,9 +105,9 @@ async def _gen_article_scenes(article, tp) -> list[dict]:
     return scenes[:3]
 
 
-async def _gen_daily_batch_scenes(items: list[dict], tp) -> list[dict]:
+async def _gen_daily_batch_scenes(items: list[dict], tp, language: str = "zh") -> list[dict]:
     lines = [f"{i + 1}. 「{it.get('title', '')}」{it.get('summary', '')}" for i, it in enumerate(items)]
-    resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=resolve_prompt("daily_batch"))
+    resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=resolve_prompt("daily_batch") + _lang_directive(language))
     try:
         scenes = _parse_json(resp).get("scenes", [])
     except Exception:
@@ -108,8 +118,8 @@ async def _gen_daily_batch_scenes(items: list[dict], tp) -> list[dict]:
     return scenes
 
 
-async def _gen_summary_meta(titles: list[str], tp) -> dict:
-    resp = await tp.generate(prompt="各条资讯标题：\n" + "\n".join(f"- {t}" for t in titles), system_prompt=resolve_prompt("summary_meta"))
+async def _gen_summary_meta(titles: list[str], tp, language: str = "zh") -> dict:
+    resp = await tp.generate(prompt="各条资讯标题：\n" + "\n".join(f"- {t}" for t in titles), system_prompt=resolve_prompt("summary_meta") + _lang_directive(language))
     try:
         m = _parse_json(resp)
     except Exception:
@@ -139,7 +149,7 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
                     gid = next_gid
                     next_gid += 1
                     gtitle = label if not multi else f"{label} ({bi + 1})"
-                    batch_scenes = await _gen_daily_batch_scenes(batch, text_provider)
+                    batch_scenes = await _gen_daily_batch_scenes(batch, text_provider, language)
                     if len(batch_scenes) != len(batch):
                         log.warning("[S2] daily batch returned %d scenes for %d items", len(batch_scenes), len(batch))
                     for sc in batch_scenes:
@@ -153,7 +163,7 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
         else:
             gid = next_gid
             next_gid += 1
-            art_scenes = await _gen_article_scenes(article, text_provider)
+            art_scenes = await _gen_article_scenes(article, text_provider, language)
             for sc in art_scenes:
                 sc["id"] = next_id
                 next_id += 1
@@ -163,6 +173,6 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
             groups.append({"id": gid, "title": article.title, "source_index": idx})
             titles.append(article.title)
 
-    meta = await _gen_summary_meta(titles, text_provider)
+    meta = await _gen_summary_meta(titles, text_provider, language)
     log.info("[S2] multi script: %d groups, %d scenes", len(groups), len(scenes))
     return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"], "groups": groups, "scenes": scenes}

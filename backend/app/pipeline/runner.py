@@ -502,7 +502,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
         from app.pipeline.stage2_script import run_stage2_multi
         script = await run_stage2_multi(
-            articles, text_provider, language=cfg.pipeline.default_language)
+            articles, text_provider, language=(run.language or cfg.pipeline.default_language))
 
         (run_dir / "script.json").write_text(
             json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")

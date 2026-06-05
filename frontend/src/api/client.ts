@@ -110,6 +110,7 @@ export const api = {
       publish_platforms?: string[];
       auto_collect?: boolean;
       resolution?: string;
+      language?: string;
     }) =>
       fetchJSON<PipelineRun>("/pipeline/runs", {
         method: "POST",

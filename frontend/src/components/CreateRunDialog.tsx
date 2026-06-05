@@ -41,11 +41,13 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   // null = 用户尚未手动改动 → 默认全选所有可用账号；非 null = 用户的具体选择
   const [targetIds, setTargetIds] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [resolution, setResolution] = useState("1080x1920");
+  const [resolution, setResolution] = useState("");
+  const [language, setLanguage] = useState("");
 
   const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
-  // 任务级分辨率：建任务时必填（默认 1080x1920），不再回退全局；比例由分辨率隐含
-  const effRes = resolution || "1080x1920";
+  // 默认值取自流水线配置；用户可在此覆盖
+  const effRes = resolution || settings?.pipeline?.resolution || "1080x1920";
+  const effLang = language || settings?.pipeline?.default_language || "zh";
   // 新建任务默认 hyperframes；用户可在弹窗内切换
   const effVideoRoute = videoRoute || settings?.pipeline?.default_video_route || "comfyui";
   const resOptions = (RES_PRESETS_DLG.some((o) => o.value === effRes)
@@ -126,6 +128,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         selected_stages: toBackendStages(effectiveVisual),
         publish_platforms: Array.from(effectiveTargetIds),
         resolution: effRes,
+        language: effLang,
         auto_collect: autoCollect,
       });
       onCreated();
@@ -189,10 +192,21 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           </div>
         </div>
 
-        <div className="mb-4">
-          <label className={labelCls}>分辨率（图片与视频共用）</label>
-          <Select value={effRes} onChange={setResolution} options={resOptions} />
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className={labelCls}>分辨率（图片与视频共用）</label>
+            <Select value={effRes} onChange={setResolution} options={resOptions} />
+          </div>
+          <div>
+            <label className={labelCls}>语言</label>
+            <Select value={effLang} onChange={setLanguage} options={[
+              { value: "zh", label: "中文" }, { value: "en", label: "English" },
+            ]} />
+          </div>
         </div>
+        {effLang === "en" && (
+          <p className="text-xs text-amber-300/70 -mt-2 mb-4">英文模式：脚本/字幕用英文、图片倾向西方面孔与场景；TTS 音色请在「设置 → 流水线配置」选英文音色（en-US-*）。</p>
+        )}
 
         <div className="mb-4">
           <label className={labelCls}>采集方式</label>

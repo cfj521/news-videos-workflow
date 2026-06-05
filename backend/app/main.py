@@ -18,6 +18,7 @@ def _ensure_pipeline_run_columns(engine) -> None:
         "auto_collect": "BOOLEAN DEFAULT 1",
         "resolution": "VARCHAR(20)",
         "aspect_ratio": "VARCHAR(10)",
+        "language": "VARCHAR(10)",
     }
     with engine.begin() as conn:
         cols = [row[1] for row in conn.execute(text("PRAGMA table_info(pipeline_runs)"))]
