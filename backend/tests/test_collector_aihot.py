@@ -79,6 +79,9 @@ async def test_aihot_daily_renders_single_article():
     assert "模型A摘要" in a.content
     assert "行业B摘要" in a.content
     assert "快讯C" in a.content
+    # 日报跳转 URL 指向当天日报前端页
+    assert a.source_url == "https://aihot.virxact.com/daily/2026-05-28"
+    assert a.aggregator_url == "https://aihot.virxact.com/daily/2026-05-28"
 
 
 @pytest.mark.asyncio

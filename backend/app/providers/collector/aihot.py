@@ -76,6 +76,8 @@ class AIHotCollector(CollectorProvider):
         report = resp.json()
 
         date = report.get("date", "")
+        # 日报前端页（跳转/展示用），形如 https://aihot.virxact.com/daily/2026-06-04
+        daily_url = f"https://aihot.virxact.com/daily/{date}" if date else "https://aihot.virxact.com"
         lead = report.get("lead") or {}
         lead_title = lead.get("title") or f"今日 AI 日报 {date}"
         lead_para = lead.get("leadParagraph", "")
@@ -96,11 +98,11 @@ class AIHotCollector(CollectorProvider):
         article = RawArticleData(
             title=lead_title,
             content=content,
-            source_url="https://aihot.virxact.com",
+            source_url=daily_url,
             source_name="AI HOT 日报",
             category="ai",
             summary=lead_para,
-            aggregator_url="https://aihot.virxact.com",
+            aggregator_url=daily_url,
             metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": date,
                       "daily_sections": report.get("sections", [])},
         )

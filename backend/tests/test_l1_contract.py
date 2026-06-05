@@ -50,23 +50,22 @@ def _create_run(client):
 
 # ─── 设置：密钥安全（P0） ─────────────────────────────────────
 
-def test_settings_get_redacts_secret(env):
+def test_settings_get_returns_full_key(env):
     client, _, _ = env
-    client.put("/api/settings/", json={"text": {"api_key": "sk-1234567890abcdef"}})
+    client.put("/api/settings/", json={"providers": {"openai": {"api_key": "sk-1234567890abcdef"}}})
     got = client.get("/api/settings/").json()
-    assert got["text"]["api_key"] == "sk-1...cdef"  # 脱敏显示
-    raw = client.get("/api/settings/raw").json()
-    assert raw["text"]["api_key"] == "sk-1234567890abcdef"  # /raw 供编辑，返回完整值
+    # 内部工具：api_key 完整返回（供前端按供应商完整显示/编辑）
+    assert got["providers"]["openai"]["api_key"] == "sk-1234567890abcdef"
 
 
-def test_settings_put_redacted_key_not_overwrite(env):
+def test_settings_put_deep_merges_provider(env):
     client, _, _ = env
-    client.put("/api/settings/", json={"text": {"api_key": "sk-1234567890abcdef"}})
-    # 前端把脱敏值原样回传，不应覆盖真实密钥；同组其它字段照常更新
-    client.put("/api/settings/", json={"text": {"api_key": "sk-1...cdef", "model": "gpt-x"}})
+    client.put("/api/settings/", json={"providers": {"openai": {"base_url": "https://x", "api_key": "sk-abc"}}})
+    # 只更新 api_key，base_url 应被保留（深合并）
+    client.put("/api/settings/", json={"providers": {"openai": {"api_key": "sk-new"}}})
     raw = client.get("/api/settings/raw").json()
-    assert raw["text"]["api_key"] == "sk-1234567890abcdef"
-    assert raw["text"]["model"] == "gpt-x"
+    assert raw["providers"]["openai"]["api_key"] == "sk-new"
+    assert raw["providers"]["openai"]["base_url"] == "https://x"
 
 
 def test_settings_put_ignores_infra(env):

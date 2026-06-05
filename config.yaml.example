@@ -11,39 +11,27 @@ storage:
   work_dir: ""
   output_dir: ""
 
-# ---- AI Provider（api_key 留空则该 provider 不可用）----
-text:                                   # 脚本 / 文案生成
-  provider: claude                      # claude | openai | dashscope | 自定义
-  base_url: https://api.anthropic.com
-  model: claude-sonnet-4-6
-  api_key: ""
-
-image:                                  # 场景配图；选 comfyui 则走本地 ComfyUI（见下方 comfyui 段）
-  provider: openai                      # openai | dashscope | comfyui
-  base_url: https://api.openai.com/v1
-  model: gpt-image-2
-  api_key: ""
-
-vision:                                 # 导入 PDF / 图片时的多模态解析
-  provider: openai
-  base_url: https://api.openai.com/v1
-  model: gpt-4o
-  api_key: ""
-
-tts:                                    # 文字转语音（edge-tts 免费、无需 key）
-  provider: edge-tts                    # edge-tts | openai-tts | dashscope-tts | azure-speech
-  base_url: ""
-  api_key: ""
-  model: ""
-  voice: zh-CN-XiaoxiaoNeural
-  speed: 1.0
-
-summary:                                # 文章摘要；provider 留空则复用上面 text 的配置
-  provider: ""
-  base_url: ""
-  model: ""
-  api_key: ""
-  max_length: 150
+# ---- 供应商参数库：各供应商的连接凭证（api_key 留空则该供应商不可用）----
+#      「当前用哪个供应商 + 哪个模型」在下方 pipeline 段统一选择（这里只配参数）。
+providers:
+  claude:
+    base_url: https://api.anthropic.com
+    api_key: ""
+  openai:
+    base_url: https://api.openai.com/v1
+    api_key: ""
+  dashscope:
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: ""
+  openai-tts:
+    base_url: https://api.openai.com/v1
+    api_key: ""
+  dashscope-tts:
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: ""
+  azure-speech:
+    base_url: ""
+    api_key: ""
 
 # ---- 搜索类采集器 Key（按需；启用对应信息源时才需要）----
 collectors:
@@ -56,13 +44,28 @@ youtube:
   client_id: ""
   client_secret: ""
 
-# ---- 流水线默认参数 ----
+# ---- 流水线默认参数 + 当前选型（创建任务窗口与 run 从这里读默认）----
 pipeline:
   default_time_range: 7d                # 1d | 3d | 7d | 15d | 1m
   default_max_articles: 5
   default_video_route: comfyui          # comfyui | hyperframes | audio
-  default_language: zh
+  default_language: zh                  # zh | en
   dedup_lookback: 30d
+  resolution: 1080x1920                 # 默认图片/视频分辨率
+  # 各用途选型：provider 对应上面 providers 的 key，model 为具体模型
+  summary_provider: openai
+  summary_model: gpt-5
+  summary_max_length: 150
+  script_provider: claude               # 文案/脚本生成
+  script_model: claude-sonnet-4-6
+  image_provider: comfyui               # comfyui | openai | dashscope
+  image_model: z_image                  # comfyui 时为图片 workflow：z_image | qwen
+  vision_provider: openai               # 文档解析（导入 PDF）
+  vision_model: gpt-4o
+  tts_provider: edge-tts                # edge-tts | openai-tts | dashscope-tts | azure-speech
+  tts_voice: zh-CN-XiaoxiaoNeural
+  video_model: wan5b                    # comfyui 视频 workflow：wan5b | wan14b | wan14b_lightx2v | ltx
+  video_fps: 24                         # comfyui 视频帧率
 
 # ---- 视频输出 ----
 # ---- Hyperframes 渲染配置（分辨率以任务级 run.resolution 为准，不在此处）----
@@ -73,14 +76,12 @@ video:
   subtitle_font_size: 48                 # 字幕字号（px，按渲染分辨率计）
   subtitle_max_lines: 2                  # 单条字幕最多行数，超长旁白据此自动切分
 
-# ---- ComfyUI 本地生成（image.provider 或 video_route 选 comfyui 时生效）----
+# ---- ComfyUI 参数库（image_provider 或 video_route 选 comfyui 时生效）----
+#      当前用哪个图片/视频 workflow 由 pipeline.image_model / video_model 决定，这里只配参数。
 comfyui:
   server_url: http://127.0.0.1:8188     # 图片与视频生成共用
   default_negative: 模糊, 丑陋, 变形, 低质量, 水印
-  image_workflow: z_image               # z_image | qwen
-  video_workflow: wan5b                 # wan5b | wan14b | wan14b_lightx2v | ltx
-  video_fps: 24
-  # 各 workflow 的 steps/cfg（image_params / video_params）建议在「设置 → ComfyUI」页调整
+  # 各 workflow 的 steps/cfg（image_params / video_params）建议在「设置 → ComfyUI 参数」页调整
 
 # ---- 可编辑提示词：以下为内置默认（与 backend/app/prompts.py 同步）；可在「设置 → 提示词」页编辑，留空则回退内置默认 ----
 prompts:

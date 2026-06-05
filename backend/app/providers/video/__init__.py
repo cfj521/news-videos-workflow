@@ -7,11 +7,12 @@ def build_video_provider(cfg, mode: str = "i2v"):
     from app.providers.video.comfyui_video import ComfyUIVideoProvider
 
     c = cfg.comfyui
-    params = c.video_params.get(c.video_workflow)
+    workflow = cfg.pipeline.video_model or "wan5b"   # 当前视频 workflow 由 pipeline 选型决定
+    params = c.video_params.get(workflow)
     steps = params.steps if params else 20
     cfg_val = params.cfg if params else 5.0
     return ComfyUIVideoProvider(
-        server_url=c.server_url, workflow=c.video_workflow,
-        workflows_dir=c.workflows_dir, fps=c.video_fps,
+        server_url=c.server_url, workflow=workflow,
+        workflows_dir=c.workflows_dir, fps=cfg.pipeline.video_fps,
         negative=c.default_negative, steps=steps, cfg=cfg_val, mode=mode,
     )

@@ -24,12 +24,12 @@ def test_image_workflows_fill_steps_cfg(name):
 
 def test_build_image_provider_uses_comfyui_group():
     s = Settings()
-    s.image.provider = "comfyui"
-    s.comfyui.image_workflow = "qwen"
+    s.pipeline.image_provider = "comfyui"
+    s.pipeline.image_model = "qwen"            # 当前图片 workflow 由 pipeline 选型决定
     s.comfyui.server_url = "http://test:8188"
     prov = build_image_provider(s)
     assert isinstance(prov, ComfyUIImageProvider)
-    assert prov._wf == "qwen_image_t2i"        # workflow 来自 comfyui 组
+    assert prov._wf == "qwen_image_t2i"        # workflow 来自 pipeline.image_model
     assert prov._server == "http://test:8188"  # 统一用 comfyui.server_url
     assert prov._steps == 20 and prov._cfg == 2.5
 

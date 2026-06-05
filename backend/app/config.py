@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"  # 仓库根目录
 
@@ -28,6 +28,27 @@ class ProviderCfg(BaseModel):
     base_url: str = ""
     model: str = ""
     api_key: str = ""
+
+
+class ProviderCreds(BaseModel):
+    """单个供应商的连接凭证。供应商参数库 providers 的一项，被各用途按需引用。"""
+    base_url: str = ""
+    api_key: str = ""
+
+
+# 各供应商默认 base_url（初始化供应商库 / 旧配置迁移用）
+_PROVIDER_DEFAULTS: dict[str, str] = {
+    "claude": "https://api.anthropic.com",
+    "openai": "https://api.openai.com/v1",
+    "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "openai-tts": "https://api.openai.com/v1",
+    "dashscope-tts": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "azure-speech": "",
+}
+
+
+def _default_providers() -> dict[str, ProviderCreds]:
+    return {k: ProviderCreds(base_url=v) for k, v in _PROVIDER_DEFAULTS.items()}
 
 
 class TTSCfg(BaseModel):
@@ -64,6 +85,21 @@ class PipelineCfg(BaseModel):
     default_video_route: str = "comfyui"
     default_language: str = "zh"
     dedup_lookback: str = "30d"
+    resolution: str = "1080x1920"  # 默认图片/视频分辨率（per-run 可覆盖）
+    # ---- 当前选型：各用途用「哪个供应商 + 哪个模型」（参数在 providers / comfyui 库）----
+    summary_provider: str = "openai"
+    summary_model: str = "gpt-5"
+    summary_max_length: int = 150
+    script_provider: str = "claude"        # 文案/脚本生成（原 text）
+    script_model: str = "claude-sonnet-4-6"
+    image_provider: str = "comfyui"
+    image_model: str = "z_image"           # comfyui 时为图片 workflow
+    vision_provider: str = "openai"        # 文档解析（导入 PDF）
+    vision_model: str = "gpt-4o"
+    tts_provider: str = "edge-tts"
+    tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    video_model: str = "wan5b"             # comfyui 视频 workflow
+    video_fps: int = 24                    # comfyui 视频帧率（原 comfyui.video_fps）
 
 
 class VideoCfg(BaseModel):
@@ -103,18 +139,16 @@ class WorkflowParams(BaseModel):
 
 
 class ComfyuiCfg(BaseModel):
+    """ComfyUI 参数库：地址、各 workflow 的生成参数。当前用哪个 workflow 由 pipeline 选型决定。"""
     workflows_dir: str = "comfyui/workflows/api"
     default_negative: str = "模糊, 丑陋, 变形, 低质量, 水印"
     server_url: str = "http://127.0.0.1:8188"  # 图片与视频生成共用一个 ComfyUI 地址
-    # ---- 图片生成（图片 provider 选 comfyui 时生效）----
-    image_workflow: str = "z_image"
+    # ---- 图片 workflow 参数（图片 provider 选 comfyui 时生效）----
     image_params: dict[str, WorkflowParams] = {
         "z_image": WorkflowParams(steps=9, cfg=1.0),   # turbo 蒸馏，低步数
         "qwen": WorkflowParams(steps=20, cfg=2.5),
     }
-    # ---- 视频生成 ----
-    video_workflow: str = "wan5b"
-    video_fps: int = 24
+    # ---- 视频 workflow 参数 ----
     # 每种视频 workflow 一组生成参数。wan5b/wan14b 的 steps、cfg 均可调；
     # wan14b_lightx2v 锁死（加速 LoRA 固定 4 步）、ltx 仅 cfg 生效（蒸馏固定 sigmas）。
     video_params: dict[str, WorkflowParams] = {
@@ -128,17 +162,17 @@ class ComfyuiCfg(BaseModel):
 class Settings(BaseModel):
     infra: InfraCfg = InfraCfg()
     storage: StorageCfg = StorageCfg()
-    text: ProviderCfg = ProviderCfg(provider="claude", base_url="https://api.anthropic.com", model="claude-sonnet-4-6")
-    image: ProviderCfg = ProviderCfg(provider="openai", base_url="https://api.openai.com/v1", model="gpt-image-1")
-    vision: ProviderCfg = ProviderCfg(provider="openai", base_url="https://api.openai.com/v1", model="gpt-4o")
-    tts: TTSCfg = TTSCfg()
-    summary: SummaryCfg = SummaryCfg()
+    # 供应商参数库：各供应商的 base_url/api_key，被 pipeline 选型按需引用
+    providers: dict[str, ProviderCreds] = Field(default_factory=_default_providers)
     collectors: CollectorsCfg = CollectorsCfg()
     youtube: YouTubeCfg = YouTubeCfg()
     pipeline: PipelineCfg = PipelineCfg()
     video: VideoCfg = VideoCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
     prompts: PromptsCfg = PromptsCfg()
+
+    def provider_creds(self, name: str) -> ProviderCreds:
+        return self.providers.get(name) or ProviderCreds()
 
     def runs_root(self) -> Path:
         """任务工作目录的根：配置了 storage.work_dir 用它，否则回退 data_dir/runs。"""
@@ -176,6 +210,86 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return {}
 
 
+def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
+    """把旧配置（每用途内嵌 provider）迁移为新结构（providers 库 + pipeline 选型）。
+
+    已含 providers（新结构）或全新空配置则原样返回。保证现有 config.yaml 与密钥无缝升级。
+    """
+    if not raw or "providers" in raw:
+        return raw
+    legacy_keys = ("text", "image", "vision", "tts", "summary")
+    if not any(k in raw for k in legacy_keys):
+        return raw
+
+    providers: dict[str, dict] = {k: {"base_url": v} for k, v in _PROVIDER_DEFAULTS.items()}
+    pipe: dict[str, Any] = dict(raw.get("pipeline", {}))
+
+    def _put_creds(prov: str, base_url: str, api_key: str) -> None:
+        if not prov:
+            return
+        slot = providers.setdefault(prov, {})
+        if base_url:
+            slot["base_url"] = base_url
+        if api_key:
+            slot["api_key"] = api_key
+
+    def _migrate(old_key: str, purpose: str) -> None:
+        old = raw.get(old_key)
+        if not isinstance(old, dict):
+            return
+        prov = old.get("provider") or ""
+        _put_creds(prov, old.get("base_url", ""), old.get("api_key", ""))
+        if prov:
+            pipe[f"{purpose}_provider"] = prov
+        if old.get("model"):
+            pipe[f"{purpose}_model"] = old["model"]
+
+    _migrate("text", "script")
+    _migrate("image", "image")
+    _migrate("vision", "vision")
+    _migrate("summary", "summary")
+
+    tts = raw.get("tts")
+    if isinstance(tts, dict):
+        prov = tts.get("provider") or "edge-tts"
+        pipe["tts_provider"] = prov
+        if tts.get("voice"):
+            pipe["tts_voice"] = tts["voice"]
+        if prov != "edge-tts":
+            _put_creds(prov, tts.get("base_url", ""), tts.get("api_key", ""))
+
+    summ = raw.get("summary")
+    if isinstance(summ, dict) and summ.get("max_length"):
+        pipe["summary_max_length"] = summ["max_length"]
+
+    cf = raw.get("comfyui", {})
+    if isinstance(cf, dict):
+        # 图片 workflow 仅在图片走 comfyui 时作为 image_model，避免覆盖商用图片模型名
+        if cf.get("image_workflow") and pipe.get("image_provider") == "comfyui":
+            pipe["image_model"] = cf["image_workflow"]
+        if cf.get("video_workflow"):
+            pipe["video_model"] = cf["video_workflow"]
+        if cf.get("video_fps") is not None:
+            pipe["video_fps"] = cf["video_fps"]
+
+    out = {k: v for k, v in raw.items() if k not in legacy_keys}
+    out["providers"] = providers
+    out["pipeline"] = pipe
+    return out
+
+
+def resolve(cfg: "Settings", purpose: str) -> tuple[str, str, str, str]:
+    """解析某用途当前选型 → (provider, base_url, api_key, model)。
+
+    purpose ∈ summary / script / image / vision（tts 用 voice，另经 pipeline.tts_voice 取）。
+    """
+    pipe = cfg.pipeline
+    provider = getattr(pipe, f"{purpose}_provider", "") or ""
+    model = getattr(pipe, f"{purpose}_model", "") or ""
+    creds = cfg.provider_creds(provider)
+    return provider, creds.base_url, creds.api_key, model
+
+
 def _save_yaml(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -188,7 +302,7 @@ _settings: Settings | None = None
 def get_settings() -> Settings:
     global _settings
     if _settings is None:
-        raw = _load_yaml(CONFIG_PATH)
+        raw = _migrate_legacy(_load_yaml(CONFIG_PATH))
         _settings = Settings(**raw)
         import logging
         logging.getLogger("nv.config").info("Loaded config from %s", CONFIG_PATH)

@@ -40,7 +40,7 @@ def test_ltx_fills_cfg_only():
 
 def test_build_video_provider_resolves_params_for_selected_workflow():
     s = Settings()
-    s.comfyui.video_workflow = "wan14b"
+    s.pipeline.video_model = "wan14b"          # 视频 workflow 由 pipeline 选型决定
     prov = build_video_provider(s)
     assert prov._steps == s.comfyui.video_params["wan14b"].steps == 20
     assert prov._cfg == s.comfyui.video_params["wan14b"].cfg == 3.5
@@ -144,7 +144,7 @@ async def test_t2v_skips_upload_and_no_input_image(tmp_path, monkeypatch):
 
 def test_build_video_provider_t2v_mode():
     s = Settings()
-    s.comfyui.video_workflow = "ltx"
+    s.pipeline.video_model = "ltx"
     prov = build_video_provider(s, mode="t2v")
     assert prov._mode == "t2v" and prov._wf == "ltx23_t2v"
 

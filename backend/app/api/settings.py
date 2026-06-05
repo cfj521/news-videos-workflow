@@ -8,26 +8,20 @@ log = get_logger("api.settings")
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-def _redact(settings: Settings) -> dict:
-    data = settings.model_dump()
-    for group in ("text", "image", "vision", "tts", "summary"):
-        key = data.get(group, {}).get("api_key", "")
-        if key and len(key) > 8:
-            data[group]["api_key"] = key[:4] + "..." + key[-4:]
-    for field in ("tavily_key", "brave_key", "serper_key"):
-        key = data.get("collectors", {}).get(field, "")
-        if key and len(key) > 8:
-            data["collectors"][field] = key[:4] + "..." + key[-4:]
-    for field in ("client_id", "client_secret"):
-        key = data.get("youtube", {}).get(field, "")
-        if key and len(key) > 8:
-            data["youtube"][field] = key[:4] + "..." + key[-4:]
-    return data
+def _deep_merge(dst: dict, src: dict) -> None:
+    """递归合并 src 到 dst：嵌套 dict（如 providers.<name>、comfyui.image_params）逐键合并，
+    其余整体替换。供 PUT 局部更新使用，避免漏发字段导致丢失。"""
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            _deep_merge(dst[k], v)
+        else:
+            dst[k] = v
 
 
 @router.get("/")
 async def read_settings():
-    return _redact(get_settings())
+    # 内部管理工具：直接返回完整内容（含 api_key），便于前端展示与编辑
+    return get_settings().model_dump()
 
 
 @router.get("/raw")
@@ -42,20 +36,15 @@ async def update_settings(payload: dict):
     for group_key, group_val in payload.items():
         if group_key == "infra":
             continue
-        if isinstance(group_val, dict) and group_key in current:
-            secret_group = group_key in ("text", "image", "vision", "tts", "summary", "collectors", "youtube")
-            for k, v in group_val.items():
-                if secret_group and isinstance(v, str) and "..." in v:
-                    continue  # 跳过未改动的脱敏密钥
-                current[group_key][k] = v
-            changed_groups.append(group_key)
+        if isinstance(group_val, dict) and isinstance(current.get(group_key), dict):
+            _deep_merge(current[group_key], group_val)
         else:
             current[group_key] = group_val
-            changed_groups.append(group_key)
+        changed_groups.append(group_key)
     updated = Settings(**current)
     save_settings(updated)
     log.info("Settings updated — groups: %s", changed_groups)
-    return _redact(updated)
+    return updated.model_dump()
 
 
 @router.get("/prompts/defaults")

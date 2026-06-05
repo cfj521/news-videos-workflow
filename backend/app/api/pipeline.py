@@ -200,8 +200,10 @@ async def import_article_file(run_id: int, file: UploadFile = File(...)):
     if len(data) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="文件超过 20MB")
     cfg = get_settings()
+    from app.config import ProviderCfg, resolve
+    vp, vb, vk, vm = resolve(cfg, "vision")
     try:
-        art = await import_file(data, file.filename or "", cfg.vision)
+        art = await import_file(data, file.filename or "", ProviderCfg(provider=vp, base_url=vb, model=vm, api_key=vk))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -242,12 +244,7 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
     arts = [_article_from_dict(d) for d in articles_raw]
 
     cfg = get_settings()
-    if cfg.text.provider == "claude":
-        from app.providers.text.claude import ClaudeTextProvider
-        tp = ClaudeTextProvider(api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url)
-    else:
-        from app.providers.text.openai_text import OpenAITextProvider
-        tp = OpenAITextProvider(api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url)
+    tp = _build_text_provider()
 
     from app.pipeline.stage2_script import run_stage2_multi
     log.info("Regenerating multi-article script for run #%d (%d articles)", run_id, len(arts))
@@ -408,7 +405,7 @@ async def regen_scene_audio(run_id: int, scene_id: int, body: RegenAudioRequest,
     script_path.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
 
     cfg = get_settings()
-    tts = EdgeTTSProvider(default_voice=cfg.tts.voice)
+    tts = EdgeTTSProvider(default_voice=cfg.pipeline.tts_voice)
     audio_path = str(rd / "assets" / f"scene_{scene_id:02d}_audio.mp3")
     log.info("Regenerating audio for run #%d scene %d", run_id, scene_id)
     await tts.synthesize(text=body.narration, output_path=audio_path)
@@ -735,7 +732,7 @@ async def _render_video_async(run_id: int, session_factory):
                 from app.providers.video import build_video_provider
                 from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
                 vp = build_video_provider(cfg)
-                result = await ComfyUIVideoComposer(vp, fps=cfg.comfyui.video_fps).compose(
+                result = await ComfyUIVideoComposer(vp, fps=cfg.pipeline.video_fps).compose(
                     timeline_json=timeline, assets_dir=str(rd / "assets"),
                     output_path=output_mp4, resolution=resolution,
                 )

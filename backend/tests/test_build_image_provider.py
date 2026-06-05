@@ -6,14 +6,15 @@ from app.providers.image.openai_image import OpenAIImageProvider
 
 def test_factory_picks_comfyui(monkeypatch):
     monkeypatch.setattr(config, "_settings", config.Settings(
-        image={"provider": "comfyui", "base_url": "http://127.0.0.1:8188", "model": "qwen", "api_key": ""}))
+        pipeline={"image_provider": "comfyui", "image_model": "qwen"}))
     p = build_image_provider(config.get_settings())
     assert isinstance(p, ComfyUIImageProvider)
 
 
-def test_factory_picks_commercial_by_default(monkeypatch):
+def test_factory_picks_commercial(monkeypatch):
     monkeypatch.setattr(config, "_settings", config.Settings(
-        image={"provider": "openai", "base_url": "https://api.openai.com/v1", "model": "gpt-image-1", "api_key": "k"}))
+        providers={"openai": {"base_url": "https://api.openai.com/v1", "api_key": "k"}},
+        pipeline={"image_provider": "openai", "image_model": "gpt-image-1"}))
     p = build_image_provider(config.get_settings())
     assert isinstance(p, OpenAIImageProvider)
 

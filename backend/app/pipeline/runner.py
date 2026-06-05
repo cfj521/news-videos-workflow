@@ -26,16 +26,15 @@ from app.providers.tts.edge_tts_provider import EdgeTTSProvider
 
 
 def _build_text_provider():
+    """文案/脚本生成 provider，按 pipeline 选型（script）+ providers 库构建。"""
+    from app.config import resolve
     cfg = get_settings()
-    if cfg.text.provider == "claude":
+    provider, base_url, api_key, model = resolve(cfg, "script")
+    if provider == "claude":
         from app.providers.text.claude import ClaudeTextProvider
-        return ClaudeTextProvider(
-            api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url
-        )
+        return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url)
     from app.providers.text.openai_text import OpenAITextProvider
-    return OpenAITextProvider(
-        api_key=cfg.text.api_key, model=cfg.text.model, base_url=cfg.text.base_url
-    )
+    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url)
 
 
 TYPE_TO_COLLECTOR: dict[str, type] = {}
@@ -155,11 +154,11 @@ def build_collectors(cfg=None):
 
 
 def _build_summary_provider(cfg):
-    sc = cfg.summary
-    provider = sc.provider or cfg.text.provider
-    api_key = sc.api_key or cfg.text.api_key
-    model = sc.model or cfg.text.model
-    base_url = sc.base_url or cfg.text.base_url
+    """文章摘要 provider，按 pipeline 选型（summary）+ providers 库；缺省回退脚本选型。"""
+    from app.config import resolve
+    provider, base_url, api_key, model = resolve(cfg, "summary")
+    if not provider:
+        provider, base_url, api_key, model = resolve(cfg, "script")
     if provider == "claude":
         from app.providers.text.claude import ClaudeTextProvider
         return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url)
@@ -170,7 +169,7 @@ def _build_summary_provider(cfg):
 async def _summarize_articles(articles, cfg, run, db, log):
     from app.prompts import resolve_prompt
     tp = _build_summary_provider(cfg)
-    max_len = cfg.summary.max_length
+    max_len = cfg.pipeline.summary_max_length
     sys_prompt = resolve_prompt("article_summary") + f"（摘要不超过{max_len}字）"
     for i, a in enumerate(articles):
         try:
@@ -499,7 +498,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
         log.info("[S2] Generating multi-article script for %d articles", len(articles))
 
         text_provider = _build_text_provider()
-        log.info("[S2] Provider: %s / %s", cfg.text.provider, cfg.text.model)
+        log.info("[S2] Provider: %s / %s", cfg.pipeline.script_provider, cfg.pipeline.script_model)
 
         from app.pipeline.stage2_script import run_stage2_multi
         script = await run_stage2_multi(
@@ -536,11 +535,11 @@ async def _run_inner(run_id: int, db: Session) -> None:
         total = len(script.get("scenes", []))
         _update(db, run, current_stage=3, progress_detail=f"S3 生成素材 0/{total}")
         log.info("[S3] Generating assets — %d scenes, provider: %s/%s",
-                 total, cfg.image.provider, cfg.image.model)
+                 total, cfg.pipeline.image_provider, cfg.pipeline.image_model)
 
         from app.providers.image import build_image_provider
         image_provider = build_image_provider(cfg)
-        tts_provider = EdgeTTSProvider(default_voice=cfg.tts.voice)
+        tts_provider = EdgeTTSProvider(default_voice=cfg.pipeline.tts_voice)
         img_count = 0
         tts_count = 0
 
@@ -694,7 +693,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                     from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
                     from app.providers.video import build_video_provider
                     vp = build_video_provider(cfg)
-                    result = await ComfyUIVideoComposer(vp, fps=cfg.comfyui.video_fps).compose(
+                    result = await ComfyUIVideoComposer(vp, fps=cfg.pipeline.video_fps).compose(
                         timeline_json=timeline, assets_dir=str(assets_dir),
                         output_path=output_mp4, resolution=resolution,
                     )
