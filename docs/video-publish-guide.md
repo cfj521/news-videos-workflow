@@ -44,13 +44,17 @@
 1. 回 Google Cloud Console，给你的 OAuth 客户端的「已获授权的重定向 URI」**加上** `https://developers.google.com/oauthplayground` 并保存
 2. 打开 [OAuth Playground](https://developers.google.com/oauthplayground)
 3. 右上角齿轮 ⚙️ → 勾选 **Use your own OAuth credentials** → 填入你的 Client ID / Client Secret
-4. 左侧「Input your own scopes」输入 `https://www.googleapis.com/auth/youtube.upload` → 点 **Authorize APIs**
+4. 左侧「Input your own scopes」输入以下**两个** scope（空格分隔），点 **Authorize APIs**：
+   `https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.force-ssl`
+   - `youtube.upload` 用于上传视频；`youtube.force-ssl` 用于上传**外挂字幕**（系统会把生成的 SRT 自动挂到视频上）。只填前者也能发布，但字幕不会上传。
 5. 用目标 YouTube 账号登录并同意授权
-   - 此时可能弹出 **「此应用未经 Google 验证」** 警告屏。这是正常的——未验证的应用申请敏感权限（youtube.upload）都会弹，**个人自用无需提交 Google 验证**。点「显示高级部分」→ 底部的 **「转至 {应用名}（不安全）」** 链接继续，再勾选同意 YouTube 上传权限即可。
+   - 此时可能弹出 **「此应用未经 Google 验证」** 警告屏。这是正常的——未验证的应用申请敏感权限都会弹，**个人自用无需提交 Google 验证**。点「显示高级部分」→ 底部的 **「转至 {应用名}（不安全）」** 链接继续，再勾选同意 YouTube 上传 / 管理权限即可。
 6. 点 **Exchange authorization code for tokens**，右侧出现 **Refresh token**，复制
 7. 填入下面的配置
 
 > ⚠️ refresh_token 寿命取决于第 5 步设置的发布状态：**正式版（In production）→ 长期有效**；仍是**测试（Testing）→ 约 7 天失效**。务必确保应用已设为「外部 + 正式版」再获取，否则一周后要重来。
+>
+> 💡 **已授权过的老用户**：若之前只授权了 `youtube.upload`，需按上面重新走一次授权（加上 `force-ssl`）并更新 refresh_token，字幕才会自动上传。否则视频照常发布，仅字幕上传被跳过（不影响发布成功）。
 
 ### 填入配置
 

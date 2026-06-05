@@ -481,6 +481,16 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
   const [audioTs, setAudioTs] = useState(0);
   const [imgTs, setImgTs] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [zoom, setZoom] = useState(false);
+  const imgUrl = (imgTs || refreshTick) ? `${imgSrc}?t=${imgTs || refreshTick}` : imgSrc;
+
+  // 放大预览：Esc 关闭
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setZoom(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
 
   const handleRegenAudio = async () => {
     setRegenAudioLoading(true);
@@ -510,11 +520,11 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
   return (
     <div className={`${cardCls} p-4`}>
       <div className="flex gap-4">
-        <div className="w-[200px] shrink-0">
+        <div className="w-[260px] shrink-0 flex flex-col">
           {!audioOnly && (
-            <img src={(imgTs || refreshTick) ? `${imgSrc}?t=${imgTs || refreshTick}` : imgSrc} className="w-full rounded-lg bg-white/[0.02]" onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
+            <img src={imgUrl} className="w-full rounded-lg bg-white/[0.02] cursor-zoom-in transition hover:opacity-90" title="点击放大预览" onClick={() => setZoom(true)} onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
           )}
-          <audio controls src={(audioTs || refreshTick) ? `${audioSrc}?t=${audioTs || refreshTick}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-2"}`} />
+          <audio controls src={(audioTs || refreshTick) ? `${audioSrc}?t=${audioTs || refreshTick}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-auto pt-2"}`} />
         </div>
         <div className="flex-1 space-y-3 min-w-0">
           <div className="flex justify-between items-center">
@@ -568,6 +578,13 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {zoom && !audioOnly && (
+        <div className={`${dialogOverlayCls} cursor-zoom-out p-8`} onClick={() => setZoom(false)}>
+          <img src={imgUrl} className="max-w-[92vw] max-h-[92vh] rounded-lg shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} />
+          <button onClick={() => setZoom(false)} className="absolute top-5 right-6 text-white/60 hover:text-white text-3xl leading-none" title="关闭（Esc）">×</button>
         </div>
       )}
     </div>
@@ -1001,6 +1018,9 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       )}
       <div className="flex justify-center gap-3 mt-4">
         <a href={api.runs.videoUrl(runId)} download className={btnPrimary}>{audioOnly ? "下载 MP3" : "下载 MP4"}</a>
+        {!audioOnly && (
+          <a href={api.runs.subtitlesUrl(runId)} download className={btnCompact}>下载字幕</a>
+        )}
         <button onClick={handleRender} disabled={rendering} className={btnCompact}>
           {rendering ? `${actionLabel}中...` : `重新${actionLabel}`}
         </button>

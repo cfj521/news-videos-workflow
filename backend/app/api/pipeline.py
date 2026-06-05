@@ -658,7 +658,8 @@ def get_preview_html(run_id: int, db: Session = Depends(get_db)):
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
     from app.providers.composer.hyperframes_composer import HyperframesComposer
     composer = HyperframesComposer()
-    html = composer._render_html(timeline, resolution, rd, transition=cfg.video.transition)
+    html = composer._render_html(timeline, resolution, rd, transition=cfg.video.transition,
+                                 subtitle_font_size=cfg.video.subtitle_font_size)
     return HTMLResponse(html)
 
 
@@ -680,6 +681,8 @@ async def trigger_render(run_id: int, background_tasks: BackgroundTasks, db: Ses
     run.status = "processing"
     run.progress_detail = "S5 合成启动中..." if is_audio else "S5 渲染启动中..."
     run.output_path = None
+    run.error_message = None  # 重新渲染 → 清掉上次失败残留的报错
+    run.finished_at = None
     run.started_at = datetime.now(timezone.utc)  # 重新发起 → 刷新发起时间，避免被孤儿回收误判
     db.commit()
     session_factory = get_session_factory()
@@ -790,6 +793,14 @@ def _output_media_meta(path: Path) -> tuple[str, str]:
     if path.suffix.lower() == ".mp3":
         return "audio/mpeg", "mp3"
     return "video/mp4", "mp4"
+
+
+@public_router.get("/runs/{run_id}/subtitles")
+def get_subtitles(run_id: int):
+    path = _run_dir(run_id) / "output.srt"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="No subtitles — run stage 4 first")
+    return FileResponse(path, media_type="application/x-subrip", filename=f"run_{run_id}.srt")
 
 
 @public_router.get("/runs/{run_id}/video")

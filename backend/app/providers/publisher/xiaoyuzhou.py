@@ -10,7 +10,7 @@ class XiaoyuzhouPublisher(PublisherAdapter):
     def __init__(self, cookie: str = "", **kwargs):
         self._cookie = cookie
 
-    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str]) -> PublishResult:
+    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str], subtitle_path: str | None = None) -> PublishResult:
         if not self._cookie:
             return PublishResult(platform="xiaoyuzhou", status="failed", error_message="Missing Xiaoyuzhou cookie")
         return PublishResult(platform="xiaoyuzhou", status="failed", error_message="小宇宙 发布暂未实现")

@@ -12,7 +12,7 @@ class YouTubePublisher(PublisherAdapter):
         self._client_secret = client_secret
         self._refresh_token = refresh_token
 
-    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str]) -> PublishResult:
+    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str], subtitle_path: str | None = None) -> PublishResult:
         # client_id/secret 只是应用身份；真正代表"某账号已授权"的是 refresh_token，缺它无法上传
         if not (self._client_id and self._client_secret and self._refresh_token):
             return PublishResult(platform="youtube", status="failed",
@@ -34,11 +34,30 @@ class YouTubePublisher(PublisherAdapter):
                 service.thumbnails().set(videoId=video_id, media_body=MediaFileUpload(thumbnail_path)).execute()
                 log.info("Thumbnail uploaded for %s", video_id)
 
+            # 外挂字幕（SRT）：视频已上传成功，字幕失败不阻断主流程，仅告警
+            if subtitle_path and Path(subtitle_path).exists():
+                self._upload_caption(service, video_id, subtitle_path)
+
             return PublishResult(platform="youtube", status="success", url=video_url)
 
         except Exception as e:
             log.exception("YouTube publish failed")
             return PublishResult(platform="youtube", status="failed", error_message=str(e))
+
+    def _upload_caption(self, service, video_id: str, subtitle_path: str, language: str = "zh") -> None:
+        """用 captions.insert 上传 SRT 外挂字幕。需 OAuth scope 含 youtube.force-ssl。"""
+        from googleapiclient.http import MediaFileUpload
+
+        try:
+            service.captions().insert(
+                part="snippet",
+                body={"snippet": {"videoId": video_id, "language": language, "name": "中文", "isDraft": False}},
+                media_body=MediaFileUpload(subtitle_path, mimetype="application/octet-stream", resumable=False),
+            ).execute()
+            log.info("Caption uploaded for %s (%s)", video_id, language)
+        except Exception as e:
+            # 常见：refresh_token 缺 youtube.force-ssl 权限（需重新授权）→ insufficientPermissions
+            log.warning("YouTube caption upload failed (non-fatal): %s", e)
 
     def _build_request_body(self, title: str, description: str, tags: list[str]) -> dict:
         return {
@@ -56,6 +75,10 @@ class YouTubePublisher(PublisherAdapter):
             token_uri="https://oauth2.googleapis.com/token",
             client_id=self._client_id,
             client_secret=self._client_secret,
-            scopes=["https://www.googleapis.com/auth/youtube.upload"],
+            # force-ssl 授予字幕(captions)读写权限；保留 upload 兼容旧 token
+            scopes=[
+                "https://www.googleapis.com/auth/youtube.upload",
+                "https://www.googleapis.com/auth/youtube.force-ssl",
+            ],
         )
         return build("youtube", "v3", credentials=creds)

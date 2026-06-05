@@ -16,7 +16,7 @@ class KuaishouPublisher(PublisherAdapter):
         self._access_token = access_token
         self._method = method
 
-    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str]) -> PublishResult:
+    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str], subtitle_path: str | None = None) -> PublishResult:
         if self._method == "playwright":
             return await self._publish_playwright(video_path, title, tags)
         return await self._publish_api(video_path, title, description, tags)

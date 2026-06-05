@@ -10,7 +10,7 @@ class XimalayaPublisher(PublisherAdapter):
     def __init__(self, access_token: str = "", **kwargs):
         self._token = access_token
 
-    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str]) -> PublishResult:
+    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str], subtitle_path: str | None = None) -> PublishResult:
         if not self._token:
             return PublishResult(platform="ximalaya", status="failed", error_message="Missing Ximalaya access_token")
         return PublishResult(platform="ximalaya", status="failed", error_message="Ximalaya 发布暂未实现")

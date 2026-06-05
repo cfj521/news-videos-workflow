@@ -53,7 +53,7 @@ class BilibiliPublisher(PublisherAdapter):
         """转成 biliup login_by_cookies 期望的嵌套结构 {'cookie_info': {'cookies': [{name,value}]}}。"""
         return {"cookie_info": {"cookies": [{"name": k, "value": v} for k, v in self._cookie.items()]}}
 
-    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str]) -> PublishResult:
+    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str], subtitle_path: str | None = None) -> PublishResult:
         missing = self._missing_required()
         if missing:
             return PublishResult(platform="bilibili", status="failed",

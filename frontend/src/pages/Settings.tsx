@@ -311,7 +311,7 @@ const EMPTY_SETTINGS: AppSettings = {
   youtube: { client_id: "", client_secret: "" },
   pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui", default_language: "zh", dedup_lookback: "30d" },
   storage: { work_dir: "", output_dir: "" },
-  video: { fps: "30", scene_gap_ms: 500, transition: "crossfade" },
+  video: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_workflow: "z_image", image_params: { z_image: { steps: 9, cfg: 1.0 }, qwen: { steps: 20, cfg: 2.5 } }, video_workflow: "wan5b", video_fps: 24, video_params: { wan5b: { steps: 30, cfg: 5.0 }, wan14b: { steps: 20, cfg: 3.5 }, wan14b_lightx2v: { steps: 4, cfg: 1.0 }, ltx: { steps: 4, cfg: 1.0 } } },
   prompts: {},
 };
@@ -647,6 +647,17 @@ export function SettingsPage() {
           <Select value={settings.video.transition} onChange={(v) => patch("video", { transition: v })} options={[
             { value: "crossfade", label: "交叉淡入淡出" }, { value: "fade", label: "淡入淡出" },
             { value: "slide", label: "滑动" }, { value: "cut", label: "直接切换（无转场）" },
+          ]} />
+        </Field>
+        <Field label="字幕字号" desc="按渲染分辨率计的像素值，过小会看不清">
+          <div className="flex items-center gap-3">
+            <input type="range" value={settings.video.subtitle_font_size} onChange={(e) => patch("video", { subtitle_font_size: Number(e.target.value) })} min={24} max={96} step={2} className="flex-1 accent-blue-500" />
+            <span className="text-sm text-white/50 tabular-nums w-16 text-right">{settings.video.subtitle_font_size}px</span>
+          </div>
+        </Field>
+        <Field label="字幕最多行数" desc="超长旁白会按此上限自动切分成多条短字幕">
+          <Select value={String(settings.video.subtitle_max_lines)} onChange={(v) => patch("video", { subtitle_max_lines: Number(v) })} options={[
+            { value: "1", label: "1 行" }, { value: "2", label: "2 行" }, { value: "3", label: "3 行" },
           ]} />
         </Field>
       </Section>

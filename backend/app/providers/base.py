@@ -132,4 +132,5 @@ class PublisherAdapter(ABC):
         title: str,
         description: str,
         tags: list[str],
+        subtitle_path: str | None = None,
     ) -> PublishResult: ...

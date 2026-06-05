@@ -17,7 +17,7 @@ from app.logging import get_logger, get_run_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.stage1_collect import run_stage1
 from app.pipeline.stage3_assets import run_stage3
-from app.pipeline.stage4_timeline import run_stage4
+from app.pipeline.stage4_timeline import generate_srt, run_stage4
 from app.pipeline.stage5_compose import run_stage5
 from app.providers.base import ImageProvider, ProviderError
 from app.providers.collector.hackernews import HackerNewsCollector
@@ -412,13 +412,16 @@ async def _run_inner(run_id: int, db: Session) -> None:
     log = get_run_logger(run.id, run_dir)
     log.info("Pipeline started — stages=%s mode=%s route=%s", selected, run.mode, run.video_route)
 
-    _update(db, run, status="processing", started_at=datetime.now(timezone.utc))
+    # 重新执行时清掉上次失败残留的错误与结束时间，避免成功后仍挂着旧报错
+    _update(db, run, status="processing", started_at=datetime.now(timezone.utc),
+            error_message=None, finished_at=None)
 
     articles = []
     digest_method = None
     script = None
     scene_assets = []
     timeline = None
+    rendered = False  # 本次是否成功出片/成品音频（S5）；仅出片后才计入去重历史
 
     # ─── Stage 1: 搜索整理 ─────────────────────────────────
     if 1 in selected:
@@ -605,10 +608,14 @@ async def _run_inner(run_id: int, db: Session) -> None:
         log.info("[S4] Building timeline + preview (route=%s)", run.video_route)
 
         timeline = run_stage4(
-            script=script, scene_assets=scene_assets, scene_gap_ms=cfg.video.scene_gap_ms)
+            script=script, scene_assets=scene_assets, scene_gap_ms=cfg.video.scene_gap_ms,
+            resolution=resolution, subtitle_font_size=cfg.video.subtitle_font_size,
+            subtitle_max_lines=cfg.video.subtitle_max_lines)
         (run_dir / "timeline.json").write_text(
             json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
-        log.info("[S4] Timeline: %.1fs total, %d entries",
+        # 外挂字幕 SRT 落盘：供前端下载、发布时随视频上传（YouTube 等）
+        (run_dir / "output.srt").write_text(generate_srt(timeline), encoding="utf-8")
+        log.info("[S4] Timeline: %.1fs total, %d entries (+ output.srt)",
                  timeline["total_duration_ms"] / 1000, len(timeline["entries"]))
 
         _update(db, run, progress_detail="S4 生成分镜审核页...")
@@ -621,7 +628,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             composer = HyperframesComposer()
             try:
                 hyperframes_html = composer._render_html(
-                    timeline, resolution, run_dir, transition=cfg.video.transition)
+                    timeline, resolution, run_dir, transition=cfg.video.transition,
+                    subtitle_font_size=cfg.video.subtitle_font_size)
                 (run_dir / "index.html").write_text(hyperframes_html, encoding="utf-8")
                 log.info("[S4] Hyperframes HTML generated at %s/index.html", run_dir)
             except Exception as e:
@@ -661,6 +669,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                         progress_detail=f"S5 合成完成 — {size_mb:.1f} MB ({time.time()-t0:.1f}s)")
                 log.info("[S5] Audio merged — %.1f MB", size_mb)
                 export_final(run.id, final_path, script.get("title", ""))
+                rendered = True
             else:
                 _update(db, run, status="failed", error_message="音频文件未生成",
                         finished_at=datetime.now(timezone.utc))
@@ -717,6 +726,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 _update(db, run, progress_detail=detail, output_path=final_path)
                 log.info("[S5] Done — %.1f MB in %.1fs", size_mb, elapsed)
                 export_final(run.id, final_path, script.get("title", ""))
+                rendered = True
             else:
                 log.error("[S5] Output file not found: %s", final_path)
                 _update(db, run, status="failed",
@@ -761,11 +771,13 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 if sj.exists():
                     meta = json.loads(sj.read_text(encoding="utf-8"))
 
+            srt_path = run_dir / "output.srt"
             publishers = build_publishers(targets)
             results = await run_stage6(
                 video_path=video_path, thumbnail_path=None,
                 title=meta.get("title", ""), description=meta.get("description", ""),
                 tags=meta.get("tags", []), publishers=publishers,
+                subtitle_path=str(srt_path) if srt_path.exists() else None,
             )
 
             def _label(r):
@@ -792,7 +804,11 @@ async def _run_inner(run_id: int, db: Session) -> None:
         total_elapsed = 0
     _update(db, run, status="done", finished_at=datetime.now(timezone.utc),
             progress_detail=f"全部完成 ({total_elapsed:.0f}s)")
-    _record_issue_history(db, run, articles, script, log)
+    # 仅在本次成功出片（S5）后才计入跨期去重历史，避免「只跑脚本试验」污染去重名额
+    if rendered:
+        _record_issue_history(db, run, articles, script, log)
+    else:
+        log.info("未出片（未执行/未完成 S5），跳过去重历史记录")
     log.info("Pipeline finished — total %.1fs", total_elapsed)
 
 

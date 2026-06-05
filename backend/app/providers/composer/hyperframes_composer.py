@@ -57,7 +57,7 @@ class HyperframesComposer(ComposerProvider):
             resolution=resolution,
         )
 
-    def _render_html(self, timeline: dict, resolution: str, run_dir: Path, transition: str = "crossfade") -> str:
+    def _render_html(self, timeline: dict, resolution: str, run_dir: Path, transition: str = "crossfade", subtitle_font_size: int = 48) -> str:
         parts = resolution.split("x")
         width, height = int(parts[0]), int(parts[1])
         total_s = timeline["total_duration_ms"] / 1000
@@ -102,7 +102,7 @@ class HyperframesComposer(ComposerProvider):
 
         env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
         template = env.get_template("composition.html.j2")
-        return template.render(width=width, height=height, total_duration_s=round(total_s, 3), entries=entries, prev_scene_ids=prev_scene_ids, transition=transition)
+        return template.render(width=width, height=height, total_duration_s=round(total_s, 3), entries=entries, prev_scene_ids=prev_scene_ids, transition=transition, subtitle_font_size=subtitle_font_size)
 
     def _extract_thumbnail(self, video_path: str, thumb_path: str) -> None:
         try:

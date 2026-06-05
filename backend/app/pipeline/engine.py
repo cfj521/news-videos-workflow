@@ -43,6 +43,8 @@ class PipelineEngine:
     def resume_run(self, run_id: int) -> PipelineRun:
         run = self.db.get(PipelineRun, run_id)
         run.status = "processing"
+        run.error_message = None  # 继续/重试 → 清掉上次失败残留的报错
+        run.finished_at = None
         self.db.commit()
         self.db.refresh(run)
         log.info("Resumed run #%d (was at stage %s)", run_id, run.current_stage)

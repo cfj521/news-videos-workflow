@@ -70,6 +70,8 @@ class VideoCfg(BaseModel):
     fps: str = "30"
     scene_gap_ms: int = 500
     transition: str = "crossfade"
+    subtitle_font_size: int = 48  # 字幕字号（px，按渲染分辨率计）
+    subtitle_max_lines: int = 2  # 单条字幕最多显示行数，用于自动切分长句
 
 
 class InfraCfg(BaseModel):

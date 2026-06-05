@@ -17,7 +17,7 @@ class InstagramPublisher(PublisherAdapter):
         self._access_token = access_token
         self._file_host_url = file_host_url
 
-    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str]) -> PublishResult:
+    async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str], subtitle_path: str | None = None) -> PublishResult:
         if not self._user_id or not self._access_token:
             return PublishResult(platform="instagram", status="failed", error_message="Missing user_id or access_token")
 
