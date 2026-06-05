@@ -44,18 +44,26 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface ProviderCreds { base_url: string; api_key: string }
+
 export interface AppSettings {
-  text: { provider: string; base_url: string; model: string; api_key: string };
-  image: { provider: string; base_url: string; model: string; api_key: string };
-  vision: { provider: string; base_url: string; model: string; api_key: string };
-  tts: { provider: string; base_url: string; api_key: string; model: string; voice: string; speed: number };
-  summary: { provider: string; base_url: string; model: string; api_key: string; max_length: number };
+  // 供应商参数库：各供应商的连接凭证；当前用哪个由 pipeline 选型决定
+  providers: Record<string, ProviderCreds>;
   collectors: { tavily_key: string; brave_key: string; serper_key: string };
   youtube: { client_id: string; client_secret: string };
-  pipeline: { default_time_range: string; default_max_articles: number; default_video_route: string; default_language: string; dedup_lookback: string };
+  pipeline: {
+    default_time_range: string; default_max_articles: number; default_video_route: string;
+    default_language: string; dedup_lookback: string; resolution: string;
+    summary_provider: string; summary_model: string; summary_max_length: number;
+    script_provider: string; script_model: string;
+    image_provider: string; image_model: string;
+    vision_provider: string; vision_model: string;
+    tts_provider: string; tts_voice: string;
+    video_model: string; video_fps: number;
+  };
   storage: { work_dir: string; output_dir: string };
   video: { fps: string; scene_gap_ms: number; transition: string; subtitle_font_size: number; subtitle_max_lines: number };
-  comfyui: { server_url: string; default_negative: string; image_workflow: string; image_params: Record<string, { steps: number; cfg: number }>; video_workflow: string; video_fps: number; video_params: Record<string, { steps: number; cfg: number }> };
+  comfyui: { server_url: string; default_negative: string; image_params: Record<string, { steps: number; cfg: number }>; video_params: Record<string, { steps: number; cfg: number }> };
   prompts: Record<string, string>;
 }
 

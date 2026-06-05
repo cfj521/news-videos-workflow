@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
-import { api, type AppSettings, type AuthUser } from "../api/client";
+import { api, type AppSettings, type AuthUser, type ProviderCreds } from "../api/client";
 import { useToast } from "../components/Toast";
 import { Select } from "../components/Select";
 import { PasswordInput } from "../components/PasswordInput";
@@ -227,93 +227,92 @@ function ModelInput({ value, onChange, suggestions }: {
 }
 
 // ---------------------------------------------------------------------------
-// Provider section
-// ---------------------------------------------------------------------------
-
-interface ProviderFieldValues {
-  provider: string;
-  base_url: string;
-  model: string;
-  api_key: string;
-}
-
-function ProviderSection({ title, desc, presets, config, onChange, selfManagedProvider }: {
-  title: string; desc: string;
-  presets: Record<string, ProviderPreset>;
-  config: ProviderFieldValues;
-  onChange: (patch: Partial<ProviderFieldValues>) => void;
-  // 选中此 provider 时，接口地址/模型/Key 由别处管理：收起这些字段，改显 note。
-  selfManagedProvider?: { value: string; note: string };
-}) {
-  const isCustom = !(config.provider in presets);
-  const selfManaged = selfManagedProvider?.value === config.provider;
-  const preset = presets[config.provider];
-  const models = preset?.models ?? [];
-  const options = [
-    ...Object.entries(presets).map(([k, v]) => ({ value: k, label: v.label })),
-    { value: "__custom__", label: "自定义" },
-  ];
-
-  const handleProviderChange = (v: string) => {
-    if (v === "__custom__") {
-      onChange({ provider: "__custom__", base_url: "", model: "" });
-    } else {
-      const p = presets[v];
-      if (p) onChange({ provider: v, base_url: p.baseUrl, model: p.models[0] ?? "" });
-    }
-  };
-
-  return (
-    <Section title={title} desc={desc}>
-      <Field label="服务商">
-        <Select value={isCustom ? "__custom__" : config.provider} onChange={handleProviderChange} options={options} />
-      </Field>
-      {isCustom && (
-        <Field label="服务商名称">
-          <input value={config.provider === "__custom__" ? "" : config.provider} onChange={(e) => onChange({ provider: e.target.value })} placeholder="例如 deepseek" className={inputCls} />
-        </Field>
-      )}
-      {selfManaged ? (
-        <p className="text-xs text-white/40 pl-1">{selfManagedProvider!.note}</p>
-      ) : (
-        <>
-          <Field label="接口地址">
-            <input value={config.base_url} onChange={(e) => onChange({ base_url: e.target.value })} placeholder={isCustom ? "https://api.example.com/v1" : "自动填充，可按需修改"} className={monoInputCls} />
-          </Field>
-          <Field label="模型">
-            <ModelInput value={config.model} onChange={(v) => onChange({ model: v })} suggestions={models} />
-          </Field>
-          <SecretField label="API Key" value={config.api_key} onChange={(v) => onChange({ api_key: v })} />
-        </>
-      )}
-    </Section>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
-const SUMMARY_PRESETS: Record<string, ProviderPreset> = {
-  "": { label: "同文本模型", baseUrl: "", models: [] },
-  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-5", "gpt-5.5", "gpt-4o-mini"] },
-  claude: { label: "Anthropic Claude", baseUrl: "https://api.anthropic.com", models: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-8"] },
-  dashscope: { label: "阿里云 (DashScope)", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen3.6-flash", "qwen3.6-plus", "qwen3.7-max"] },
-};
+// 横铺 tab 按钮条（供应商 / workflow 选择共用）
+function TabStrip({ tabs, active, onSelect }: {
+  tabs: { key: string; label: string }[]; active: string; onSelect: (k: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-1">
+      {tabs.map((t) => (
+        <button key={t.key} type="button" onClick={() => onSelect(t.key)}
+          className={`px-3 py-1.5 text-[13px] rounded-md transition ${active === t.key ? "bg-blue-500/15 text-blue-300 border border-blue-400/30" : "bg-white/[0.03] text-white/45 border border-white/[0.06] hover:text-white/70"}`}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// 流水线选型一行：供应商下拉 + 模型输入（带建议）
+function PurposeSelect({ label, desc, providers, provider, model, onProvider, onModel }: {
+  label: string; desc?: string; providers: Record<string, string[]>;
+  provider: string; model: string; onProvider: (v: string) => void; onModel: (v: string) => void;
+}) {
+  const provOptions = Object.keys(providers).map((k) => ({ value: k, label: k }));
+  return (
+    <Field label={label} desc={desc}>
+      <div className="grid grid-cols-2 gap-2">
+        <Select value={provider} onChange={(v) => { onProvider(v); const ms = providers[v] ?? []; if (ms.length) onModel(ms[0]); }} options={provOptions} />
+        <ModelInput value={model} onChange={onModel} suggestions={providers[provider] ?? []} />
+      </div>
+    </Field>
+  );
+}
 
 const EMPTY_SETTINGS: AppSettings = {
-  text: { provider: "claude", base_url: "https://api.anthropic.com", model: "claude-sonnet-4-6", api_key: "" },
-  image: { provider: "openai", base_url: "https://api.openai.com/v1", model: "gpt-image-2", api_key: "" },
-  vision: { provider: "openai", base_url: "https://api.openai.com/v1", model: "gpt-4o", api_key: "" },
-  tts: { provider: "edge-tts", base_url: "", api_key: "", model: "", voice: "zh-CN-XiaoxiaoNeural", speed: 1.0 },
-  summary: { provider: "", base_url: "", model: "", api_key: "", max_length: 150 },
+  providers: {
+    claude: { base_url: "https://api.anthropic.com", api_key: "" },
+    openai: { base_url: "https://api.openai.com/v1", api_key: "" },
+    dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "" },
+    "openai-tts": { base_url: "https://api.openai.com/v1", api_key: "" },
+    "dashscope-tts": { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "" },
+    "azure-speech": { base_url: "", api_key: "" },
+  },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
-  pipeline: { default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui", default_language: "zh", dedup_lookback: "30d" },
+  pipeline: {
+    default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui",
+    default_language: "zh", dedup_lookback: "30d", resolution: "1080x1920",
+    summary_provider: "openai", summary_model: "gpt-5", summary_max_length: 150,
+    script_provider: "claude", script_model: "claude-sonnet-4-6",
+    image_provider: "comfyui", image_model: "z_image",
+    vision_provider: "openai", vision_model: "gpt-4o",
+    tts_provider: "edge-tts", tts_voice: "zh-CN-XiaoxiaoNeural",
+    video_model: "wan5b", video_fps: 24,
+  },
   storage: { work_dir: "", output_dir: "" },
   video: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
-  comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_workflow: "z_image", image_params: { z_image: { steps: 9, cfg: 1.0 }, qwen: { steps: 20, cfg: 2.5 } }, video_workflow: "wan5b", video_fps: 24, video_params: { wan5b: { steps: 30, cfg: 5.0 }, wan14b: { steps: 20, cfg: 3.5 }, wan14b_lightx2v: { steps: 4, cfg: 1.0 }, ltx: { steps: 4, cfg: 1.0 } } },
+  comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_params: { z_image: { steps: 9, cfg: 1.0 }, qwen: { steps: 20, cfg: 2.5 } }, video_params: { wan5b: { steps: 30, cfg: 5.0 }, wan14b: { steps: 20, cfg: 3.5 }, wan14b_lightx2v: { steps: 4, cfg: 1.0 }, ltx: { steps: 4, cfg: 1.0 } } },
   prompts: {},
+};
+
+// 模型配置页：供应商横铺 tab（仅配 base_url + api_key；当前用哪个在流水线页选）
+const PROVIDER_TABS: { key: string; label: string }[] = [
+  { key: "claude", label: "Anthropic Claude" },
+  { key: "openai", label: "OpenAI" },
+  { key: "dashscope", label: "阿里云 DashScope" },
+  { key: "openai-tts", label: "OpenAI TTS" },
+  { key: "dashscope-tts", label: "阿里云 CosyVoice" },
+  { key: "azure-speech", label: "Azure Speech" },
+];
+
+// 流水线选型：各用途可选「供应商 → 模型建议」。tts 单独处理（供应商 + 音色）。
+const PURPOSE_PROVIDERS: Record<string, Record<string, string[]>> = {
+  summary: {
+    openai: TEXT_PRESETS.openai.models, claude: TEXT_PRESETS.claude.models, dashscope: TEXT_PRESETS.dashscope.models,
+  },
+  script: {
+    claude: TEXT_PRESETS.claude.models, openai: TEXT_PRESETS.openai.models, dashscope: TEXT_PRESETS.dashscope.models,
+  },
+  image: {
+    comfyui: IMAGE_PRESETS.comfyui.models, openai: IMAGE_PRESETS.openai.models, dashscope: IMAGE_PRESETS.dashscope.models,
+  },
+  vision: {
+    openai: VISION_PRESETS.openai.models, dashscope: VISION_PRESETS.dashscope.models,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -458,7 +457,10 @@ export function SettingsPage() {
   const { data: promptDefs } = useSWR("prompt-defaults", api.settings.promptDefaults);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<"ai" | "pipeline" | "prompts" | "comfyui" | "users">("ai");
+  const [activeTab, setActiveTab] = useState<"pipeline" | "models" | "comfyui" | "prompts" | "users">("pipeline");
+  const [providerTab, setProviderTab] = useState<string>(PROVIDER_TABS[0].key);
+  const [imgWf, setImgWf] = useState<string>("z_image");
+  const [vidWf, setVidWf] = useState<string>("wan5b");
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -473,6 +475,14 @@ export function SettingsPage() {
     setDirty(true);
   };
 
+  const patchProvider = (name: string, p: Partial<ProviderCreds>) => {
+    setSettings((prev) => ({
+      ...prev,
+      providers: { ...prev.providers, [name]: { ...(prev.providers[name] ?? { base_url: "", api_key: "" }), ...p } },
+    }));
+    setDirty(true);
+  };
+
   const handleSave = async () => {
     try {
       const updated = await api.settings.save(settings);
@@ -482,23 +492,6 @@ export function SettingsPage() {
     } catch {
       showToast("保存设置失败", "error");
     }
-  };
-
-  // TTS
-  const ttsPreset = TTS_PRESETS[settings.tts.provider];
-  const ttsIsCustom = !ttsPreset;
-  const ttsNeedsKey = ttsIsCustom || (ttsPreset?.needsKey ?? false);
-  const ttsModels = ttsPreset?.models ?? [];
-  const ttsVoiceList = VOICES[settings.tts.provider] ?? [];
-
-  const ttsProviderOptions = [
-    ...Object.entries(TTS_PRESETS).map(([k, v]) => ({ value: k, label: v.label })),
-    { value: "__custom__", label: "自定义" },
-  ];
-
-  const handleTTSProviderChange = (v: string) => {
-    if (v === "__custom__") patch("tts", { provider: "__custom__", base_url: "", model: "", api_key: "" });
-    else { const p = TTS_PRESETS[v]; if (p) patch("tts", { provider: v, base_url: p.baseUrl, model: p.models[0] ?? "" }); }
   };
 
   if (loadError) {
@@ -522,7 +515,7 @@ export function SettingsPage() {
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-2">
-        {([["ai", "AI 服务"], ["pipeline", "流水线"], ["prompts", "提示词"], ["comfyui", "ComfyUI"], ["users", "用户"]] as const).map(([k, label]) => (
+        {([["pipeline", "流水线配置"], ["models", "模型配置"], ["comfyui", "ComfyUI 参数"], ["prompts", "提示词配置"], ["users", "用户管理"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setActiveTab(k)}
             className={`px-3 py-1.5 text-sm rounded-md transition ${activeTab === k ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
             {label}
@@ -530,87 +523,26 @@ export function SettingsPage() {
         ))}
       </div>
 
-      {activeTab === "ai" && (<>
-      <Section title="文章摘要" desc="对采集的文章进行 LLM 摘要（留空服务商则复用文本模型配置）">
-        <Field label="服务商">
-          <Select
-            value={settings.summary.provider || ""}
-            onChange={(v) => {
-              const p = SUMMARY_PRESETS[v];
-              if (p) patch("summary", { provider: v, base_url: p.baseUrl, model: p.models[0] ?? "" });
-              else patch("summary", { provider: v });
-            }}
-            options={Object.entries(SUMMARY_PRESETS).map(([k, v]) => ({ value: k, label: v.label }))}
-          />
-        </Field>
-        {settings.summary.provider && (
-          <>
-            <Field label="接口地址">
-              <input value={settings.summary.base_url} onChange={(e) => patch("summary", { base_url: e.target.value })} placeholder="自动填充" className={monoInputCls} />
-            </Field>
-            <Field label="模型">
-              <ModelInput
-                value={settings.summary.model}
-                onChange={(v) => patch("summary", { model: v })}
-                suggestions={SUMMARY_PRESETS[settings.summary.provider]?.models ?? []}
-              />
-            </Field>
-            <SecretField label="API Key" value={settings.summary.api_key} onChange={(v) => patch("summary", { api_key: v })} />
-          </>
-        )}
-        <Field label="最大长度">
-          <div className="flex items-center gap-3">
-            <input type="range" value={settings.summary.max_length} onChange={(e) => patch("summary", { max_length: Number(e.target.value) })} min={50} max={500} step={10} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/50 tabular-nums w-12 text-right">{settings.summary.max_length}字</span>
-          </div>
-        </Field>
-      </Section>
-
-      <ProviderSection title="文本模型" desc="用于脚本生成的 AI 文本模型" presets={TEXT_PRESETS} config={settings.text} onChange={(p) => patch("text", p)} />
-      <ProviderSection title="图片模型" desc="用于场景配图的 AI 图片模型" presets={IMAGE_PRESETS} config={settings.image} onChange={(p) => patch("image", p)}
-        selfManagedProvider={{ value: "comfyui", note: "ComfyUI 的地址、图片 workflow 与生成参数请在「ComfyUI」标签页配置。" }} />
-      <ProviderSection title="文档解析模型" desc="导入 PDF 时用的视觉模型（多模态）" presets={VISION_PRESETS} config={settings.vision} onChange={(p) => patch("vision", p)} />
-
-      <Section title="语音合成" desc="视频旁白的文字转语音服务">
-        <Field label="服务商">
-          <Select value={ttsIsCustom ? "__custom__" : settings.tts.provider} onChange={handleTTSProviderChange} options={ttsProviderOptions} />
-        </Field>
-        {ttsIsCustom && (
-          <Field label="服务商名称">
-            <input value={settings.tts.provider === "__custom__" ? "" : settings.tts.provider} onChange={(e) => patch("tts", { provider: e.target.value })} placeholder="例如 cosyvoice" className={inputCls} />
-          </Field>
-        )}
-        {ttsNeedsKey && (
-          <>
-            <Field label="接口地址">
-              <input value={settings.tts.base_url} onChange={(e) => patch("tts", { base_url: e.target.value })} placeholder={ttsIsCustom ? "https://api.example.com/v1" : "自动填充"} className={monoInputCls} />
-            </Field>
-            <SecretField label="API Key" value={settings.tts.api_key} onChange={(v) => patch("tts", { api_key: v })} />
-          </>
-        )}
-        {(ttsModels.length > 0 || ttsIsCustom) && (
-          <Field label="模型">
-            <ModelInput value={settings.tts.model} onChange={(v) => patch("tts", { model: v })} suggestions={ttsModels} />
-          </Field>
-        )}
-        <Field label="音色">
-          {ttsVoiceList.length > 0 ? (
-            <Select value={settings.tts.voice} onChange={(v) => patch("tts", { voice: v })} options={ttsVoiceList} />
-          ) : (
-            <input value={settings.tts.voice} onChange={(e) => patch("tts", { voice: e.target.value })} placeholder="音色 ID" className={inputCls} />
-          )}
-        </Field>
-        <Field label="语速">
-          <div className="flex items-center gap-3">
-            <input type="range" value={settings.tts.speed} onChange={(e) => patch("tts", { speed: Number(e.target.value) })} min={0.5} max={2.0} step={0.1} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/50 tabular-nums w-12 text-right">{settings.tts.speed.toFixed(1)}x</span>
-          </div>
-        </Field>
+      {activeTab === "models" && (<>
+      <Section title="模型供应商参数" desc="配置各供应商的接口地址与 API Key。「当前用哪个供应商 + 哪个模型」请在「流水线配置」页选择。">
+        <TabStrip tabs={PROVIDER_TABS} active={providerTab} onSelect={setProviderTab} />
+        {(() => {
+          const creds = settings.providers[providerTab] ?? { base_url: "", api_key: "" };
+          return (
+            <>
+              <Field label="接口地址">
+                <input value={creds.base_url} onChange={(e) => patchProvider(providerTab, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
+              </Field>
+              <SecretField label="API Key" value={creds.api_key} onChange={(v) => patchProvider(providerTab, { api_key: v })} />
+            </>
+          );
+        })()}
+        <p className="text-xs text-white/30 pl-1">提示：Edge TTS 免费、无需配置；ComfyUI 的地址与生成参数在「ComfyUI 参数」页配置。点 API Key 右侧眼睛图标可查看完整内容。</p>
       </Section>
       </>)}
 
       {activeTab === "pipeline" && (<>
-      <Section title="流水线默认值">
+      <Section title="流水线默认值" desc="创建任务窗口与 run 从这里读取默认值。模型选型即「当前用哪个供应商+模型」。">
         <Field label="时间范围">
           <Select value={settings.pipeline.default_time_range} onChange={(v) => patch("pipeline", { default_time_range: v })} options={[
             { value: "1d", label: "最近 1 天" }, { value: "3d", label: "最近 3 天" }, { value: "7d", label: "最近 7 天" }, { value: "15d", label: "最近 15 天" }, { value: "1m", label: "最近 1 个月" },
@@ -619,14 +551,58 @@ export function SettingsPage() {
         <Field label="最大文章数">
           <input type="number" value={settings.pipeline.default_max_articles} onChange={(e) => patch("pipeline", { default_max_articles: Number(e.target.value) })} min={1} max={50} className={inputCls} />
         </Field>
+        <Field label="分辨率" desc="图片与视频共用">
+          <Select value={settings.pipeline.resolution} onChange={(v) => patch("pipeline", { resolution: v })} options={[
+            { value: "1080x1920", label: "1080×1920 竖屏" }, { value: "1920x1080", label: "1920×1080 横屏" },
+            { value: "1080x1080", label: "1080×1080 方形" }, { value: "720x1280", label: "720×1280 竖屏HD" }, { value: "1280x720", label: "1280×720 横屏HD" },
+          ]} />
+        </Field>
+        <PurposeSelect label="文章总结模型" providers={PURPOSE_PROVIDERS.summary}
+          provider={settings.pipeline.summary_provider} model={settings.pipeline.summary_model}
+          onProvider={(v) => patch("pipeline", { summary_provider: v })} onModel={(v) => patch("pipeline", { summary_model: v })} />
+        <PurposeSelect label="文案脚本模型" providers={PURPOSE_PROVIDERS.script}
+          provider={settings.pipeline.script_provider} model={settings.pipeline.script_model}
+          onProvider={(v) => patch("pipeline", { script_provider: v })} onModel={(v) => patch("pipeline", { script_model: v })} />
+        <PurposeSelect label="图片生成模型" providers={PURPOSE_PROVIDERS.image} desc="comfyui 时为图片 workflow"
+          provider={settings.pipeline.image_provider} model={settings.pipeline.image_model}
+          onProvider={(v) => patch("pipeline", { image_provider: v })} onModel={(v) => patch("pipeline", { image_model: v })} />
+        <PurposeSelect label="文档解析模型" providers={PURPOSE_PROVIDERS.vision}
+          provider={settings.pipeline.vision_provider} model={settings.pipeline.vision_model}
+          onProvider={(v) => patch("pipeline", { vision_provider: v })} onModel={(v) => patch("pipeline", { vision_model: v })} />
+        <Field label="语音生成模型"
+          desc={settings.pipeline.default_language === "en" && !settings.pipeline.tts_voice.startsWith("en") ? "⚠ 当前语言为英文，建议选英文音色（en-US-*）" : "供应商 + 音色"}>
+          <div className="grid grid-cols-2 gap-2">
+            <Select value={settings.pipeline.tts_provider} onChange={(v) => patch("pipeline", { tts_provider: v })}
+              options={Object.keys(TTS_PRESETS).map((k) => ({ value: k, label: TTS_PRESETS[k].label }))} />
+            {(VOICES[settings.pipeline.tts_provider]?.length ?? 0) > 0 ? (
+              <Select value={settings.pipeline.tts_voice} onChange={(v) => patch("pipeline", { tts_voice: v })} options={VOICES[settings.pipeline.tts_provider]} />
+            ) : (
+              <input value={settings.pipeline.tts_voice} onChange={(e) => patch("pipeline", { tts_voice: e.target.value })} placeholder="音色 ID" className={inputCls} />
+            )}
+          </div>
+        </Field>
         <Field label="视频路线">
           <Select value={settings.pipeline.default_video_route} onChange={(v) => patch("pipeline", { default_video_route: v })} options={[
-            { value: "hyperframes", label: "Hyperframes (MVP)" }, { value: "comfyui", label: "ComfyUI" },
+            { value: "hyperframes", label: "Hyperframes" }, { value: "comfyui", label: "ComfyUI" }, { value: "audio", label: "纯语音" },
           ]} />
         </Field>
         <Field label="语言">
           <Select value={settings.pipeline.default_language} onChange={(v) => patch("pipeline", { default_language: v })} options={[
             { value: "zh", label: "中文" }, { value: "en", label: "English" },
+          ]} />
+        </Field>
+      </Section>
+
+      <Section title="ComfyUI（视频）" desc="视频路线为 ComfyUI 时生效；workflow 的 steps/cfg 在「ComfyUI 参数」页调整">
+        <Field label="视频模型">
+          <Select value={settings.pipeline.video_model} onChange={(v) => patch("pipeline", { video_model: v })} options={[
+            { value: "wan5b", label: "Wan2.2 5B (默认/快)" }, { value: "wan14b", label: "Wan2.2 14B (质量)" },
+            { value: "wan14b_lightx2v", label: "Wan2.2 14B Lightx2v (4步快)" }, { value: "ltx", label: "LTX 2.3" },
+          ]} />
+        </Field>
+        <Field label="帧率">
+          <Select value={String(settings.pipeline.video_fps)} onChange={(v) => patch("pipeline", { video_fps: Number(v) })} options={[
+            { value: "16", label: "16" }, { value: "24", label: "24" }, { value: "25", label: "25" },
           ]} />
         </Field>
       </Section>
@@ -683,42 +659,29 @@ export function SettingsPage() {
           </Field>
         </Section>
 
-        <Section title="图片生成" desc="「AI 服务 → 图片模型」选择 ComfyUI 作为服务商时生效。">
-          <Field label="图片模型">
-            <Select value={settings.comfyui.image_workflow} onChange={(v) => patch("comfyui", { image_workflow: v })} options={[
-              { value: "z_image", label: "z_image turbo (默认/快)" }, { value: "qwen", label: "Qwen-Image (中文/版面强)" },
-            ]} />
-          </Field>
+        <Section title="图片 workflow 参数" desc="选「图片生成模型 = ComfyUI」时生效；横铺切换各 workflow 配置参数。">
+          <TabStrip tabs={[{ key: "z_image", label: "z_image turbo" }, { key: "qwen", label: "Qwen-Image" }]} active={imgWf} onSelect={setImgWf} />
           {(() => {
-            const wf = settings.comfyui.image_workflow;
-            const meta = IMAGE_PARAM_META[wf];
+            const meta = IMAGE_PARAM_META[imgWf];
             if (!meta) return null;
-            const p = settings.comfyui.image_params[wf] ?? { steps: 0, cfg: 0 };
+            const p = settings.comfyui.image_params[imgWf] ?? { steps: 0, cfg: 0 };
             return <ParamFields meta={meta} params={p}
-              onChange={(next) => patch("comfyui", { image_params: { ...settings.comfyui.image_params, [wf]: { ...p, ...next } } })} />;
+              onChange={(next) => patch("comfyui", { image_params: { ...settings.comfyui.image_params, [imgWf]: { ...p, ...next } } })} />;
           })()}
         </Section>
 
-        <Section title="视频生成" desc="本地 ComfyUI 图生视频（i2v）。">
-          <Field label="视频模式">
-            <Select value={settings.comfyui.video_workflow} onChange={(v) => patch("comfyui", { video_workflow: v })} options={[
-              { value: "wan5b", label: "Wan2.2 5B (默认/快)" }, { value: "wan14b", label: "Wan2.2 14B (质量)" },
-              { value: "wan14b_lightx2v", label: "Wan2.2 14B Lightx2v (4步快)" }, { value: "ltx", label: "LTX 2.3" },
-            ]} />
-          </Field>
+        <Section title="视频 workflow 参数" desc="ComfyUI 图生视频（i2v）；横铺切换各 workflow 配置参数。当前用哪个在「流水线配置」选。">
+          <TabStrip tabs={[
+            { key: "wan5b", label: "Wan2.2 5B" }, { key: "wan14b", label: "Wan2.2 14B" },
+            { key: "wan14b_lightx2v", label: "14B Lightx2v" }, { key: "ltx", label: "LTX 2.3" },
+          ]} active={vidWf} onSelect={setVidWf} />
           {(() => {
-            const wf = settings.comfyui.video_workflow;
-            const meta = VIDEO_PARAM_META[wf];
+            const meta = VIDEO_PARAM_META[vidWf];
             if (!meta) return null;
-            const p = settings.comfyui.video_params[wf] ?? { steps: 0, cfg: 0 };
+            const p = settings.comfyui.video_params[vidWf] ?? { steps: 0, cfg: 0 };
             return <ParamFields meta={meta} params={p}
-              onChange={(next) => patch("comfyui", { video_params: { ...settings.comfyui.video_params, [wf]: { ...p, ...next } } })} />;
+              onChange={(next) => patch("comfyui", { video_params: { ...settings.comfyui.video_params, [vidWf]: { ...p, ...next } } })} />;
           })()}
-          <Field label="帧率">
-            <Select value={String(settings.comfyui.video_fps)} onChange={(v) => patch("comfyui", { video_fps: Number(v) })} options={[
-              { value: "16", label: "16" }, { value: "24", label: "24" }, { value: "25", label: "25" },
-            ]} />
-          </Field>
         </Section>
       </>)}
 
