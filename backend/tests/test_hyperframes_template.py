@@ -44,6 +44,9 @@ def test_render_html_template():
     # 预览音频驱动：按时间轴同步播放各分镜旁白
     assert "syncAudio" in html
     assert "gsap.ticker.add(syncAudio)" in html
+    # 渲染成片不烧字幕（顶层加载时隐藏字幕元素），仅预览(iframe)显示
+    assert "window.self === window.top" in html
+    assert "el.style.display = 'none'" in html
 
 
 def test_render_html_single_scene():

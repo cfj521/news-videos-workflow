@@ -82,19 +82,61 @@ def _batch_items(n: int) -> list[int]:
     return sizes
 
 
-def _lang_directive(language: str) -> str:
-    """追加到各生成 prompt 末尾的语言/画面风格指令（明确覆盖模板内默认，优先级最高）。"""
-    if (language or "zh").lower().startswith("en"):
-        return ("\n\n[LANGUAGE OVERRIDE] Ignore any language instruction above. Output ALL "
-                "narration / title / description / tags in natural, fluent English. For image_prompt, "
-                "depict Western / European faces and real-world settings (NOT Asian/Chinese faces).")
-    return ("\n\n[语言要求] narration / 标题 / 简介 / 标签 一律用简体中文；"
-            "image_prompt 画面人物为亚洲/中国面孔、中式真实场景。")
+def _is_en(language: str) -> bool:
+    return (language or "zh").lower().startswith("en")
+
+
+# 英文模式直接用内置英文指令，绕开可能写死「中文/亚洲面孔」的（含用户自定义）中文模板，
+# 避免末尾追加的 override 被模板内强指令压过导致 narration/图片仍是中文/亚洲。
+_EN_ROUNDUP = (
+    "You are a script writer for news short videos. For the news item below, generate 1-3 scenes "
+    "(more if rich/important, otherwise 1).\n"
+    'Output PURE JSON (no markdown): {"scenes":[{"narration":"spoken English narration",'
+    '"image_prompt":"English scene description","motion_prompt":"English camera motion","duration_hint":5}]}\n'
+    "Rules:\n"
+    "- narration: natural fluent English like a TV news anchor; simple and clear.\n"
+    "- image_prompt / motion_prompt: English; depict Western / European faces and real-world settings "
+    "(NOT Asian/Chinese faces).\n"
+    "- At most 3 scenes."
+)
+_EN_DAILY_BATCH = (
+    "You are a script writer for an AI news digest short video. For the items below (same category), "
+    "generate EXACTLY ONE scene per item, in the given order.\n"
+    'Output PURE JSON (no markdown): {"scenes":[{"narration":"spoken English narration",'
+    '"image_prompt":"English scene description","motion_prompt":"English camera motion","duration_hint":5}]}\n'
+    "Rules:\n"
+    "- narration: natural fluent English.\n"
+    "- image_prompt / motion_prompt: English; Western / European faces and settings (NOT Asian/Chinese).\n"
+    "- The number of scenes MUST equal the number of items."
+)
+_EN_SUMMARY_META = (
+    "You are a short-video operator. Given the news item titles in a roundup video, produce a catchy "
+    'English title, description and tags.\nOutput PURE JSON: {"title":"English title",'
+    '"description":"1-2 sentence English description","tags":["tag1","tag2"]}'
+)
+
+
+async def _translate_to_en(texts: list[str], tp) -> dict:
+    """把一组（中文）小标题翻成英文，返回 {原文: 译文}。失败则空 dict。"""
+    uniq = list(dict.fromkeys(t for t in texts if t))
+    if not uniq:
+        return {}
+    numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(uniq))
+    try:
+        resp = await tp.generate(
+            prompt="Translate each numbered line into a concise, natural English title (keep order):\n" + numbered,
+            system_prompt='Output PURE JSON only: {"items":["en1","en2",...]} with the SAME count and order.')
+        arr = _parse_json(resp).get("items", [])
+        return {uniq[i]: arr[i] for i in range(min(len(uniq), len(arr))) if arr[i]}
+    except Exception:
+        log.warning("[S2] group title translate to EN failed")
+        return {}
 
 
 async def _gen_article_scenes(article, tp, language: str = "zh") -> list[dict]:
     prompt = f"标题：{article.title}\n来源：{article.source_name}\n内容：\n{(article.content or article.title)[:2000]}"
-    resp = await tp.generate(prompt=prompt, system_prompt=resolve_prompt("roundup_article") + _lang_directive(language))
+    system = _EN_ROUNDUP if _is_en(language) else resolve_prompt("roundup_article")
+    resp = await tp.generate(prompt=prompt, system_prompt=system)
     try:
         scenes = _parse_json(resp).get("scenes", [])
     except Exception:
@@ -107,7 +149,8 @@ async def _gen_article_scenes(article, tp, language: str = "zh") -> list[dict]:
 
 async def _gen_daily_batch_scenes(items: list[dict], tp, language: str = "zh") -> list[dict]:
     lines = [f"{i + 1}. 「{it.get('title', '')}」{it.get('summary', '')}" for i, it in enumerate(items)]
-    resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=resolve_prompt("daily_batch") + _lang_directive(language))
+    system = _EN_DAILY_BATCH if _is_en(language) else resolve_prompt("daily_batch")
+    resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=system)
     try:
         scenes = _parse_json(resp).get("scenes", [])
     except Exception:
@@ -119,7 +162,8 @@ async def _gen_daily_batch_scenes(items: list[dict], tp, language: str = "zh") -
 
 
 async def _gen_summary_meta(titles: list[str], tp, language: str = "zh") -> dict:
-    resp = await tp.generate(prompt="各条资讯标题：\n" + "\n".join(f"- {t}" for t in titles), system_prompt=resolve_prompt("summary_meta") + _lang_directive(language))
+    system = _EN_SUMMARY_META if _is_en(language) else resolve_prompt("summary_meta")
+    resp = await tp.generate(prompt="各条资讯标题：\n" + "\n".join(f"- {t}" for t in titles), system_prompt=system)
     try:
         m = _parse_json(resp)
     except Exception:
@@ -172,6 +216,16 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
                 scenes.append(sc)
             groups.append({"id": gid, "title": article.title, "source_index": idx})
             titles.append(article.title)
+
+    # 英文模式：子标题（分组名，可能来自数据源中文分类）翻成英文
+    if _is_en(language) and groups:
+        trans = await _translate_to_en([g["title"] for g in groups], text_provider)
+        if trans:
+            for g in groups:
+                g["title"] = trans.get(g["title"], g["title"])
+            for sc in scenes:
+                if sc.get("group_title") in trans:
+                    sc["group_title"] = trans[sc["group_title"]]
 
     meta = await _gen_summary_meta(titles, text_provider, language)
     log.info("[S2] multi script: %d groups, %d scenes", len(groups), len(scenes))

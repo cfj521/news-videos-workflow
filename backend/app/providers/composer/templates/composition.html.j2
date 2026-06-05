@@ -98,6 +98,11 @@
 
     window.__timelines = { main: tl };
 
+    // 渲染成片不烧字幕（字幕走外挂 SRT，便于各平台开关/编辑）；仅预览(iframe)显示字幕供审核。
+    if (window.self === window.top) {
+      document.querySelectorAll('.subtitle').forEach(function (el) { el.style.display = 'none'; });
+    }
+
     // 各分镜旁白的时间区间，用于按时间轴驱动音频播放（预览用；导出由 hyperframes 按 data-* 合成）
     var audioEntries = [
       {% for entry in entries %}{ id: "narration-{{ entry.scene_id }}", start: {{ entry.start_s }}, dur: {{ entry.audio_duration_s }} },
