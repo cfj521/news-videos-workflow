@@ -51,7 +51,7 @@ pnpm install
 
 ```bash
 # Backend API (the pipeline runs as in-process background tasks — no extra worker/broker needed)
-cd backend && uvicorn app.main:app --reload          # http://127.0.0.1:8000
+cd backend && uvicorn app.main:app --reload --port 8189   # http://127.0.0.1:8189
 # Frontend
 cd frontend && pnpm dev                              # http://127.0.0.1:5173
 ```
@@ -83,8 +83,10 @@ cd frontend && pnpm build     # frontend type-check + build
 ## Configuration
 
 - First-time setup: copy the template in the repo root, `cp config.yaml.example config.yaml`, fill in your API keys, and start (`config.yaml` is gitignored). Afterwards, prefer the Settings page (`/settings`) for a visual editor that writes back to the file on save. Loading is handled by `backend/app/config.py` (pydantic + YAML) — **the project uses the root `config.yaml`, not `.env`**.
-- **AI services**: text / image / vision / TTS providers (commercial APIs or local ComfyUI).
-- **ComfyUI**: workflow selection for images (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx), plus per-workflow steps/cfg parameters.
+- **Models** page: a provider library grouped by purpose (Text / Image / Vision / TTS). For each provider configure base_url / API key / output-token limit and an **editable model-name list**; custom providers are supported. Credentials are shared per provider.
+- **Pipeline** page: the single place that selects **which provider + model** each purpose uses (summary / script / image / vision / TTS), plus default resolution, language, video route, and the ComfyUI video model + fps.
+- **ComfyUI** page: per-workflow steps/cfg parameters for image (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx) workflows.
+- **Prompts** page: editable Chinese / English prompt sets — the task language decides which set is used.
 - **Publishing platforms**: credentials are configured per platform on the "Publishers" page (stored in the DB), not in the config file.
 
 ## ComfyUI models (local image/video generation)
@@ -108,7 +110,7 @@ powershell -ExecutionPolicy Bypass -File scripts/download-comfyui-models.ps1    
 powershell -ExecutionPolicy Bypass -File scripts/download-ltx23-comfyui-models.ps1 # LTX 2.3 (optional)
 ```
 
-Then point ComfyUI's `extra_model_paths.yaml` `base_path` at that folder (the scripts default to `D:/models/comfyui/`), restart ComfyUI, and pick the matching workflow under **Settings → ComfyUI**. **No GPU?** Set the video route to `hyperframes` (falls back to FFmpeg) — ComfyUI is optional.
+Then point ComfyUI's `extra_model_paths.yaml` `base_path` at that folder (the scripts default to `D:/models/comfyui/`), restart ComfyUI, and pick the matching model under **Settings → Pipeline** (workflow params live under **Settings → ComfyUI**). **No GPU?** Set the video route to `hyperframes` (falls back to FFmpeg) — ComfyUI is optional.
 
 ## Publishing
 

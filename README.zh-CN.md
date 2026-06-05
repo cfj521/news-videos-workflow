@@ -50,7 +50,7 @@ pnpm install
 
 ```bash
 # 后端 API（流水线跑在进程内的后台任务里，无需额外的 worker/broker）
-cd backend && uvicorn app.main:app --reload          # http://127.0.0.1:8000
+cd backend && uvicorn app.main:app --reload --port 8189   # http://127.0.0.1:8189
 # 前端
 cd frontend && pnpm dev                              # http://127.0.0.1:5173
 ```
@@ -82,8 +82,10 @@ cd frontend && pnpm build     # 前端类型检查 + 构建
 ## 配置
 
 - 首次配置：在仓库根目录复制模板 `cp config.yaml.example config.yaml`，填入 API Key 即可启动（`config.yaml` 已 gitignore，不入库）；之后推荐用设置页（`/settings`）可视化修改，保存时写回该文件。加载由 `backend/app/config.py`（pydantic + YAML）负责——**项目用根目录的 `config.yaml`，不是 `.env`**。
-- **AI 服务**：文本 / 图片 / 视觉 / 语音 provider（商用 API 或本地 ComfyUI）。
-- **ComfyUI**：图片（z_image / qwen）与视频（wan5b / wan14b / lightx2v / ltx）的 workflow 选择与每流 steps/cfg 参数。
+- **模型配置**页：按用途分组（文本 / 图片 / 多模态 / TTS）的供应商参数库，每个供应商配 base_url / API Key / 输出 tokens 上限 + **可编辑的模型名列表**，支持自定义供应商；接口/Key 按供应商共享。
+- **流水线配置**页：唯一选「当前用哪个供应商 + 模型」的地方（总结 / 文案 / 图片 / 多模态 / 语音），并设默认分辨率、语言、视频路线、ComfyUI 视频模型与帧率。
+- **ComfyUI 参数**页：图片（z_image / qwen）与视频（wan5b / wan14b / lightx2v / ltx）各 workflow 的 steps/cfg 参数。
+- **提示词配置**页：中文 / 英文两套可编辑提示词，任务语言决定用哪套。
 - **发布平台**：凭证在「发布管理」页按平台配置（存 DB），不写在配置文件里。
 
 ## ComfyUI 模型（本地图片/视频生成）
@@ -107,7 +109,7 @@ powershell -ExecutionPolicy Bypass -File scripts/download-comfyui-models.ps1    
 powershell -ExecutionPolicy Bypass -File scripts/download-ltx23-comfyui-models.ps1 # LTX 2.3（可选）
 ```
 
-下完把 ComfyUI 的 `extra_model_paths.yaml` 的 `base_path` 指向该目录（脚本默认 `D:/models/comfyui/`），重启 ComfyUI，再到**设置 → ComfyUI**选对应 workflow。**没有 GPU？** 把视频路线设为 `hyperframes`（回退 FFmpeg）——ComfyUI 是可选的。
+下完把 ComfyUI 的 `extra_model_paths.yaml` 的 `base_path` 指向该目录（脚本默认 `D:/models/comfyui/`），重启 ComfyUI，再到**设置 → 流水线配置**选对应模型（workflow 的 steps/cfg 在**设置 → ComfyUI 参数**）。**没有 GPU？** 把视频路线设为 `hyperframes`（回退 FFmpeg）——ComfyUI 是可选的。
 
 ## 发布
 
