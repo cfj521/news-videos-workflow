@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { api, type AppSettings, type AuthUser, type ProviderCreds } from "../api/client";
 import { useToast } from "../components/Toast";
@@ -165,50 +165,6 @@ function SecretField({ label, value, onChange, placeholder }: {
   );
 }
 
-function ModelInput({ value, onChange, suggestions }: {
-  value: string; onChange: (v: string) => void; suggestions: string[];
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div className="relative" ref={ref}>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => suggestions.length > 0 && setOpen(true)}
-        placeholder="输入模型 ID"
-        className={monoInputCls}
-      />
-      {open && suggestions.length > 0 && (
-        <div className="absolute z-20 mt-1.5 w-full rounded-lg border border-white/[0.08] bg-[var(--color-surface-raised)] shadow-xl overflow-hidden max-h-60 overflow-y-auto">
-          {suggestions.map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => { onChange(m); setOpen(false); }}
-              className={cx(
-                "w-full text-left px-3 py-2 text-[13px] font-mono transition",
-                m === value ? "bg-blue-500/15 text-blue-300" : "text-white/60 hover:bg-white/[0.06] hover:text-white/80",
-              )}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -225,6 +181,21 @@ function TabStrip({ tabs, active, onSelect }: {
           {t.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+// 分组内「添加自定义供应商」一行：自带输入态，加后回调父级（小一号按钮）
+function AddProviderInline({ onAdd }: { onAdd: (name: string) => void }) {
+  const [v, setV] = useState("");
+  const add = () => { const n = v.trim(); if (n) onAdd(n); setV(""); };
+  return (
+    <div className="flex gap-2 mb-4">
+      <input value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+        placeholder="自定义供应商名，如 deepseek / siliconflow" className={inputCls} />
+      <button onClick={add} className="shrink-0 px-2.5 py-1 text-xs rounded-md bg-white/[0.05] text-white/55 border border-white/[0.08] hover:text-white/80 transition">
+        + 添加供应商
+      </button>
     </div>
   );
 }
@@ -261,18 +232,22 @@ function ModelListEditor({ label, models, onChange }: {
   );
 }
 
-// 流水线选型一行：供应商下拉 + 模型输入（候选来自该供应商对应类型的模型列表）
+// 流水线选型一行：供应商下拉 + 模型下拉（均不可编辑；模型候选来自该供应商对应类型的模型列表，
+// 在「模型配置」页维护。切换供应商时由父级把模型重置为新供应商的首个模型）
 function PurposeSelect({ label, desc, providerKeys, provider, model, modelOptions, onProvider, onModel }: {
   label: string; desc?: string; providerKeys: string[];
   provider: string; model: string; modelOptions: string[];
   onProvider: (v: string) => void; onModel: (v: string) => void;
 }) {
   const provOptions = providerKeys.map((k) => ({ value: k, label: PROVIDER_LABELS[k] ?? k }));
+  // 当前模型若不在候选列表也并入，避免下拉显示空白
+  const names = model && !modelOptions.includes(model) ? [model, ...modelOptions] : modelOptions;
+  const modelOpts = names.length ? names.map((m) => ({ value: m, label: m })) : [{ value: "", label: "无可选模型，去「模型配置」添加" }];
   return (
     <Field label={label} desc={desc}>
       <div className="grid grid-cols-2 gap-2">
         <Select value={provider} onChange={onProvider} options={provOptions} />
-        <ModelInput value={model} onChange={onModel} suggestions={modelOptions} />
+        <Select value={model} onChange={onModel} options={modelOpts} />
       </div>
     </Field>
   );
@@ -315,7 +290,7 @@ const PROVIDER_TABS: { key: string; label: string }[] = [
   { key: "azure-speech", label: "Azure Speech" },
 ];
 const PRESET_PROVIDER_KEYS = PROVIDER_TABS.map((t) => t.key);
-const PROVIDER_LABELS: Record<string, string> = Object.fromEntries(PROVIDER_TABS.map((t) => [t.key, t.label]));
+const PROVIDER_LABELS: Record<string, string> = { ...Object.fromEntries(PROVIDER_TABS.map((t) => [t.key, t.label])), comfyui: "ComfyUI" };
 
 // ---------------------------------------------------------------------------
 // 用户管理 tab
@@ -461,7 +436,6 @@ export function SettingsPage() {
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<"pipeline" | "models" | "comfyui" | "prompts" | "users">("pipeline");
   const [modelSel, setModelSel] = useState<Record<string, string>>({});  // 每个类型分组当前选中的供应商
-  const [newProvider, setNewProvider] = useState("");
   const [imgWf, setImgWf] = useState<string>("z_image");
   const [vidWf, setVidWf] = useState<string>("wan5b");
   const { showToast } = useToast();
@@ -492,14 +466,13 @@ export function SettingsPage() {
   // 文本/图片/视觉用途的可选供应商：排除纯 TTS 供应商
   const llmProviderKeys = allProviderKeys.filter((k) => !["openai-tts", "dashscope-tts", "azure-speech"].includes(k));
   const modelsOf = (p: string, t: "text" | "image" | "vision" | "tts") => settings.providers[p]?.models?.[t] ?? [];
-  const addProvider = () => {
-    const name = newProvider.trim();
-    if (!name || settings.providers[name]) { setNewProvider(""); return; }
+  // 新增自定义供应商（供分组内的「添加供应商」一行调用）
+  const addProviderByName = (name: string) => {
+    if (settings.providers[name]) return;
     patchProvider(name, { base_url: "", api_key: "" });
-    setNewProvider("");
   };
 
-  // 渲染一个「类型分组」：组内供应商 chip + 选中后配凭证（按供应商共享）与该类型模型列表
+  // 渲染一个「类型分组」：组内供应商 chip + 添加供应商一行 + 选中后配凭证（按供应商共享）与该类型模型列表
   const renderModelGroup = (type: "text" | "image" | "vision" | "tts", label: string, presetKeys: string[]) => {
     const keys = [...presetKeys, ...customKeys];
     const sel = (modelSel[type] && keys.includes(modelSel[type])) ? modelSel[type] : keys[0];
@@ -509,11 +482,12 @@ export function SettingsPage() {
     return (
       <Section key={type} title={label} desc="选供应商后配置其接口/Key 与该类型的模型列表（接口/Key 按供应商共享）">
         <TabStrip tabs={keys.map((k) => ({ key: k, label: PROVIDER_LABELS[k] ?? k }))} active={sel} onSelect={(k) => setModelSel((s) => ({ ...s, [type]: k }))} />
+        <AddProviderInline onAdd={(name) => { addProviderByName(name); setModelSel((s) => ({ ...s, [type]: name })); }} />
         <Field label="接口地址">
           <input value={creds.base_url} onChange={(e) => patchProvider(sel, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
         </Field>
         <SecretField label="API Key" value={creds.api_key} onChange={(v) => patchProvider(sel, { api_key: v })} />
-        {type !== "tts" && (
+        {(type === "text" || type === "vision") && (
           <Field label="输出 tokens" desc="单次生成 token 上限">
             <input type="number" value={creds.max_output_tokens} min={256} max={200000} step={1024}
               onChange={(e) => patchProvider(sel, { max_output_tokens: Number(e.target.value) })} className={inputCls} />
@@ -575,12 +549,6 @@ export function SettingsPage() {
       </div>
 
       {activeTab === "models" && (<>
-        <div className="flex gap-2">
-          <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addProvider(); }}
-            placeholder="添加自定义供应商，如 deepseek / siliconflow（加后在各分组的供应商里出现）" className={inputCls} />
-          <button onClick={addProvider} className={btnPrimary}>+ 添加供应商</button>
-        </div>
         {renderModelGroup("text", "文本模型", ["claude", "openai", "dashscope"])}
         {renderModelGroup("image", "图片模型", ["openai", "dashscope"])}
         {renderModelGroup("vision", "多模态模型", ["openai", "dashscope"])}
@@ -607,19 +575,19 @@ export function SettingsPage() {
         <PurposeSelect label="文章总结模型" providerKeys={llmProviderKeys}
           provider={settings.pipeline.summary_provider} model={settings.pipeline.summary_model}
           modelOptions={modelsOf(settings.pipeline.summary_provider, "text")}
-          onProvider={(v) => patch("pipeline", { summary_provider: v })} onModel={(v) => patch("pipeline", { summary_model: v })} />
+          onProvider={(v) => patch("pipeline", { summary_provider: v, summary_model: modelsOf(v, "text")[0] ?? "" })} onModel={(v) => patch("pipeline", { summary_model: v })} />
         <PurposeSelect label="文案脚本模型" providerKeys={llmProviderKeys}
           provider={settings.pipeline.script_provider} model={settings.pipeline.script_model}
           modelOptions={modelsOf(settings.pipeline.script_provider, "text")}
-          onProvider={(v) => patch("pipeline", { script_provider: v })} onModel={(v) => patch("pipeline", { script_model: v })} />
+          onProvider={(v) => patch("pipeline", { script_provider: v, script_model: modelsOf(v, "text")[0] ?? "" })} onModel={(v) => patch("pipeline", { script_model: v })} />
         <PurposeSelect label="图片生成模型" providerKeys={["comfyui", ...llmProviderKeys]} desc="comfyui 时为图片 workflow"
           provider={settings.pipeline.image_provider} model={settings.pipeline.image_model}
           modelOptions={settings.pipeline.image_provider === "comfyui" ? ["z_image", "qwen"] : modelsOf(settings.pipeline.image_provider, "image")}
-          onProvider={(v) => patch("pipeline", { image_provider: v })} onModel={(v) => patch("pipeline", { image_model: v })} />
+          onProvider={(v) => patch("pipeline", { image_provider: v, image_model: (v === "comfyui" ? "z_image" : modelsOf(v, "image")[0]) ?? "" })} onModel={(v) => patch("pipeline", { image_model: v })} />
         <PurposeSelect label="文档解析模型" providerKeys={llmProviderKeys}
           provider={settings.pipeline.vision_provider} model={settings.pipeline.vision_model}
           modelOptions={modelsOf(settings.pipeline.vision_provider, "vision")}
-          onProvider={(v) => patch("pipeline", { vision_provider: v })} onModel={(v) => patch("pipeline", { vision_model: v })} />
+          onProvider={(v) => patch("pipeline", { vision_provider: v, vision_model: modelsOf(v, "vision")[0] ?? "" })} onModel={(v) => patch("pipeline", { vision_model: v })} />
         <Field label="语音生成模型"
           desc={settings.pipeline.default_language === "en" && !settings.pipeline.tts_voice.startsWith("en") ? "⚠ 当前语言为英文，建议选英文音色（en-US-*）" : "供应商 + 音色"}>
           <div className="grid grid-cols-2 gap-2">
