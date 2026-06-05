@@ -11,24 +11,43 @@ storage:
   work_dir: ""
   output_dir: ""
 
-# ---- 供应商参数库：各供应商的连接凭证（api_key 留空则该供应商不可用）----
-#      「当前用哪个供应商 + 哪个模型」在下方 pipeline 段统一选择（这里只配参数）。
+# ---- 供应商参数库：各供应商的连接凭证 + 参数（api_key 留空则该供应商不可用）----
+#      「当前用哪个供应商 + 哪个模型」在下方 pipeline 段统一选择；这里只配参数。
+#      max_output_tokens：文本/视觉模型单次输出上限；models：可用模型名（按类型分组，可在「模型配置」页增删）。
+#      也支持自定义供应商：在此或「模型配置」页新增一个键即可。models 留空时启动会自动补内置默认。
 providers:
   claude:
     base_url: https://api.anthropic.com
     api_key: ""
+    max_output_tokens: 4096
+    models:
+      text: [claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001]
   openai:
     base_url: https://api.openai.com/v1
     api_key: ""
+    max_output_tokens: 4096
+    models:
+      text: [gpt-5.5, gpt-5.5-pro, gpt-5]
+      image: [gpt-image-2, gpt-image-1.5, gpt-image-1]
+      vision: [gpt-5.5, gpt-5, gpt-4o]
   dashscope:
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
     api_key: ""
+    max_output_tokens: 4096
+    models:
+      text: [qwen3.7-max, qwen3.6-plus, qwen3.6-flash]
+      image: [wan2.5-t2i-preview, wanx2.1-t2i-turbo, wanx2.1-t2i-plus]
+      vision: [qwen3-vl-plus, qwen-vl-max, qwen-vl-plus]
   openai-tts:
     base_url: https://api.openai.com/v1
     api_key: ""
+    models:
+      tts: [gpt-4o-mini-tts, tts-1-hd, tts-1]
   dashscope-tts:
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
     api_key: ""
+    models:
+      tts: [cosyvoice-v2, cosyvoice-v1]
   azure-speech:
     base_url: ""
     api_key: ""
@@ -83,7 +102,9 @@ comfyui:
   default_negative: 模糊, 丑陋, 变形, 低质量, 水印
   # 各 workflow 的 steps/cfg（image_params / video_params）建议在「设置 → ComfyUI 参数」页调整
 
-# ---- 可编辑提示词：以下为内置默认（与 backend/app/prompts.py 同步）；可在「设置 → 提示词」页编辑，留空则回退内置默认 ----
+# ---- 可编辑提示词：以下为中文默认（与 backend/app/prompts.py 同步）；可在「设置 → 提示词配置」页编辑，留空则回退内置默认 ----
+#      中英两套：每个键再加 `<key>_en` 即为英文版（任务语言=en 时用）；留空则回退内置英文默认。
+#      例如 roundup_article_en / daily_batch_en / summary_meta_en / weekly_digest_en / image_regen_en / article_summary_en / news_scoring_en。
 prompts:
   roundup_article: |-
     你是新闻短视频的分镜脚本编写者。下面给你一条资讯，为它生成 1~3 个分镜（内容多/重要则多，简短则 1 个）。
