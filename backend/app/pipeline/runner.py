@@ -172,7 +172,9 @@ async def _summarize_articles(articles, cfg, run, db, log):
     from app.prompts import resolve_prompt
     tp = _build_summary_provider(cfg)
     max_len = cfg.pipeline.summary_max_length
-    sys_prompt = resolve_prompt("article_summary") + f"（摘要不超过{max_len}字）"
+    lang = run.language or cfg.pipeline.default_language
+    sys_prompt = resolve_prompt("article_summary", lang)
+    sys_prompt += f" (Keep within {max_len} words.)" if (lang or "").lower().startswith("en") else f"（摘要不超过{max_len}字）"
     for i, a in enumerate(articles):
         try:
             _update(db, run, progress_detail=f"S1 生成摘要中 ({i+1}/{len(articles)})...")
@@ -184,7 +186,7 @@ async def _summarize_articles(articles, cfg, run, db, log):
             a.summary = ""
 
 
-async def _distill_weekly_if_needed(articles, log):
+async def _distill_weekly_if_needed(articles, log, language: str = "zh"):
     """weekly article：调文本 AI 把 weekly_items 跨天提炼成 daily_sections（写回 metadata）。
     必须在 _save_articles 之前调用——weekly_items 不会被序列化，只有 daily_sections 会存盘。"""
     if not articles or articles[0].metadata.get("aihot_method") != "weekly":
@@ -194,7 +196,7 @@ async def _distill_weekly_if_needed(articles, log):
     items = art.metadata.get("weekly_items", [])
     log.info("[S1] weekly distill — %d items", len(items))
     tp = _build_text_provider()
-    art.metadata["daily_sections"] = await distill_weekly_sections(items, tp)
+    art.metadata["daily_sections"] = await distill_weekly_sections(items, tp, language)
 
 
 def _no_article_message(digest_method) -> str:
@@ -465,7 +467,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 await _summarize_articles(articles, cfg, run, db, log)
             elif articles and articles[0].metadata.get("aihot_method") == "weekly":
                 _update(db, run, progress_detail="S1 提炼本周热点中...")
-                await _distill_weekly_if_needed(articles, log)
+                await _distill_weekly_if_needed(articles, log, run.language or cfg.pipeline.default_language)
             elapsed = time.time() - t0
             _update(db, run, progress_detail=f"S1 完成 — {len(articles)} 篇文章 ({elapsed:.1f}s)")
             log.info("[S1] Done — %d articles in %.1fs", len(articles), elapsed)

@@ -736,24 +736,32 @@ export function SettingsPage() {
       </>)}
 
       {activeTab === "prompts" && (<>
-      <Section title="提示词" desc="流水线各步骤的 AI 提示词；留空使用内置默认。改后点上方「保存」。">
-        {promptDefs && Object.entries(promptDefs).map(([key, def], idx) => (
-          <div key={key} className="mb-4">
-            <div className="flex items-center justify-between mb-1">
+      <Section title="提示词" desc="流水线各步骤的 AI 提示词；中文/英文各一套（任务语言决定用哪套），留空回退内置默认。改后点上方「保存」。">
+        {promptDefs && Object.entries(promptDefs).map(([key, def], idx) => {
+          const rows = [0, 1, 6].includes(idx) ? 14 : 7;
+          const ta = "w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/80 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40";
+          return (
+            <div key={key} className="mb-5">
               <label className="text-sm text-white/70">{def.label}<span className="text-white/30 text-xs ml-2">{def.desc}</span></label>
-              <button
-                onClick={() => patch("prompts", { [key]: def.default })}
-                className="text-xs text-white/30 hover:text-white/60 transition"
-              >恢复默认</button>
+              <div className="grid grid-cols-2 gap-3 mt-1.5">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-white/40">中文</span>
+                    <button onClick={() => patch("prompts", { [key]: def.default })} className="text-xs text-white/30 hover:text-white/60">恢复默认</button>
+                  </div>
+                  <textarea value={settings.prompts?.[key] || def.default} onChange={(e) => patch("prompts", { [key]: e.target.value })} rows={rows} className={ta} />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-white/40">English</span>
+                    <button onClick={() => patch("prompts", { [`${key}_en`]: def.default_en })} className="text-xs text-white/30 hover:text-white/60">恢复默认</button>
+                  </div>
+                  <textarea value={settings.prompts?.[`${key}_en`] || def.default_en} onChange={(e) => patch("prompts", { [`${key}_en`]: e.target.value })} rows={rows} className={ta} />
+                </div>
+              </div>
             </div>
-            <textarea
-              value={settings.prompts?.[key] || def.default}
-              onChange={(e) => patch("prompts", { [key]: e.target.value })}
-              rows={[0, 1, 6].includes(idx) ? 16 : 8}
-              className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/80 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40"
-            />
-          </div>
-        ))}
+          );
+        })}
       </Section>
       </>)}
 

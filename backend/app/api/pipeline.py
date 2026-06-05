@@ -514,7 +514,7 @@ async def _reroll_articles_async(run_id: int, session_factory):
             await _summarize_articles(articles, cfg, run, db, log)
         elif articles[0].metadata.get("aihot_method") == "weekly":
             runner_update(db, run, progress_detail="S1 提炼本周热点中...")
-            await _distill_weekly_if_needed(articles, log)
+            await _distill_weekly_if_needed(articles, log, run.language or cfg.pipeline.default_language)
         rd = _run_dir(run_id)
         rd.mkdir(parents=True, exist_ok=True)
         _save_articles(articles, rd)
@@ -536,16 +536,18 @@ class RegenPromptRequest(BaseModel):
 
 
 @router.post("/runs/{run_id}/scenes/{scene_id}/regen-prompt")
-async def regen_scene_prompt(run_id: int, scene_id: int, body: RegenPromptRequest):
+async def regen_scene_prompt(run_id: int, scene_id: int, body: RegenPromptRequest, db: Session = Depends(get_db)):
     rd = _run_dir(run_id)
     script_path = rd / "script.json"
     if not script_path.exists():
         raise HTTPException(status_code=400, detail="No script")
 
     reload_settings()  # 拿最新提示词（跨进程 worker 也生效）
+    run = db.get(PipelineRun, run_id)
+    lang = (run.language if run else None) or get_settings().pipeline.default_language
     text_provider = _build_text_provider()
     from app.prompts import resolve_prompt
-    system = resolve_prompt("image_regen")
+    system = resolve_prompt("image_regen", lang)
     result = await text_provider.generate(prompt=body.narration, system_prompt=system)
     new_prompt = result.strip()
 
@@ -567,8 +569,10 @@ class _AddSceneBody(_PydBase):
 
 
 @router.post("/runs/{run_id}/scenes")
-async def add_scene(run_id: int, body: _AddSceneBody):
+async def add_scene(run_id: int, body: _AddSceneBody, db: Session = Depends(get_db)):
     reload_settings()  # 拿最新提示词
+    run = db.get(PipelineRun, run_id)
+    lang = (run.language if run else None) or get_settings().pipeline.default_language
     rd = _run_dir(run_id)
     script_path = rd / "script.json"
     if not script_path.exists():
@@ -587,7 +591,7 @@ async def add_scene(run_id: int, body: _AddSceneBody):
     from app.prompts import resolve_prompt
     tp = _build_text_provider()
     prompt = f"{src_text}\n\n额外要求：{body.requirement or '补充一个新分镜'}\n只输出 1 个分镜。"
-    resp = await tp.generate(prompt=prompt, system_prompt=resolve_prompt("roundup_article"))
+    resp = await tp.generate(prompt=prompt, system_prompt=resolve_prompt("roundup_article", lang))
     try:
         gen = _parse_json(resp).get("scenes") or []
     except Exception:

@@ -7,7 +7,8 @@ class PromptDef:
     key: str
     label: str
     desc: str
-    default: str
+    default: str       # 中文默认
+    default_en: str = ""  # 英文默认（语言=en 时用）
 
 
 _ROUNDUP = """你是新闻短视频的分镜脚本编写者。下面给你一条资讯，为它生成 1~3 个分镜（内容多/重要则多，简短则 1 个）。
@@ -59,21 +60,60 @@ _NEWS_SCORING = """你是新闻评分专家。根据以下标准为新闻打分�
 输出纯 JSON，不要 markdown 标记：
 {"score": <0-10整数>, "reason": "<一句话理由>", "tags": ["<标签1>", "<标签2>"]}"""
 
+# ---- 英文默认（语言=en 时用；同样可在「提示词配置」页编辑覆盖）----
+_ROUNDUP_EN = """You are a script writer for news short videos. For the news item below, generate 1-3 scenes (more if rich/important, otherwise 1).
+Output PURE JSON (no markdown): {"scenes":[{"narration":"spoken English narration","image_prompt":"English scene description","motion_prompt":"English camera motion","duration_hint":5}]}
+Rules:
+- narration: natural fluent English like a TV news anchor; simple and clear.
+- image_prompt / motion_prompt: English; depict Western / European faces and real-world settings (NOT Asian/Chinese faces).
+- At most 3 scenes."""
+
+_DAILY_BATCH_EN = """You are a script writer for an AI news digest short video. For the items below (same category), generate EXACTLY ONE scene per item, in the given order.
+Output PURE JSON (no markdown): {"scenes":[{"narration":"spoken English narration","image_prompt":"English scene description","motion_prompt":"English camera motion","duration_hint":5}]}
+Rules:
+- narration: natural fluent English.
+- image_prompt / motion_prompt: English; Western / European faces and settings (NOT Asian/Chinese).
+- The number of scenes MUST equal the number of items."""
+
+_SUMMARY_META_EN = """You are a short-video operator. Given the news item titles in a roundup video, produce a catchy English title, description and tags.
+Output PURE JSON: {"title":"English title","description":"1-2 sentence English description","tags":["tag1","tag2"]}"""
+
+_WEEKLY_DIGEST_EN = """You are an AI weekly digest editor. Given all news items of the past week (with date/category hints), distill the 3-5 most important themes of the week, each with 1-3 representative items, at most 9 items total. Merge duplicate reports of the same event across days.
+Output PURE JSON: {"sections":[{"label":"theme name (English)","items":[{"title":"item title","summary":"one-sentence summary"}]}]}"""
+
+_IMAGE_REGEN_EN = """You are an expert at AI image prompts. From the narration, write a detailed English image-generation prompt for a matching scene.
+Output English only; depict Western / European faces and real-world settings (NOT Asian/Chinese). Output only the prompt itself."""
+
+_ARTICLE_SUMMARY_EN = """Summarize the news article concisely in English. Output only the summary text."""
+
+_NEWS_SCORING_EN = """You are a news scoring expert. Score the news as an integer 0-10:
+- 9-10: major breakthrough / paradigm shift / major release of widely-used tech
+- 7-8: in-depth technical article, novel method, insightful analysis
+- 5-6: incremental improvement, useful tutorial, moderate interest
+- 3-4: minor update, common knowledge, over-hyped
+- 0-2: spam, pure promotion, off-topic, trivial
+Output PURE JSON (no markdown): {"score": <0-10 int>, "reason": "<one sentence>", "tags": ["<tag1>", "<tag2>"]}"""
+
 PROMPTS: list[PromptDef] = [
-    PromptDef("roundup_article", "资讯分镜（单条）", "每条资讯→1~3 个分镜（旁白+画面提示词）", _ROUNDUP),
-    PromptDef("daily_batch", "日报/周报分镜（成组）", "同类目若干条→每条 1 个分镜", _DAILY_BATCH),
-    PromptDef("summary_meta", "汇总标题/简介", "整片标题、简介、标签", _SUMMARY_META),
-    PromptDef("weekly_digest", "周报主题提炼", "一周条目→3~5 个主题", _WEEKLY_DIGEST),
-    PromptDef("image_regen", "旁白→图片提示词", "单分镜重生成图片提示词", _IMAGE_REGEN),
-    PromptDef("article_summary", "文章摘要（普通源）", "采集后对文章做摘要（字数上限自动追加）", _ARTICLE_SUMMARY),
-    PromptDef("news_scoring", "新闻评分（普通源）", "评分排序用", _NEWS_SCORING),
+    PromptDef("roundup_article", "资讯分镜（单条）", "每条资讯→1~3 个分镜（旁白+画面提示词）", _ROUNDUP, _ROUNDUP_EN),
+    PromptDef("daily_batch", "日报/周报分镜（成组）", "同类目若干条→每条 1 个分镜", _DAILY_BATCH, _DAILY_BATCH_EN),
+    PromptDef("summary_meta", "汇总标题/简介", "整片标题、简介、标签", _SUMMARY_META, _SUMMARY_META_EN),
+    PromptDef("weekly_digest", "周报主题提炼", "一周条目→3~5 个主题", _WEEKLY_DIGEST, _WEEKLY_DIGEST_EN),
+    PromptDef("image_regen", "旁白→图片提示词", "单分镜重生成图片提示词", _IMAGE_REGEN, _IMAGE_REGEN_EN),
+    PromptDef("article_summary", "文章摘要（普通源）", "采集后对文章做摘要（字数上限自动追加）", _ARTICLE_SUMMARY, _ARTICLE_SUMMARY_EN),
+    PromptDef("news_scoring", "新闻评分（普通源）", "评分排序用", _NEWS_SCORING, _NEWS_SCORING_EN),
 ]
 
 DEFAULTS: dict[str, str] = {p.key: p.default for p in PROMPTS}
+DEFAULTS_EN: dict[str, str] = {p.key: (p.default_en or p.default) for p in PROMPTS}
 
 
-def resolve_prompt(key: str) -> str:
-    """用户在 Settings 里填了就用用户的，否则用内置默认。"""
+def resolve_prompt(key: str, language: str = "zh") -> str:
+    """用户在「提示词配置」填了就用用户的，否则用内置默认；按 language 选中/英两套。"""
     from app.config import get_settings
-    override = (getattr(get_settings().prompts, key, "") or "").strip()
+    prompts = get_settings().prompts
+    if (language or "zh").lower().startswith("en"):
+        override = (getattr(prompts, f"{key}_en", "") or "").strip()
+        return override or DEFAULTS_EN[key]
+    override = (getattr(prompts, key, "") or "").strip()
     return override or DEFAULTS[key]

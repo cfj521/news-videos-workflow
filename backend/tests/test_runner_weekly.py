@@ -25,7 +25,7 @@ async def test_distill_weekly_writes_daily_sections(monkeypatch):
         metadata={"source_group": "aihot", "aihot_method": "weekly",
                   "weekly_items": [{"title": "t", "summary": "s", "category": "模型", "date": "2026-05-25"}]})
 
-    async def _fake_distill(items, tp):
+    async def _fake_distill(items, tp, language="zh"):
         return [{"label": "主题A", "items": [{"title": "t", "summary": "s"}]}]
 
     monkeypatch.setattr("app.pipeline.stage2_script.distill_weekly_sections", _fake_distill)

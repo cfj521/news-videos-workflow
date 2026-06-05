@@ -233,7 +233,7 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(body),
       }),
-    promptDefaults: () => fetchJSON<Record<string, { label: string; desc: string; default: string }>>("/settings/prompts/defaults"),
+    promptDefaults: () => fetchJSON<Record<string, { label: string; desc: string; default: string; default_en: string }>>("/settings/prompts/defaults"),
   },
   auth: {
     login: (username: string, password: string) =>

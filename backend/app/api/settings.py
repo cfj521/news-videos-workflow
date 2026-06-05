@@ -51,4 +51,4 @@ async def update_settings(payload: dict):
 
 @router.get("/prompts/defaults")
 async def prompt_defaults():
-    return {p.key: {"label": p.label, "desc": p.desc, "default": p.default} for p in PROMPTS}
+    return {p.key: {"label": p.label, "desc": p.desc, "default": p.default, "default_en": p.default_en or p.default} for p in PROMPTS}

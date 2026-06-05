@@ -155,6 +155,7 @@ class StorageCfg(BaseModel):
 
 
 class PromptsCfg(BaseModel):
+    # 中文（默认语言）一套 + 英文（语言=en）一套；留空回退内置默认
     roundup_article: str = ""
     daily_batch: str = ""
     summary_meta: str = ""
@@ -162,6 +163,13 @@ class PromptsCfg(BaseModel):
     image_regen: str = ""
     article_summary: str = ""
     news_scoring: str = ""
+    roundup_article_en: str = ""
+    daily_batch_en: str = ""
+    summary_meta_en: str = ""
+    weekly_digest_en: str = ""
+    image_regen_en: str = ""
+    article_summary_en: str = ""
+    news_scoring_en: str = ""
 
 
 class WorkflowParams(BaseModel):
