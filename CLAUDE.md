@@ -65,7 +65,7 @@ conda create -n env_news_videos_wf python=3.12 && conda activate env_news_videos
 pip install -r requirements.txt  # 安装依赖（含发布可选依赖 biliup / google-*）
 
 cd backend
-uvicorn app.main:app --reload --port 8189   # 启动 API 服务 (端口取 .env 的 BACKEND_PORT，默认 8189)；流水线跑在进程内的后台任务，无需独立 worker
+uvicorn app.main:app --reload --port 8189   # 启动 API 服务 (端口取 .env 的 APP_PORT，默认 8189)；流水线跑在进程内的后台任务，无需独立 worker
 pytest                           # 运行全部测试
 pytest tests/test_collector.py -k "test_rss"  # 运行单个测试
 ruff check .                     # lint

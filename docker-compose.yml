@@ -1,54 +1,39 @@
-# 新闻视频自动化工作流 —— 一体化部署
+# 新闻视频自动化工作流 —— 单容器一体化部署
+#
+# 一个容器同时托管前端(静态)与后端(API + 进程内流水线)，单端口访问。
 #
 # 首次使用：
-#   1) cp config.yaml.example config.yaml  并填入密钥（该文件挂载进后端容器）
-#   2) 若 ComfyUI 跑在宿主机，把 config.yaml 的 comfyui.server_url 改为
-#        http://host.docker.internal:8188
+#   1) cp config.yaml.example config.yaml  并填入密钥（该文件挂载进容器）
+#   2) 若 ComfyUI 跑在宿主机，.env 设 COMFYUI_URL=http://host.docker.internal:8188
 #   3) docker compose up -d --build
-#   4) 浏览器打开 http://localhost:8190 （或 .env 里设的 FRONTEND_PORT；默认登录 admin / admin）
+#   4) 浏览器打开 http://localhost:8190 （或 .env 里设的 APP_PORT；默认登录 admin / admin）
 #
-# 说明：流水线跑在后端进程内的后台任务，无需独立 worker/broker。
+# 说明：流水线跑在进程内的后台任务，无需独立 worker/broker。
 #      ComfyUI 需 GPU + 模型，建议留在宿主机，容器经 host.docker.internal 访问。
 
 services:
-  backend:
+  app:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    image: nvw-backend
-    container_name: nvw-backend
+    image: nvw-app
+    container_name: nvw-app
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml    # 含密钥：挂载而非打进镜像
       - ./data:/app/data                  # SQLite 库 + 运行产物，持久化
     environment:
-      # 后端监听端口（注入容器，Dockerfile CMD 读取）
-      BACKEND_PORT: ${BACKEND_PORT:-8189}
+      # 监听端口（注入容器，Dockerfile CMD 读取）；前后端同一端口
+      APP_PORT: ${APP_PORT:-8190}
       # 覆盖 config.yaml 的 comfyui.server_url（容器内不能用 127.0.0.1 连宿主 ComfyUI）
       NV_COMFYUI_URL: ${COMFYUI_URL:-http://host.docker.internal:8188}
     extra_hosts:
       - "host.docker.internal:host-gateway"  # 容器内访问宿主机服务（如 ComfyUI）
     ports:
-      - "${BACKEND_PORT:-8189}:${BACKEND_PORT:-8189}"   # 宿主:容器，均取自 .env 的 BACKEND_PORT
+      - "${APP_PORT:-8190}:${APP_PORT:-8190}"   # 浏览器入口 = API 入口，单端口
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,os,sys; p=os.getenv('BACKEND_PORT','8189'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/api/health').status==200 else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,os,sys; p=os.getenv('APP_PORT','8190'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/api/health').status==200 else 1)\""]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    image: nvw-frontend
-    container_name: nvw-frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
-    environment:
-      # 注入 nginx 模板：监听 ${FRONTEND_PORT}、/api 反代到 backend:${BACKEND_PORT}
-      FRONTEND_PORT: ${FRONTEND_PORT:-8190}
-      BACKEND_PORT: ${BACKEND_PORT:-8189}
-    ports:
-      - "${FRONTEND_PORT:-8190}:${FRONTEND_PORT:-8190}"   # 浏览器入口，宿主:容器 均取 .env 的 FRONTEND_PORT

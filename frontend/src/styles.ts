@@ -85,6 +85,7 @@ export const STATUS_CHIP: Record<string, string> = {
   review: "bg-amber-500/15 text-amber-300",
   done: "bg-emerald-500/15 text-emerald-300",
   failed: "bg-red-500/15 text-red-300",
+  cancelled: "bg-white/[0.08] text-white/60",
 };
 
 export const TYPE_CHIP: Record<string, string> = {

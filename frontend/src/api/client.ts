@@ -123,6 +123,10 @@ export const api = {
       fetchJSON<{ status: string }>(`/pipeline/runs/${id}/resume`, {
         method: "POST",
       }),
+    stop: (id: number) =>
+      fetchJSON<{ status: string }>(`/pipeline/runs/${id}/stop`, {
+        method: "POST",
+      }),
     remove: (id: number) =>
       fetchJSON<{ status: string }>(`/pipeline/runs/${id}`, {
         method: "DELETE",
@@ -188,6 +192,7 @@ export const api = {
     publishResults: (runId: number) =>
       fetchJSON<PublishResultRec[]>(`/pipeline/runs/${runId}/publish-results`),
     assetUrl: (runId: number, filename: string) => `${BASE}/pipeline/runs/${runId}/assets/${filename}`,
+    eventsUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/events`,
     previewHtmlUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/preview-html`,
     videoUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/video`,
     subtitlesUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/subtitles`,
@@ -210,6 +215,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
+    remove: (id: number) =>
+      fetchJSON<void>(`/sources/${id}`, { method: "DELETE" }),
   },
   publishers: {
     list: () => fetchJSON<PublishTarget[]>("/publishers/"),

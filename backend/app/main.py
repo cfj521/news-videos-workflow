@@ -1,7 +1,11 @@
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.dependencies import get_session_factory
 from app.api.router import api_router
@@ -61,6 +65,32 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def _mount_frontend(app: FastAPI) -> bool:
+    """单端口部署：后端直接托管前端构建产物（frontend/dist）。
+
+    存在 dist 时挂 /assets 并对非 /api 路由做 SPA 回退（index.html），使访问后端端口即得整页。
+    未构建（纯 vite dev）时返回 False，退回 API-only。dist 路径取 FRONTEND_DIST，缺省为仓库 frontend/dist。
+    """
+    dist = Path(os.getenv("FRONTEND_DIST") or (Path(__file__).resolve().parents[2] / "frontend" / "dist"))
+    index = dist / "index.html"
+    if not index.is_file():
+        return False
+    assets = dist / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa(full_path: str):
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidate = dist / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(str(candidate))
+        return FileResponse(str(index))  # SPA 前端路由回退
+
+    return True
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="News Videos Workflow", version="0.1.0", lifespan=lifespan)
 
@@ -77,9 +107,11 @@ def create_app() -> FastAPI:
     async def health_check():
         return {"status": "ok", "version": "0.1.0"}
 
-    @app.get("/")
-    async def root():
-        return {"message": "News Videos Workflow API"}
+    # 前端托管放最后注册：/api 路由优先匹配，其余交给 SPA 回退
+    if not _mount_frontend(app):
+        @app.get("/")
+        async def root():
+            return {"message": "News Videos Workflow API"}
 
     return app
 

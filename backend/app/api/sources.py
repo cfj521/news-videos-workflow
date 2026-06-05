@@ -50,6 +50,16 @@ def update_source(source_id: int, body: NewsSourceUpdate, db: Session = Depends(
     return source
 
 
+@router.delete("/{source_id}", status_code=204)
+def delete_source(source_id: int, db: Session = Depends(get_db)):
+    source = db.get(NewsSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    db.delete(source)
+    db.commit()
+    log.info("Deleted source #%d", source_id)
+
+
 from pydantic import BaseModel as _PydanticBase
 
 

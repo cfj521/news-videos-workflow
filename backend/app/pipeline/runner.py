@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings, reload_settings
 from app.logging import get_logger, get_run_logger
 from app.models.pipeline_run import PipelineRun
+from app.pipeline.events import publish as publish_event
 from app.pipeline.stage1_collect import run_stage1
 from app.pipeline.stage3_assets import run_stage3
 from app.pipeline.stage4_timeline import generate_srt, run_stage4
@@ -262,6 +265,11 @@ def _update(db: Session, run: PipelineRun, **kwargs) -> None:
         setattr(run, k, v)
     db.commit()
     db.refresh(run)
+    # 状态/阶段/进度文案变化时实时推送给前端（替代轮询）
+    if any(k in kwargs for k in ("status", "current_stage", "progress_detail")):
+        publish_event(run.id, {"type": "progress", "status": run.status,
+                               "current_stage": run.current_stage,
+                               "progress_detail": run.progress_detail})
 
 
 def _load_history_fingerprints(db: Session, limit: int = 30) -> list[str]:
@@ -376,11 +384,41 @@ def _humanize_error(exc: Exception, stage: int | None = None) -> str:
     return f"{prefix}{_reason_text(exc)}"
 
 
+# ─── 运行取消 ────────────────────────────────────────────
+# 终止按钮与流水线后台任务在同一后端进程内，用内存标记最可靠（避开跨会话 DB 竞态）。
+# 终止接口调 request_cancel() 设标记 + 写 DB 状态；runner 在各检查点轮询，命中即抛 RunCancelled。
+_cancel_requested: set[int] = set()
+
+
+class RunCancelled(Exception):
+    """用户终止运行。"""
+
+
+def request_cancel(run_id: int) -> None:
+    _cancel_requested.add(run_id)
+
+
+def clear_cancel(run_id: int) -> None:
+    _cancel_requested.discard(run_id)
+
+
+def _check_cancel(run_id: int) -> None:
+    if run_id in _cancel_requested:
+        raise RunCancelled()
+
+
 async def execute_pipeline(run_id: int, db_factory) -> None:
     reload_settings()  # 每次运行重载配置（含可编辑提示词），保证跨进程 worker 也拿到最新值
+    clear_cancel(run_id)  # 清理上一次可能残留的终止标记
     db: Session = db_factory()
     try:
         await _run_inner(run_id, db)
+    except RunCancelled:
+        run = db.get(PipelineRun, run_id)
+        if run:
+            _update(db, run, status="cancelled", progress_detail="已终止",
+                    finished_at=datetime.now(timezone.utc))
+        get_logger("runner").info("Run #%d cancelled by user", run_id)
     except Exception as e:
         run = db.get(PipelineRun, run_id)
         if run:
@@ -394,6 +432,7 @@ async def execute_pipeline(run_id: int, db_factory) -> None:
                 get_logger("runner").exception(
                     "Pipeline run #%d failed (could not write run log)", run_id)
     finally:
+        clear_cancel(run_id)
         db.close()
 
 
@@ -428,6 +467,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
     # ─── Stage 1: 搜索整理 ─────────────────────────────────
     if 1 in selected:
+        _check_cancel(run.id)
         t0 = time.time()
         from app.models.news_source import NewsSource
 
@@ -496,6 +536,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
     # ─── Stage 2: 脚本生成 ─────────────────────────────────
     if 2 in selected:
+        _check_cancel(run.id)
         t0 = time.time()
         _update(db, run, current_stage=2,
                 progress_detail=f"S2 生成脚本 — {len(articles)} 篇文章...")
@@ -535,6 +576,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
     # ─── Stage 3: 素材生成 ─────────────────────────────────
     if 3 in selected:
+        _check_cancel(run.id)
         t0 = time.time()
         total = len(script.get("scenes", []))
         _update(db, run, current_stage=3, progress_detail=f"S3 生成素材 0/{total}")
@@ -553,6 +595,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
             async def generate(self, prompt, size="1080x1920", output_path=""):
                 nonlocal img_count
+                _check_cancel(run.id)  # 每张图前检查终止，避免终止后还继续狂出图
                 img_count += 1
                 _update(db, run, progress_detail=f"S3 生成图片 {img_count}/{total}...")
                 log.info("[S3] Image %d/%d: %s", img_count, total, prompt[:60])
@@ -561,6 +604,9 @@ async def _run_inner(run_id: int, db: Session) -> None:
                     prompt=prompt, size=size, output_path=output_path)
                 log.info("[S3] Image %d/%d done (%.1fs, %s)",
                          img_count, total, time.time() - t, result.file_path)
+                m = re.search(r"scene_(\d+)_image", os.path.basename(output_path or ""))
+                if m:  # 实时推送：该场景图片就绪，前端据此只刷新这一张
+                    publish_event(run.id, {"type": "asset", "kind": "image", "scene": int(m.group(1))})
                 return result
 
         class TrackedTTSProvider:
@@ -569,6 +615,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
             async def synthesize(self, text, voice="", speed=1.0, output_path=""):
                 nonlocal tts_count
+                _check_cancel(run.id)
                 tts_count += 1
                 _update(db, run, progress_detail=f"S3 生成语音 {tts_count}/{total}...")
                 log.info("[S3] TTS %d/%d: %s...", tts_count, total, text[:30])
@@ -576,6 +623,9 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 result = await self._inner.synthesize(
                     text=text, voice=voice, speed=speed, output_path=output_path)
                 log.info("[S3] TTS %d/%d done (%.1fs)", tts_count, total, time.time() - t)
+                m = re.search(r"scene_(\d+)_audio", os.path.basename(output_path or ""))
+                if m:
+                    publish_event(run.id, {"type": "asset", "kind": "audio", "scene": int(m.group(1))})
                 return result
 
         audio_only = run.video_route == "audio"
@@ -606,6 +656,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
     # ─── Stage 4: 预览 ────────────────────────────────────
     if 4 in selected and run.video_route != "audio":
+        _check_cancel(run.id)
         t0 = time.time()
         _update(db, run, current_stage=4, progress_detail="S4 生成时间轴...")
         log.info("[S4] Building timeline + preview (route=%s)", run.video_route)
@@ -654,6 +705,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
     # ─── Stage 5: 合成渲染 ────────────────────────────────
     if 5 in selected:
+        _check_cancel(run.id)
         t0 = time.time()
 
         if run.video_route == "audio":
@@ -745,6 +797,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
     # ─── Stage 6: 发布 ────────────────────────────────────
     if 6 in selected:
+        _check_cancel(run.id)
         # publish_platforms 现存「发布账号 id」列表；容错旧数据（平台名字符串）跳过
         target_ids: set[int] = set()
         for x in json.loads(run.publish_platforms):
@@ -795,6 +848,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2),
                 encoding="utf-8")
             _update(db, run, progress_detail=summary[:500])
+            publish_event(run.id, {"type": "publish"})  # 通知前端刷新发布结果
             log.info("[S6] %s", summary)
 
     # ─── Finish ────────────────────────────────────────────

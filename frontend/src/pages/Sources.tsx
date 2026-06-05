@@ -5,6 +5,7 @@ import { btnPrimary, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, to
 import { AddSourceDialog } from "../components/AddSourceDialog";
 import { EditSourceDialog } from "../components/EditSourceDialog";
 import { Select } from "../components/Select";
+import { DeleteIconButton } from "../components/DeleteIconButton";
 import { type NewsSource, isAihotSource } from "../types";
 
 // ── Sort helpers ────────────────────────────────────────
@@ -249,6 +250,17 @@ export function SourcesPage() {
     }
   };
 
+  const deleteSource = async (e: React.MouseEvent, source: NewsSource) => {
+    e.stopPropagation();
+    if (!window.confirm(`确认删除信息源「${source.name}」？此操作不可恢复。`)) return;
+    mutate((prev) => prev?.filter((s) => s.id !== source.id), { revalidate: false }); // 乐观移除
+    try {
+      await api.sources.remove(source.id);
+    } catch {
+      mutate(); // 失败重拉纠正
+    }
+  };
+
   const togglePin = async (e: React.MouseEvent, source: NewsSource) => {
     e.stopPropagation();
     if (!source.pinned) {
@@ -313,8 +325,8 @@ export function SourcesPage() {
               <SortTh label="语言" sortKey="language" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <SortTh label="优先级" sortKey="priority" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
               <th className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>配置</th>
-              <th className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>
-                <div className="flex items-center gap-2">
+              <th className={`px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>
+                <div className="flex items-center justify-end gap-1.5">
                   <button onClick={toggleAllCustom} className={toggleCls(allCustomEnabled)} title="全部启用/禁用（启用将关闭 AI HOT，与之互斥）">
                     <span className={toggleThumbCls(allCustomEnabled)} />
                   </button>
@@ -365,9 +377,12 @@ export function SourcesPage() {
                 <td className="px-4 py-3 text-white/66">{source.priority}</td>
                 <td className="px-4 py-3"><ConfigPreview json={source.config_json} /></td>
                 <td className="px-4 py-3">
-                  <button onClick={(e) => toggleSource(e, source)} className={toggleCls(source.enabled)}>
-                    <span className={toggleThumbCls(source.enabled)} />
-                  </button>
+                  <div className="flex items-center justify-end gap-2.5">
+                    <button onClick={(e) => toggleSource(e, source)} className={toggleCls(source.enabled)}>
+                      <span className={toggleThumbCls(source.enabled)} />
+                    </button>
+                    <DeleteIconButton onClick={(e) => deleteSource(e, source)} title="删除信息源" />
+                  </div>
                 </td>
               </tr>
             ))}

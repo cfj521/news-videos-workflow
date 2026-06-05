@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api, type ScriptData, type TimelineData, type AppSettings, type PublishResultRec } from "../api/client";
 import {
@@ -15,12 +15,16 @@ import { useToast } from "../components/Toast";
 import type { PipelineRun } from "../types";
 import { STAGE_LABELS, VISIBLE_STAGES, BACKEND_STAGE_MAP, PLATFORM_LABELS } from "../types";
 
+// SSE 事件分发：RunWorkspace 开一条 EventSource，子面板从 context 读取就绪标记，无需各自轮询/连流
+const RunEventsContext = createContext<{ sceneTick: Record<number, number>; publishTick: number }>({ sceneTick: {}, publishTick: 0 });
+
 const STATUS_LABEL: Record<string, string> = {
   pending: "等待中",
   processing: "处理中",
   review: "审核中",
   done: "完成",
   failed: "失败",
+  cancelled: "已终止",
 };
 
 // ─── Resolution presets ─────────────────────────────────
@@ -350,6 +354,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [regenning, setRegenning] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  const { sceneTick } = useContext(RunEventsContext); // 素材就绪由 RunWorkspace 的 SSE 统一分发
   const { showToast } = useToast();
   const { mutate: globalMutate } = useSWRConfig();
   // 图片生成尺寸 = 任务级分辨率（建任务时已必填）
@@ -366,6 +371,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
   // 事件驱动刷新（替代固定计时器盲刷）：流水线每推进一个阶段或状态变化时——这些变更
   // 由父组件每 2s 轮询 run 感知到——重新拉取脚本/时间轴，并给图片/音频 URL 换一次
   // cache-bust，使新生成的素材显示出来。即「生成完成」这一事件发生时才执行一次。
+  // 阶段/状态变化时重取脚本/时间轴并整体换一次 cache-bust（进入 S2/S4 等场景）
   useEffect(() => {
     mutateScript();
     mutateTimeline();
@@ -434,7 +440,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
                 const durS = entry ? ((entry.end_ms - entry.start_ms) / 1000).toFixed(1) : null;
                 return (
                   <SceneEditor key={scene.id} runId={runId} scene={scene} durationS={durS} mutateScript={mutateScript} imgSize={imgSize}
-                    refreshTick={refreshTick} onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} audioOnly={audioOnly} />
+                    refreshTick={sceneTick[scene.id] || refreshTick} onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} audioOnly={audioOnly} />
                 );
               })}
             </div>
@@ -482,7 +488,9 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
   const [imgTs, setImgTs] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
   const [zoom, setZoom] = useState(false);
+  const [imgBroken, setImgBroken] = useState(false); // 图片未生成/加载失败 → 禁止放大
   const imgUrl = (imgTs || refreshTick) ? `${imgSrc}?t=${imgTs || refreshTick}` : imgSrc;
+  useEffect(() => { setImgBroken(false); }, [imgUrl]); // 换图后重置有效性
 
   // 放大预览：Esc 关闭
   useEffect(() => {
@@ -522,7 +530,14 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
       <div className="flex gap-4">
         <div className="w-[260px] shrink-0 flex flex-col">
           {!audioOnly && (
-            <img src={imgUrl} className="w-full rounded-lg bg-white/[0.02] cursor-zoom-in transition hover:opacity-90" title="点击放大预览" onClick={() => setZoom(true)} onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
+            <img
+              src={imgUrl}
+              className={`w-full rounded-lg bg-white/[0.02] transition ${imgBroken ? "cursor-default opacity-[0.15]" : "cursor-zoom-in hover:opacity-90"}`}
+              title={imgBroken ? "图片未生成或加载失败" : "点击放大预览"}
+              onClick={() => { if (!imgBroken) setZoom(true); }}
+              onError={() => setImgBroken(true)}
+              onLoad={() => setImgBroken(false)}
+            />
           )}
           <audio controls src={(audioTs || refreshTick) ? `${audioSrc}?t=${audioTs || refreshTick}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-auto pt-2"}`} />
         </div>
@@ -581,7 +596,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
         </div>
       )}
 
-      {zoom && !audioOnly && (
+      {zoom && !audioOnly && !imgBroken && (
         <div className={`${dialogOverlayCls} cursor-zoom-out p-8`} onClick={() => setZoom(false)}>
           <img src={imgUrl} className="max-w-[92vw] max-h-[92vh] rounded-lg shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} />
           <button onClick={() => setZoom(false)} className="absolute top-5 right-6 text-white/85 hover:text-white text-3xl leading-none" title="关闭（Esc）">×</button>
@@ -1036,13 +1051,15 @@ function S6Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const { data: results, mutate: mutateResults } = useSWR<PublishResultRec[]>(
     `publish-results-${runId}`,
     () => api.runs.publishResults(runId).catch(() => [] as PublishResultRec[]),
-    { refreshInterval: run.status === "processing" ? 2000 : 0 },
+    // SSE 的 publish 事件驱动刷新；仅保留低频兜底
+    { refreshInterval: run.status === "processing" ? 20000 : 0 },
   );
   const [publishing, setPublishing] = useState(false);
+  const { publishTick } = useContext(RunEventsContext);
   const { showToast } = useToast();
 
-  // 发布状态变化（开始/完成）时刷新结果
-  useEffect(() => { mutateResults(); }, [run.status, run.finished_at, mutateResults]);
+  // 发布状态变化（开始/完成）或收到 publish 事件时刷新结果
+  useEffect(() => { mutateResults(); }, [run.status, run.finished_at, publishTick, mutateResults]);
 
   // publish_platforms 存的是发布账号 id
   const ids: string[] = (() => { try { return JSON.parse(run.publish_platforms); } catch { return []; } })();
@@ -1126,10 +1143,30 @@ function StagePanel({ stage, runId, run }: { stage: number; runId: number; run: 
 
 function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () => void }) {
   const { data: freshRun, mutate: mutateRun } = useSWR<PipelineRun>(`run-${run.id}`, () => api.runs.get(run.id), {
-    refreshInterval: run.status === "processing" || run.status === "pending" ? 2000 : 0,
+    // SSE 实时驱动；仅保留低频兜底，防代理偶发断流导致状态卡住
+    refreshInterval: run.status === "processing" || run.status === "pending" ? 20000 : 0,
     fallbackData: run,
   });
   const r = freshRun ?? run;
+
+  // 单一 EventSource：progress→刷新本 run/列表；asset→记场景就绪；publish→通知 S6 刷新
+  const [sceneTick, setSceneTick] = useState<Record<number, number>>({});
+  const [publishTick, setPublishTick] = useState(0);
+  useEffect(() => {
+    if (!(r.status === "processing" || r.status === "pending")) return;
+    const es = new EventSource(api.runs.eventsUrl(run.id));
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data) as { type?: string; scene?: number; status?: string };
+        if (ev.type === "progress") { mutateRun(); mutateRuns(); }
+        else if (ev.type === "asset" && typeof ev.scene === "number") setSceneTick((m) => ({ ...m, [ev.scene as number]: Date.now() }));
+        else if (ev.type === "publish") setPublishTick(Date.now());
+        else if (ev.type === "end") es.close();
+      } catch { /* 忽略心跳 */ }
+    };
+    es.onerror = () => { /* 浏览器自动重连；run 结束由 effect 清理 */ };
+    return () => es.close();
+  }, [run.id, r.status, mutateRun, mutateRuns]);
 
   const mapToVisual = (cs: number | null): number => {
     if (!cs) return VISIBLE_STAGES[0];
@@ -1174,9 +1211,11 @@ function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () =>
       )}
 
       <Stepper run={r} onSelect={setActiveStage} activeStage={activeStage} locked={locked} />
-      <fieldset disabled={locked} className="min-w-0 border-0 p-0 m-0">
-        <StagePanel stage={activeStage} runId={r.id} run={r} />
-      </fieldset>
+      <RunEventsContext.Provider value={{ sceneTick, publishTick }}>
+        <fieldset disabled={locked} className="min-w-0 border-0 p-0 m-0">
+          <StagePanel stage={activeStage} runId={r.id} run={r} />
+        </fieldset>
+      </RunEventsContext.Provider>
     </div>
   );
 }
@@ -1184,7 +1223,8 @@ function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () =>
 // ─── Dashboard Page ─────────────────────────────────────
 
 export function DashboardPage() {
-  const { data: runs, mutate } = useSWR<PipelineRun[]>("runs", api.runs.list, { refreshInterval: 5000 });
+  // 列表由展开任务的 SSE(progress)驱动 mutate；仅保留低频兜底覆盖新建/删除/断流
+  const { data: runs, mutate } = useSWR<PipelineRun[]>("runs", api.runs.list, { refreshInterval: 15000 });
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PipelineRun | null>(null);
@@ -1198,6 +1238,18 @@ export function DashboardPage() {
       else setExpandedId(runs[0].id);
     }
   }, [runs, expandedId]);
+
+  const stopRun = async (e: React.MouseEvent, run: PipelineRun) => {
+    e.stopPropagation();
+    if (!window.confirm(`确认终止任务 #${run.id}？正在进行的步骤会在当前操作完成后停止。`)) return;
+    try {
+      await api.runs.stop(run.id);
+      showToast("已请求终止", "success");
+      mutate();
+    } catch {
+      showToast("终止失败", "error");
+    }
+  };
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
@@ -1248,6 +1300,16 @@ export function DashboardPage() {
               <span className="font-mono text-xs">#{run.id}</span>
               <span className="text-xs text-white/52">{ts}</span>
               <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px]`}>{STATUS_LABEL[run.status] ?? run.status}</span>
+              {run.status === "processing" && (
+                <button
+                  type="button"
+                  onClick={(e) => stopRun(e, run)}
+                  title="终止此任务"
+                  className="ml-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-500/15 border border-red-500/25 text-red-300 hover:bg-red-500/25 transition"
+                >
+                  终止
+                </button>
+              )}
             </div>
           );
         })}

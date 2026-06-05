@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from pydantic import BaseModel as _PydBase
 from sqlalchemy.orm import Session
@@ -117,6 +117,24 @@ def resume_run(run_id: int, db: Session = Depends(get_db)):
     return {"status": "resumed", "run_id": resumed.id}
 
 
+@router.post("/runs/{run_id}/stop")
+def stop_run(run_id: int, db: Session = Depends(get_db)):
+    from datetime import datetime, timezone
+
+    from app.pipeline.runner import request_cancel
+    run = db.get(PipelineRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    request_cancel(run_id)  # 内存标记：运行中的后台任务会在下个检查点中止
+    run.status = "cancelled"
+    run.progress_detail = "已终止"
+    run.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(run)
+    log.info("POST /runs/%d/stop — cancellation requested", run_id)
+    return {"status": "cancelled", "run_id": run_id}
+
+
 @router.delete("/runs/{run_id}")
 def delete_run(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
@@ -144,6 +162,51 @@ def get_asset(run_id: int, filename: str):
         raise HTTPException(status_code=404, detail="Asset not found")
     mime = "image/png" if path.suffix == ".png" else "audio/mpeg" if path.suffix == ".mp3" else "application/octet-stream"
     return FileResponse(path, media_type=mime)
+
+
+@public_router.get("/runs/{run_id}/events")
+async def run_events(run_id: int):
+    """SSE 事件流：S3 每生成一张图/一段音频，推一条 {type:asset, kind, scene}。
+    前端据此只刷新对应场景的素材。EventSource 无法带鉴权头，故放在 public_router。"""
+    import asyncio
+    import json as _json
+
+    from app.api.dependencies import get_session_factory
+    from app.pipeline.events import subscribe, unsubscribe
+
+    def _status() -> str | None:
+        s = get_session_factory()()
+        try:
+            r = s.get(PipelineRun, run_id)
+            return r.status if r else None
+        finally:
+            s.close()
+
+    async def gen():
+        q = subscribe(run_id)
+        try:
+            yield ": connected\n\n"
+            if _status() in ("done", "failed", "cancelled", None):
+                yield f"data: {_json.dumps({'type': 'end'})}\n\n"
+                return
+            while True:
+                try:
+                    ev = await asyncio.wait_for(q.get(), timeout=15)
+                    yield f"data: {_json.dumps(ev)}\n\n"
+                    if ev.get("type") == "progress" and ev.get("status") in ("done", "failed", "cancelled"):
+                        yield f"data: {_json.dumps({'type': 'end'})}\n\n"
+                        break
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"  # 心跳保活 + 顺带探测是否已结束
+                    if _status() in ("done", "failed", "cancelled", None):
+                        yield f"data: {_json.dumps({'type': 'end'})}\n\n"
+                        break
+        finally:
+            unsubscribe(run_id, q)
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                                      "Connection": "keep-alive"})
 
 
 # ─── Stage data ───────────────────────────────────────────
@@ -865,6 +928,8 @@ async def _publish_async(run_id: int, session_factory):
         # 有任一失败也标记 done（结果在面板逐条展示），失败账号可单独再发
         _update(db, run, status="done", progress_detail=summary[:500],
                 error_message=None, finished_at=datetime.now(timezone.utc))
+        from app.pipeline.events import publish as _pub
+        _pub(run_id, {"type": "publish"})  # 通知前端刷新发布结果
         log.info("[publish] run #%d — %s", run_id, summary)
     except Exception as e:
         log.exception("Publish failed for run #%d", run_id)

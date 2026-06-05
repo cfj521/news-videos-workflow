@@ -1,6 +1,15 @@
-# 后端镜像：FastAPI + 进程内流水线（含 FFmpeg + Node/Hyperframes）
-# 构建上下文为「仓库根目录」（见 docker-compose.yml 的 context: .），
-# 因此 COPY 路径相对仓库根书写。
+# 一体化镜像：单容器同时托管前端 + 后端（单端口）。
+# 构建上下文为「仓库根目录」（见 docker-compose.yml 的 context: .），COPY 路径相对仓库根。
+
+# ---- Stage 1: 构建前端静态产物（→ /fe/dist）----
+FROM node:20-alpine AS frontend
+WORKDIR /fe
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Stage 2: 后端 + 托管前端（FastAPI + 进程内流水线 + FFmpeg + Node/Hyperframes）----
 FROM python:3.12-slim-bookworm
 
 # Hyperframes 走 Puppeteer 无头 Chromium 截帧；用系统 chromium 并跳过 puppeteer 自带下载
@@ -41,6 +50,10 @@ COPY backend/ ./backend/
 COPY comfyui/ ./comfyui/
 COPY config.yaml.example ./config.yaml.example
 
+# 前端构建产物：后端单端口托管（main.py 读 FRONTEND_DIST）
+COPY --from=frontend /fe/dist /app/frontend/dist
+ENV FRONTEND_DIST=/app/frontend/dist
+
 # 运行目录为 /app/backend（与本地 `cd backend && uvicorn` 一致）：
 #   - config.py 的 CONFIG_PATH = parents[2] → /app/config.yaml（运行时挂载）
 #   - database_url/data_dir 的 ../data → /app/data（运行时挂载）
@@ -50,8 +63,8 @@ RUN ln -sf /app/comfyui /app/backend/comfyui
 
 WORKDIR /app/backend
 
-EXPOSE 8189
+EXPOSE 8190
 
 # 流水线跑在进程内的后台任务，无需独立 worker/broker
-# 端口取自环境变量 BACKEND_PORT（由 .env 经 docker-compose 注入），缺省 8189
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8189}"]
+# 端口取自环境变量 APP_PORT（由 .env 经 docker-compose 注入），缺省 8190
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT:-8190}"]

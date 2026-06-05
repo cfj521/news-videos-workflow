@@ -59,7 +59,7 @@ cd frontend && pnpm dev                              # http://127.0.0.1:5173
 
 ## Docker 一键部署
 
-后端 + 前端（Nginx 反代）一键起；流水线跑在后端进程内的后台任务，无需 worker/broker 容器。
+**单容器一体化**：一个镜像同时托管前端（静态）与后端（API + 进程内流水线），**单端口**访问——不再有独立的前端/Nginx 容器，也无需 worker/broker。
 
 ```bash
 cp config.yaml.example config.yaml   # 填入密钥
@@ -68,9 +68,11 @@ docker compose up -d --build
 # 浏览器打开 http://localhost:8190 （默认登录 admin / admin）
 ```
 
-- 端口与 ComfyUI 地址在 `.env` 配置（`FRONTEND_PORT`、`BACKEND_PORT`、`COMFYUI_URL`）。`COMFYUI_URL` 会注入后端并**覆盖** `comfyui.server_url`——无需手改 `config.yaml`。
+- 镜像多阶段构建：先构建前端（`frontend/dist`），再由后端托管——FastAPI 把静态 SPA 与 `/api` 挂在同一端口。
+- 端口与 ComfyUI 地址在 `.env` 配置（`APP_PORT`、`COMFYUI_URL`）。`COMFYUI_URL` 会注入后端并**覆盖** `comfyui.server_url`——无需手改 `config.yaml`。
 - `config.yaml` 与 `data/` 以挂载方式注入——密钥不进镜像；SQLite 库与运行产物持久化在宿主机。
 - ComfyUI 建议留在宿主机（需 GPU + 模型），后端经 `host.docker.internal` 访问。
+- 本地开发仍是两端口：`pnpm dev`（vite :5173，热更新）把 `/api` 代理到后端（:8000）；单端口合并只针对 Docker/生产镜像。
 
 ## 测试
 

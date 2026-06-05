@@ -4,12 +4,13 @@ import { api } from "../api/client";
 import type { PublishTarget } from "../types";
 import { PLATFORM_LABELS, PLATFORM_MEDIA, PLATFORM_FIELDS } from "../types";
 import {
-  btnPrimary, btnSecondary, btnDanger, cardCls, chipCls,
+  btnPrimary, btnSecondary, cardCls, chipCls,
   inputCls, labelCls, dialogOverlayCls, dialogPanelCls, errorTextCls,
   toggleCls, toggleThumbCls,
 } from "../styles";
 import { Select } from "../components/Select";
 import { PasswordInput } from "../components/PasswordInput";
+import { DeleteIconButton } from "../components/DeleteIconButton";
 
 const PLATFORM_OPTIONS = Object.entries(PLATFORM_LABELS).map(([k, v]) => ({ value: k, label: v }));
 
@@ -165,7 +166,7 @@ export function PublishersPage() {
               onClick={() => setDialog({ target: t })}
               className={`${cardCls} p-5 cursor-pointer hover:bg-white/[0.04] transition ${!t.enabled ? "opacity-40" : ""}`}
             >
-              <div className="flex justify-between items-start">
+              <div className="flex justify-between items-center">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-medium text-white/96">{t.name}</span>
@@ -198,7 +199,7 @@ export function PublishersPage() {
                   >
                     <span className={toggleThumbCls(t.enabled)} />
                   </button>
-                  <button onClick={() => handleDelete(t.id)} className={btnDanger}>删除</button>
+                  <DeleteIconButton onClick={() => handleDelete(t.id)} title="删除此账号" />
                 </div>
               </div>
             </div>

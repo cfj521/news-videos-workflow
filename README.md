@@ -60,18 +60,20 @@ First launch seeds a default admin account **admin / admin** — change it under
 
 ## Docker
 
-One-shot deployment (backend + frontend with Nginx reverse proxy). The pipeline runs as in-process background tasks — no worker/broker container needed.
+Single-container deployment: one image serves both the frontend (static) and the backend (API + in-process pipeline) on **one port** — no separate frontend/Nginx container, no worker/broker.
 
 ```bash
 cp config.yaml.example config.yaml   # fill in your API keys
-cp .env.example .env                  # Docker ports + ComfyUI URL (optional; sane defaults)
+cp .env.example .env                  # Docker port + ComfyUI URL (optional; sane defaults)
 docker compose up -d --build
 # open http://localhost:8190  (default login: admin / admin)
 ```
 
-- Ports and the ComfyUI URL live in `.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `COMFYUI_URL`). `COMFYUI_URL` is injected into the backend and **overrides** `comfyui.server_url` — no need to edit `config.yaml`.
+- Multi-stage image: it builds the frontend (`frontend/dist`) and the backend serves it — FastAPI mounts the static SPA and `/api` on the same port.
+- Port and ComfyUI URL live in `.env` (`APP_PORT`, `COMFYUI_URL`). `COMFYUI_URL` is injected into the backend and **overrides** `comfyui.server_url` — no need to edit `config.yaml`.
 - `config.yaml` and `data/` are bind-mounted — secrets stay out of the image; the SQLite DB and run artifacts persist on the host.
 - ComfyUI is expected on the host (needs GPU + models); the backend reaches it via `host.docker.internal`.
+- Local dev still uses two ports: `pnpm dev` (vite :5173, HMR) proxies `/api` to the backend (:8000). The single-port merge is for the Docker/production image.
 
 ## Test
 
