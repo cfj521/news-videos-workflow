@@ -31,19 +31,20 @@ async def run_stage3(
                 log.info("[%d/%d] Image S%d: %s", i, total, scene_id, scene["image_prompt"][:60])
                 image_result = await image_provider.generate(prompt=scene["image_prompt"], size=resolution, output_path=image_path)
                 entry["image"] = {"file_path": image_result.file_path, "duration_ms": image_result.duration_ms}
-            except Exception:
+            except Exception as e:
                 log.exception("[%d/%d] Image S%d FAILED", i, total, scene_id)
-                entry["error"] = "image generation failed"
+                # 带上真实异常文本，便于在 run 的 pipeline.log 里定位（限流/连接失败/超时等）
+                entry["error"] = f"image failed: {type(e).__name__}: {e}"[:300]
 
         try:
             audio_path = str(Path(assets_dir) / f"scene_{scene_id:02d}_audio.mp3")
             log.info("[%d/%d] TTS S%d: %s...", i, total, scene_id, scene["narration"][:30])
             audio_result = await tts_provider.synthesize(text=scene["narration"], output_path=audio_path)
             entry["audio"] = {"file_path": audio_result.file_path, "duration_ms": audio_result.duration_ms}
-        except Exception:
+        except Exception as e:
             log.exception("[%d/%d] TTS S%d FAILED", i, total, scene_id)
             entry.setdefault("error", "")
-            entry["error"] += " tts failed"
+            entry["error"] += f" tts failed: {type(e).__name__}: {e}"[:300]
 
         scene_assets.append(entry)
 

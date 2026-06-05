@@ -719,7 +719,7 @@ async def _render_video_async(run_id: int, session_factory):
                 return
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
-                _update(db, run, status="done", progress_detail=f"S5 合成完成 — {size_mb:.1f} MB", output_path=final_path, finished_at=datetime.now(timezone.utc))
+                _update(db, run, status="done", progress_detail=f"S5 合成完成 — {size_mb:.1f} MB", output_path=final_path, error_message=None, finished_at=datetime.now(timezone.utc))
                 export_final(run_id, final_path)
             else:
                 _update(db, run, status="failed", error_message="音频文件未生成", finished_at=datetime.now(timezone.utc))
@@ -762,7 +762,7 @@ async def _render_video_async(run_id: int, session_factory):
 
         if Path(final_path).exists():
             size_mb = Path(final_path).stat().st_size / 1024 / 1024
-            _update(db, run, status="done", progress_detail=f"S5 渲染完成 — {size_mb:.1f} MB", output_path=final_path, finished_at=datetime.now(timezone.utc))
+            _update(db, run, status="done", progress_detail=f"S5 渲染完成 — {size_mb:.1f} MB", output_path=final_path, error_message=None, finished_at=datetime.now(timezone.utc))
             export_final(run_id, final_path)
         else:
             _update(db, run, status="failed", error_message="Video file not found", finished_at=datetime.now(timezone.utc))
@@ -773,6 +773,112 @@ async def _render_video_async(run_id: int, session_factory):
             _update(db, run, status="failed", error_message=_humanize_error(e, 5)[:500], finished_at=datetime.now(timezone.utc))
     finally:
         db.close()
+
+
+# ─── Publish (re)trigger ──────────────────────────────────
+
+def _parse_target_ids(publish_platforms: str | None) -> set[int]:
+    """从 run.publish_platforms（账号 id 列表，JSON）解析出 int id；容错旧数据（平台名）跳过。"""
+    ids: set[int] = set()
+    for x in json.loads(publish_platforms or "[]"):
+        try:
+            ids.add(int(x))
+        except (ValueError, TypeError):
+            continue
+    return ids
+
+
+@router.post("/runs/{run_id}/publish")
+def trigger_publish(run_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    run = db.get(PipelineRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not (run.output_path and Path(run.output_path).exists()):
+        raise HTTPException(status_code=400, detail="尚无成片，请先完成渲染（S5）再发布")
+    if not _parse_target_ids(run.publish_platforms):
+        raise HTTPException(status_code=400, detail="未选择发布账号")
+    run.current_stage = 6
+    run.status = "processing"
+    run.progress_detail = "S6 发布启动中..."
+    run.error_message = None  # 重新发布 → 清掉上次失败残留的报错
+    run.finished_at = None
+    run.started_at = datetime.now(timezone.utc)  # 刷新发起时间，避免被孤儿回收误判
+    db.commit()
+    background_tasks.add_task(_publish_bg, run_id, get_session_factory())
+    return {"status": "publishing"}
+
+
+def _publish_bg(run_id: int, session_factory):
+    asyncio.run(_publish_async(run_id, session_factory))
+
+
+async def _publish_async(run_id: int, session_factory):
+    from dataclasses import asdict
+
+    from app.models.publish_target import PublishTarget
+    from app.pipeline.stage6_publish import run_stage6
+    from app.providers.publisher import build_publishers
+
+    reload_settings()
+    db = session_factory()
+    try:
+        run = db.get(PipelineRun, run_id)
+        if not run:
+            return
+        rd = _run_dir(run_id)
+        target_ids = _parse_target_ids(run.publish_platforms)
+        targets = [
+            t for t in db.query(PublishTarget).filter(PublishTarget.enabled.is_(True)).all()
+            if t.id in target_ids]
+        if not targets:
+            _update(db, run, status="failed", error_message="无可用发布账号（可能已被禁用）",
+                    finished_at=datetime.now(timezone.utc))
+            return
+
+        meta: dict = {}
+        sj = rd / "script.json"
+        if sj.exists():
+            meta = json.loads(sj.read_text(encoding="utf-8"))
+        srt = rd / "output.srt"
+
+        _update(db, run, progress_detail=f"S6 发布到 {', '.join(t.name for t in targets)}...")
+        results = await run_stage6(
+            video_path=run.output_path, thumbnail_path=None,
+            title=meta.get("title", ""), description=meta.get("description", ""),
+            tags=meta.get("tags", []), publishers=build_publishers(targets),
+            subtitle_path=str(srt) if srt.exists() else None,
+        )
+
+        def _label(r):
+            return r.target_name or r.platform
+
+        ok = [_label(r) for r in results if r.status == "success"]
+        fail = [f"{_label(r)}({r.error_message})" for r in results if r.status != "success"]
+        summary = "S6 发布完成 — 成功: " + (", ".join(ok) or "无")
+        if fail:
+            summary += " | 失败: " + ", ".join(fail)
+        (rd / "publish_results.json").write_text(
+            json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2), encoding="utf-8")
+        # 有任一失败也标记 done（结果在面板逐条展示），失败账号可单独再发
+        _update(db, run, status="done", progress_detail=summary[:500],
+                error_message=None, finished_at=datetime.now(timezone.utc))
+        log.info("[publish] run #%d — %s", run_id, summary)
+    except Exception as e:
+        log.exception("Publish failed for run #%d", run_id)
+        run = db.get(PipelineRun, run_id)
+        if run:
+            _update(db, run, status="failed", error_message=_humanize_error(e, 6)[:500],
+                    finished_at=datetime.now(timezone.utc))
+    finally:
+        db.close()
+
+
+@router.get("/runs/{run_id}/publish-results")
+def get_publish_results(run_id: int):
+    p = _run_dir(run_id) / "publish_results.json"
+    if not p.exists():
+        return []
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 # ─── Logs / Video ─────────────────────────────────────────

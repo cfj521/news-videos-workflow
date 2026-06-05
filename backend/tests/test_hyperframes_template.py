@@ -41,6 +41,9 @@ def test_render_html_template():
     assert "scene_01_audio.mp3" in html
     assert "第一段旁白文本" in html
     assert "window.__timelines" in html
+    # 预览音频驱动：按时间轴同步播放各分镜旁白
+    assert "syncAudio" in html
+    assert "gsap.ticker.add(syncAudio)" in html
 
 
 def test_render_html_single_scene():

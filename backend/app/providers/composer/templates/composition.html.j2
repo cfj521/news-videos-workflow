@@ -98,9 +98,35 @@
 
     window.__timelines = { main: tl };
 
+    // 各分镜旁白的时间区间，用于按时间轴驱动音频播放（预览用；导出由 hyperframes 按 data-* 合成）
+    var audioEntries = [
+      {% for entry in entries %}{ id: "narration-{{ entry.scene_id }}", start: {{ entry.start_s }}, dur: {{ entry.audio_duration_s }} },
+      {% endfor %}
+    ];
+    var activeAudioId = null;
+    function syncAudio() {
+      if (tl.paused()) {
+        document.querySelectorAll('audio').forEach(function(a){ if (!a.paused) a.pause(); });
+        return;
+      }
+      var t = tl.time(), cur = null;
+      for (var i = 0; i < audioEntries.length; i++) {
+        var e = audioEntries[i];
+        if (e.dur > 0 && t >= e.start && t < e.start + e.dur) { cur = e; break; }
+      }
+      if (cur && cur.id === activeAudioId) return;  // 同一段播放中，不打断
+      if (activeAudioId) { var prev = document.getElementById(activeAudioId); if (prev) prev.pause(); }
+      activeAudioId = cur ? cur.id : null;
+      if (cur) {
+        var a = document.getElementById(cur.id);
+        if (a) { try { a.currentTime = Math.max(0, t - cur.start); } catch (_) {} a.play().catch(function(){}); }
+      }
+    }
+
     // Preview mode: pause in iframe, respond to parent postMessage
     if (window.self !== window.top) {
       tl.pause();
+      gsap.ticker.add(syncAudio);  // 预览时按时间轴同步音频播放
       setInterval(function() {
         window.parent.postMessage({
           type: 'progress',
@@ -116,8 +142,8 @@
       var audios = document.querySelectorAll('audio');
       if (e.data.type === 'play') { tl.play(); }
       if (e.data.type === 'pause') { tl.pause(); audios.forEach(function(a){a.pause();}); }
-      if (e.data.type === 'restart') { tl.restart(); }
-      if (e.data.type === 'seek') { tl.seek(e.data.time); }
+      if (e.data.type === 'restart') { audios.forEach(function(a){ a.pause(); try { a.currentTime = 0; } catch (_) {} }); activeAudioId = null; tl.restart(); }
+      if (e.data.type === 'seek') { tl.seek(e.data.time); activeAudioId = null; }  // 重置 → 下一帧重新对齐音频
     });
   </script>
 </body>

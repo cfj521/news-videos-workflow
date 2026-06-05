@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { api, type ScriptData, type TimelineData, type AppSettings } from "../api/client";
+import { api, type ScriptData, type TimelineData, type AppSettings, type PublishResultRec } from "../api/client";
 import {
   btnPrimary, btnSecondary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
   sectionTitleCls, inputCls, labelCls, errorTextCls,
@@ -1031,30 +1031,80 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
 
 // ─── S6: 发布 ──────────────────────────────────────────
 
-function S6Panel({ run }: { run: PipelineRun }) {
+function S6Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const { data: targets } = useSWR("publishers", api.publishers.list);
+  const { data: results, mutate: mutateResults } = useSWR<PublishResultRec[]>(
+    `publish-results-${runId}`,
+    () => api.runs.publishResults(runId).catch(() => [] as PublishResultRec[]),
+    { refreshInterval: run.status === "processing" ? 2000 : 0 },
+  );
+  const [publishing, setPublishing] = useState(false);
+  const { showToast } = useToast();
+
+  // 发布状态变化（开始/完成）时刷新结果
+  useEffect(() => { mutateResults(); }, [run.status, run.finished_at, mutateResults]);
+
   // publish_platforms 存的是发布账号 id
   const ids: string[] = (() => { try { return JSON.parse(run.publish_platforms); } catch { return []; } })();
   if (ids.length === 0) return <p className="text-white/30 text-sm">未选择发布账号</p>;
   const byId = new Map((targets ?? []).map((t) => [String(t.id), t]));
+  const resultByName = new Map((results ?? []).map((r) => [r.target_name ?? r.platform, r]));
+  const isPublishing = (run.current_stage === 6 && run.status === "processing") || publishing;
+  const hasResults = (results ?? []).length > 0;
+  const noOutput = !run.output_path;
+
+  const handlePublish = async () => {
+    setPublishing(true);
+    try { await api.runs.triggerPublish(runId); showToast("开始发布...", "success"); mutateResults(); }
+    catch (e) { showToast(e instanceof Error ? e.message : "发布启动失败", "error"); setPublishing(false); }
+  };
+
   return (
-    <div className="space-y-2">
-      {ids.map((id) => {
-        const t = byId.get(String(id));
-        return (
-          <div key={id} className={`${cardCls} p-4 flex justify-between items-center`}>
-            <div className="flex items-center gap-2">
-              <span className="text-sm">{t ? t.name : `账号 #${id}`}</span>
-              {t && (
-                <span className={`${chipCls} bg-white/[0.06] text-white/40`}>
-                  {PLATFORM_LABELS[t.platform] ?? t.platform}
-                </span>
-              )}
+    <div>
+      <div className="space-y-2 mb-3">
+        {ids.map((id) => {
+          const t = byId.get(String(id));
+          const name = t ? t.name : `账号 #${id}`;
+          const r = resultByName.get(name);
+          return (
+            <div key={id} className={`${cardCls} p-4 flex justify-between items-center gap-3`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm truncate">{name}</span>
+                {t && (
+                  <span className={`${chipCls} bg-white/[0.06] text-white/40`}>
+                    {PLATFORM_LABELS[t.platform] ?? t.platform}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {r?.status === "success" ? (
+                  <>
+                    <span className={`${chipCls} bg-green-500/15 text-green-300`}>成功</span>
+                    {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-xs text-blue-300 hover:underline">查看</a>}
+                  </>
+                ) : r ? (
+                  <span className={`${chipCls} bg-red-500/15 text-red-300`} title={r.error_message ?? ""}>失败</span>
+                ) : isPublishing ? (
+                  <span className={`${chipCls} bg-white/[0.06] text-white/40`}>发布中...</span>
+                ) : (
+                  <span className={`${chipCls} bg-white/[0.06] text-white/40`}>等待中</span>
+                )}
+              </div>
             </div>
-            <span className={`${chipCls} bg-white/[0.06] text-white/40`}>等待中</span>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+
+      {(results ?? []).filter((r) => r.status !== "success" && r.error_message).map((r, i) => (
+        <p key={i} className="text-xs text-red-300/70 mb-1 break-all">· {r.target_name ?? r.platform}：{r.error_message}</p>
+      ))}
+
+      <div className="flex justify-end mt-3">
+        <button onClick={handlePublish} disabled={isPublishing || noOutput} className={btnPrimary}
+          title={noOutput ? "尚无成片，请先完成渲染（S5）" : ""}>
+          {isPublishing ? "发布中..." : hasResults ? "重新发布" : "发布"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1067,7 +1117,7 @@ function StagePanel({ stage, runId, run }: { stage: number; runId: number; run: 
     case 2: return <S2Panel runId={runId} run={run} audioOnly={run.video_route === "audio"} />;
     case 4: return <S4Panel runId={runId} run={run} />;
     case 5: return <S5Panel runId={runId} run={run} />;
-    case 6: return <S6Panel run={run} />;
+    case 6: return <S6Panel runId={runId} run={run} />;
     default: return null;
   }
 }

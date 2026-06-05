@@ -81,6 +81,14 @@ export interface ArticleData {
   summary?: string;
 }
 
+export interface PublishResultRec {
+  platform: string;
+  status: string;
+  url?: string | null;
+  error_message?: string | null;
+  target_name?: string | null;
+}
+
 export const api = {
   runs: {
     list: () => fetchJSON<PipelineRun[]>("/pipeline/runs"),
@@ -163,6 +171,12 @@ export const api = {
       fetchJSON<{ status: string }>(`/pipeline/runs/${runId}/render`, {
         method: "POST",
       }),
+    triggerPublish: (runId: number) =>
+      fetchJSON<{ status: string }>(`/pipeline/runs/${runId}/publish`, {
+        method: "POST",
+      }),
+    publishResults: (runId: number) =>
+      fetchJSON<PublishResultRec[]>(`/pipeline/runs/${runId}/publish-results`),
     assetUrl: (runId: number, filename: string) => `${BASE}/pipeline/runs/${runId}/assets/${filename}`,
     previewHtmlUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/preview-html`,
     videoUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/video`,
