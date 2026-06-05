@@ -9,13 +9,13 @@ log = get_logger("provider.text.claude")
 
 
 class ClaudeTextProvider(TextProvider):
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-6", base_url: str = "", max_tokens: int = 4096):
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-6", base_url: str = "", max_tokens: int = 65535):
         kwargs: dict = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
         self._client = anthropic.AsyncAnthropic(**kwargs)
         self._model = model
-        self._max_tokens = max_tokens or 4096
+        self._max_tokens = max_tokens or 65535
         self._base_url = base_url or "https://api.anthropic.com"
         log.info("Initialized ClaudeTextProvider model=%s base_url=%s", model, base_url or "(default)")
 

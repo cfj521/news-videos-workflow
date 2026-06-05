@@ -42,7 +42,7 @@ class ProviderCreds(BaseModel):
     """单个供应商的连接凭证与参数。供应商参数库 providers 的一项，被各用途按需引用。"""
     base_url: str = ""
     api_key: str = ""
-    max_output_tokens: int = 4096  # 文本/视觉模型单次生成的输出 token 上限
+    max_output_tokens: int = 65535  # 文本/视觉模型单次生成的输出 token 上限
     models: ProviderModels = ProviderModels()
 
 

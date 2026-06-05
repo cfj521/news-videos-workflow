@@ -50,7 +50,8 @@ RUN ln -sf /app/comfyui /app/backend/comfyui
 
 WORKDIR /app/backend
 
-EXPOSE 8000
+EXPOSE 8189
 
 # 流水线跑在进程内的后台任务，无需独立 worker/broker
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 端口取自环境变量 BACKEND_PORT（由 .env 经 docker-compose 注入），缺省 8189
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8189}"]

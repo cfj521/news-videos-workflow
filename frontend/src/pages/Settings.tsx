@@ -280,12 +280,12 @@ function PurposeSelect({ label, desc, providerKeys, provider, model, modelOption
 
 const EMPTY_SETTINGS: AppSettings = {
   providers: {
-    claude: { base_url: "https://api.anthropic.com", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
-    openai: { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
-    dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
-    "openai-tts": { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
-    "dashscope-tts": { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
-    "azure-speech": { base_url: "", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } },
+    claude: { base_url: "https://api.anthropic.com", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
+    openai: { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
+    dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
+    "openai-tts": { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
+    "dashscope-tts": { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
+    "azure-speech": { base_url: "", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
   },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
@@ -460,7 +460,7 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<"pipeline" | "models" | "comfyui" | "prompts" | "users">("pipeline");
-  const [providerTab, setProviderTab] = useState<string>(PROVIDER_TABS[0].key);
+  const [modelSel, setModelSel] = useState<Record<string, string>>({});  // 每个类型分组当前选中的供应商
   const [newProvider, setNewProvider] = useState("");
   const [imgWf, setImgWf] = useState<string>("z_image");
   const [vidWf, setVidWf] = useState<string>("wan5b");
@@ -481,15 +481,13 @@ export function SettingsPage() {
   const patchProvider = (name: string, p: Partial<ProviderCreds>) => {
     setSettings((prev) => ({
       ...prev,
-      providers: { ...prev.providers, [name]: { ...(prev.providers[name] ?? { base_url: "", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } }), ...p } },
+      providers: { ...prev.providers, [name]: { ...(prev.providers[name] ?? { base_url: "", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } }), ...p } },
     }));
     setDirty(true);
   };
 
-  // 供应商横铺：预设在前 + 用户自定义在后；自定义可选用于流水线选型
+  // 用户自定义供应商（出现在各分组的供应商 chip + 流水线选型）
   const customKeys = Object.keys(settings.providers).filter((k) => !PRESET_PROVIDER_KEYS.includes(k));
-  const providerTabs = [...PRESET_PROVIDER_KEYS, ...customKeys].map((k) => ({ key: k, label: PROVIDER_LABELS[k] ?? k }));
-  const activeProvider = providerTabs.some((t) => t.key === providerTab) ? providerTab : providerTabs[0].key;
   const allProviderKeys = [...PRESET_PROVIDER_KEYS, ...customKeys];
   // 文本/图片/视觉用途的可选供应商：排除纯 TTS 供应商
   const llmProviderKeys = allProviderKeys.filter((k) => !["openai-tts", "dashscope-tts", "azure-speech"].includes(k));
@@ -498,8 +496,42 @@ export function SettingsPage() {
     const name = newProvider.trim();
     if (!name || settings.providers[name]) { setNewProvider(""); return; }
     patchProvider(name, { base_url: "", api_key: "" });
-    setProviderTab(name);
     setNewProvider("");
+  };
+
+  // 渲染一个「类型分组」：组内供应商 chip + 选中后配凭证（按供应商共享）与该类型模型列表
+  const renderModelGroup = (type: "text" | "image" | "vision" | "tts", label: string, presetKeys: string[]) => {
+    const keys = [...presetKeys, ...customKeys];
+    const sel = (modelSel[type] && keys.includes(modelSel[type])) ? modelSel[type] : keys[0];
+    const creds = settings.providers[sel] ?? { base_url: "", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } };
+    const cm = creds.models ?? { text: [], image: [], vision: [], tts: [] };
+    const isCustom = !PRESET_PROVIDER_KEYS.includes(sel);
+    return (
+      <Section key={type} title={label} desc="选供应商后配置其接口/Key 与该类型的模型列表（接口/Key 按供应商共享）">
+        <TabStrip tabs={keys.map((k) => ({ key: k, label: PROVIDER_LABELS[k] ?? k }))} active={sel} onSelect={(k) => setModelSel((s) => ({ ...s, [type]: k }))} />
+        <Field label="接口地址">
+          <input value={creds.base_url} onChange={(e) => patchProvider(sel, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
+        </Field>
+        <SecretField label="API Key" value={creds.api_key} onChange={(v) => patchProvider(sel, { api_key: v })} />
+        {type !== "tts" && (
+          <Field label="输出 tokens" desc="单次生成 token 上限">
+            <input type="number" value={creds.max_output_tokens} min={256} max={200000} step={1024}
+              onChange={(e) => patchProvider(sel, { max_output_tokens: Number(e.target.value) })} className={inputCls} />
+          </Field>
+        )}
+        <ModelListEditor label={`${label}名`} models={cm[type] ?? []} onChange={(l) => patchProvider(sel, { models: { ...cm, [type]: l } })} />
+        {isCustom && (
+          <button
+            onClick={() => {
+              setSettings((prev) => { const p = { ...prev.providers }; delete p[sel]; return { ...prev, providers: p }; });
+              setDirty(true);
+              setModelSel((s) => ({ ...s, [type]: presetKeys[0] }));
+            }}
+            className="text-xs text-red-300/70 hover:text-red-300"
+          >删除自定义供应商「{sel}」</button>
+        )}
+      </Section>
+    );
   };
 
   const handleSave = async () => {
@@ -543,48 +575,17 @@ export function SettingsPage() {
       </div>
 
       {activeTab === "models" && (<>
-      <Section title="模型供应商参数" desc="配置各供应商的接口地址与 API Key（支持自定义供应商）。「当前用哪个供应商 + 哪个模型」请在「流水线配置」页选择。">
-        <TabStrip tabs={providerTabs} active={activeProvider} onSelect={setProviderTab} />
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2">
           <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addProvider(); }}
-            placeholder="自定义供应商名，如 deepseek / siliconflow" className={inputCls} />
-          <button onClick={addProvider} className={btnPrimary}>+ 添加</button>
+            placeholder="添加自定义供应商，如 deepseek / siliconflow（加后在各分组的供应商里出现）" className={inputCls} />
+          <button onClick={addProvider} className={btnPrimary}>+ 添加供应商</button>
         </div>
-        {(() => {
-          const creds = settings.providers[activeProvider] ?? { base_url: "", api_key: "", max_output_tokens: 4096, models: { text: [], image: [], vision: [], tts: [] } };
-          const isCustom = !PRESET_PROVIDER_KEYS.includes(activeProvider);
-          const cm = creds.models ?? { text: [], image: [], vision: [], tts: [] };
-          const setModels = (t: keyof typeof cm, list: string[]) => patchProvider(activeProvider, { models: { ...cm, [t]: list } });
-          return (
-            <>
-              <Field label="接口地址">
-                <input value={creds.base_url} onChange={(e) => patchProvider(activeProvider, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
-              </Field>
-              <SecretField label="API Key" value={creds.api_key} onChange={(v) => patchProvider(activeProvider, { api_key: v })} />
-              <Field label="输出 tokens" desc="单次生成 token 上限；仅文本/视觉类模型生效">
-                <input type="number" value={creds.max_output_tokens} min={256} max={32000} step={256}
-                  onChange={(e) => patchProvider(activeProvider, { max_output_tokens: Number(e.target.value) })} className={inputCls} />
-              </Field>
-              <ModelListEditor label="文本模型" models={cm.text ?? []} onChange={(l) => setModels("text", l)} />
-              <ModelListEditor label="图片模型" models={cm.image ?? []} onChange={(l) => setModels("image", l)} />
-              <ModelListEditor label="多模态模型" models={cm.vision ?? []} onChange={(l) => setModels("vision", l)} />
-              <ModelListEditor label="TTS 模型" models={cm.tts ?? []} onChange={(l) => setModels("tts", l)} />
-              {isCustom && (
-                <button
-                  onClick={() => {
-                    setSettings((prev) => { const p = { ...prev.providers }; delete p[activeProvider]; return { ...prev, providers: p }; });
-                    setDirty(true);
-                    setProviderTab(PRESET_PROVIDER_KEYS[0]);
-                  }}
-                  className="text-xs text-red-300/70 hover:text-red-300"
-                >删除此自定义供应商</button>
-              )}
-            </>
-          );
-        })()}
-        <p className="text-xs text-white/30 pl-1">提示：Edge TTS 免费、无需配置；ComfyUI 的地址与生成参数在「ComfyUI 参数」页配置。点 API Key 右侧眼睛图标可查看完整内容。</p>
-      </Section>
+        {renderModelGroup("text", "文本模型", ["claude", "openai", "dashscope"])}
+        {renderModelGroup("image", "图片模型", ["openai", "dashscope"])}
+        {renderModelGroup("vision", "多模态模型", ["openai", "dashscope"])}
+        {renderModelGroup("tts", "TTS 模型", ["openai-tts", "dashscope-tts", "azure-speech"])}
+        <p className="text-xs text-white/30 pl-1">提示：接口地址/API Key 按供应商共享（任一分组里改即全局生效）；Edge TTS 免费无需配置；ComfyUI 在「ComfyUI 参数」页配。点 API Key 眼睛图标看完整内容。</p>
       </>)}
 
       {activeTab === "pipeline" && (<>

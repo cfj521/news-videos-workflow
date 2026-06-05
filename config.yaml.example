@@ -19,13 +19,13 @@ providers:
   claude:
     base_url: https://api.anthropic.com
     api_key: ""
-    max_output_tokens: 4096
+    max_output_tokens: 65535
     models:
       text: [claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001]
   openai:
     base_url: https://api.openai.com/v1
     api_key: ""
-    max_output_tokens: 4096
+    max_output_tokens: 65535
     models:
       text: [gpt-5.5, gpt-5.5-pro, gpt-5]
       image: [gpt-image-2, gpt-image-1.5, gpt-image-1]
@@ -33,7 +33,7 @@ providers:
   dashscope:
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
     api_key: ""
-    max_output_tokens: 4096
+    max_output_tokens: 65535
     models:
       text: [qwen3.7-max, qwen3.6-plus, qwen3.6-flash]
       image: [wan2.5-t2i-preview, wanx2.1-t2i-turbo, wanx2.1-t2i-plus]

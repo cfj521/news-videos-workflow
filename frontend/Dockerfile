@@ -12,6 +12,8 @@ RUN npm run build
 
 # ---- 运行阶段：Nginx 静态托管 + /api 反向代理到后端 ----
 FROM nginx:alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# 作为模板：nginx 官方 entrypoint 会用 envsubst 把 ${BACKEND_PORT} 替换后写入 conf.d
+# （只替换环境中定义的变量，$host/$uri 等 nginx 变量不受影响）
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
