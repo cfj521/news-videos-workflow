@@ -235,10 +235,10 @@ function TabStrip({ tabs, active, onSelect }: {
   tabs: { key: string; label: string }[]; active: string; onSelect: (k: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5 mb-1">
+    <div className="flex flex-wrap gap-1.5 mb-5">
       {tabs.map((t) => (
         <button key={t.key} type="button" onClick={() => onSelect(t.key)}
-          className={`px-3 py-1.5 text-[13px] rounded-md transition ${active === t.key ? "bg-blue-500/15 text-blue-300 border border-blue-400/30" : "bg-white/[0.03] text-white/45 border border-white/[0.06] hover:text-white/70"}`}>
+          className={`px-2.5 py-1 text-xs rounded-md transition ${active === t.key ? "bg-blue-500/15 text-blue-300 border border-blue-400/30" : "bg-white/[0.03] text-white/45 border border-white/[0.06] hover:text-white/70"}`}>
           {t.label}
         </button>
       ))}
