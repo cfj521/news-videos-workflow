@@ -198,3 +198,39 @@ async def test_aihot_weekly_empty_when_no_dailies_in_range():
         _mock_router(mock_cls, routes)
         articles = await collector.collect(source_config={"method": "weekly"}, time_range="7d")
     assert articles == []
+
+
+@pytest.mark.asyncio
+async def test_aihot_weekly_uses_configured_week_start():
+    """source_config.week_start 指定的周应被采用，而非默认上周。"""
+    today = date.today()
+    this_monday = today - timedelta(days=today.weekday())
+    ws = this_monday - timedelta(days=14)  # 上上周
+    d1 = ws.isoformat()
+    routes = {"/dailies": ({"items": [{"date": d1}]}, 200), f"/daily/{d1}": (_daily_for(d1), 200)}
+    collector = AIHotCollector()
+    with patch("app.providers.collector.aihot.httpx.AsyncClient") as mock_cls:
+        _mock_router(mock_cls, routes)
+        articles = await collector.collect(
+            source_config={"method": "weekly", "week_start": ws.isoformat()}, time_range="7d")
+    assert len(articles) == 1
+    assert articles[0].metadata["week_start"] == ws.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_list_available_weeks_counts_days():
+    from app.providers.collector.aihot import list_available_weeks
+    today = date.today()
+    this_monday = today - timedelta(days=today.weekday())
+    prev = this_monday - timedelta(days=7)
+    prev2 = this_monday - timedelta(days=14)
+    archive = {"items": [
+        {"date": prev.isoformat()}, {"date": (prev + timedelta(days=1)).isoformat()},  # 上周 2 天
+        {"date": prev2.isoformat()},                                                    # 上上周 1 天
+    ]}
+    with patch("app.providers.collector.aihot.httpx.AsyncClient") as mock_cls:
+        _mock_router(mock_cls, {"/dailies": (archive, 200)})
+        weeks = await list_available_weeks()
+    by_start = {w["week_start"]: w["days"] for w in weeks}
+    assert by_start[prev.isoformat()] == 2
+    assert by_start[prev2.isoformat()] == 1

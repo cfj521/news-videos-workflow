@@ -197,7 +197,7 @@ async def _distill_weekly_if_needed(articles, log):
 
 def _no_article_message(digest_method) -> str:
     if digest_method == "weekly":
-        return "上周 AI 日报数据不足，无法生成周报，请改用日报(daily)或动态(items)模式"
+        return "所选周的 AI 日报数据不足，请在「信息源 → AI HOT」改选有数据的周，或切换日报(daily)/动态(items)模式"
     if digest_method == "daily":
         return "今日 AI 日报尚未生成，请稍后再试或切换为动态(items)模式"
     return "No articles collected"

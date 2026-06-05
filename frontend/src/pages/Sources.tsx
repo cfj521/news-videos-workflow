@@ -136,6 +136,8 @@ function AIHotGroupCard({ source, customIds, onChange }: {
   const cfg = parseConfig(source.config_json);
   const method = (cfg.method as string) ?? "items";
   const category = (cfg.category as string) ?? "";
+  const weekStart = (cfg.week_start as string) ?? "";
+  const { data: weeks } = useSWR(method === "weekly" ? "aihot-weeks" : null, api.sources.aihotWeeks);
 
   const setConfig = async (patch: Record<string, unknown>) => {
     await api.sources.update(source.id, { config_json: JSON.stringify({ ...cfg, ...patch }) });
@@ -177,6 +179,22 @@ function AIHotGroupCard({ source, customIds, onChange }: {
       {method === "items" && (
         <div className="w-48">
           <Select value={category} onChange={(v) => setConfig({ category: v })} options={AIHOT_CATEGORIES} />
+        </div>
+      )}
+      {method === "weekly" && (
+        <div className="w-72">
+          <Select
+            value={weekStart}
+            onChange={(v) => setConfig({ week_start: v })}
+            options={[
+              { value: "", label: "自动（上一完整周）" },
+              ...(weeks ?? []).map((w) => ({
+                value: w.week_start,
+                label: `${w.week_start.slice(5).replace("-", "/")}~${w.week_end.slice(5).replace("-", "/")}（${w.days}天）`,
+              })),
+            ]}
+          />
+          <p className="text-xs text-white/30 mt-1.5">按 /dailies 实际数据列出可选周，天数不足 7 的周也可选用。</p>
         </div>
       )}
     </div>

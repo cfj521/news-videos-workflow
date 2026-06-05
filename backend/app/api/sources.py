@@ -15,6 +15,17 @@ def list_sources(db: Session = Depends(get_db)):
     return db.query(NewsSource).order_by(NewsSource.priority).all()
 
 
+@router.get("/aihot/weeks")
+async def aihot_weeks():
+    """AI HOT 周报可选的「自然周」及其可用日报天数（供前端周选择框）。"""
+    from app.providers.collector.aihot import list_available_weeks
+    try:
+        return await list_available_weeks()
+    except Exception as e:
+        log.warning("Failed to list AI HOT weeks: %s", e)
+        return []
+
+
 @router.post("/", response_model=NewsSourceRead, status_code=201)
 def create_source(body: NewsSourceCreate, db: Session = Depends(get_db)):
     source = NewsSource(**body.model_dump())

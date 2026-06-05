@@ -110,12 +110,22 @@ class AIHotCollector(CollectorProvider):
         return [article]
 
     async def _collect_weekly(self, source_config: dict) -> list[RawArticleData]:
-        """聚合上一个完整自然周（周一~周日）的每日日报，扁平汇总条目供 Stage1 提炼。"""
+        """聚合某一自然周（周一~周日）的每日日报，扁平汇总条目供 Stage1 提炼。
+
+        source_config["week_start"]（YYYY-MM-DD，须为周一）指定具体周；缺省取上一完整周。
+        """
         t0 = _time.time()
         today = date.today()
         this_monday = today - timedelta(days=today.weekday())
-        week_start = this_monday - timedelta(days=7)
-        week_end = this_monday - timedelta(days=1)
+        ws_cfg = source_config.get("week_start")
+        if ws_cfg:
+            try:
+                week_start = date.fromisoformat(str(ws_cfg))
+            except (ValueError, TypeError):
+                week_start = this_monday - timedelta(days=7)
+        else:
+            week_start = this_monday - timedelta(days=7)
+        week_end = week_start + timedelta(days=6)
 
         async with httpx.AsyncClient(timeout=30, headers=_HEADERS) as client:
             resp = await client.get(f"{API}/dailies")
@@ -190,3 +200,38 @@ class AIHotCollector(CollectorProvider):
         log.info("Collected AI Hot weekly (%s~%s, %d items) in %.1fs",
                  week_start, week_end, len(weekly_items), _time.time() - t0)
         return [article]
+
+
+async def list_available_weeks(weeks_back: int = 8) -> list[dict]:
+    """基于 /dailies 归档返回最近若干「有数据的自然周」及其可用天数，供前端选择周报覆盖周。
+
+    返回按时间倒序：[{week_start, week_end, days}]（仅含 days>=1 的周）。
+    """
+    from collections import Counter
+
+    async with httpx.AsyncClient(timeout=30, headers=_HEADERS) as client:
+        resp = await client.get(f"{API}/dailies")
+        if resp.status_code == 404:
+            return []
+        resp.raise_for_status()
+        archive = resp.json()
+
+    counts: Counter = Counter()
+    for it in archive.get("items", []):
+        try:
+            d = date.fromisoformat(str(it.get("date", "")))
+        except (ValueError, TypeError):
+            continue
+        counts[d - timedelta(days=d.weekday())] += 1  # 归到所在周的周一
+
+    today = date.today()
+    this_monday = today - timedelta(days=today.weekday())
+    weeks: list[dict] = []
+    for i in range(1, weeks_back + 1):
+        ws = this_monday - timedelta(days=7 * i)
+        days = counts.get(ws, 0)
+        if days <= 0:
+            continue
+        weeks.append({"week_start": ws.isoformat(),
+                      "week_end": (ws + timedelta(days=6)).isoformat(), "days": days})
+    return weeks

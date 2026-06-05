@@ -7,7 +7,7 @@ from app.providers.base import RawArticleData
 
 
 def test_no_article_message_weekly():
-    assert "周报" in _no_article_message("weekly")
+    assert "数据不足" in _no_article_message("weekly")
 
 
 def test_no_article_message_daily():
