@@ -343,14 +343,13 @@ function AddSceneDialog({ runId, groupId, onDone, onClose }: { runId: number; gr
 }
 
 function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; audioOnly: boolean }) {
-  const live = run.status === "processing";
-  const { data: script, mutate: mutateScript } = useSWR<ScriptData>(`script-${runId}`, () => api.runs.script(runId).catch(() => null as unknown as ScriptData), { refreshInterval: live ? 3000 : 0 });
-  const { data: timeline } = useSWR<TimelineData>(`timeline-${runId}`, () => api.runs.timeline(runId).catch(() => null as unknown as TimelineData), { refreshInterval: live ? 3000 : 0 });
+  const { data: script, mutate: mutateScript } = useSWR<ScriptData>(`script-${runId}`, () => api.runs.script(runId).catch(() => null as unknown as ScriptData));
+  const { data: timeline, mutate: mutateTimeline } = useSWR<TimelineData>(`timeline-${runId}`, () => api.runs.timeline(runId).catch(() => null as unknown as TimelineData));
   const [imgSize, setImgSize] = useState("");
   const [addGroup, setAddGroup] = useState<number | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [regenning, setRegenning] = useState(false);
-  const [liveTick, setLiveTick] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const { showToast } = useToast();
   const { mutate: globalMutate } = useSWRConfig();
   // 图片生成尺寸 = 任务级分辨率（建任务时已必填）
@@ -364,13 +363,14 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
       globalMutate(`run-${runId}`);
     } catch { showToast("更新分辨率失败", "error"); }
   };
-  // 运行中每 3s 递增，给图片/音频 URL 加 cache-bust，使陆续生成的素材自动可见
-  // （图片/音频是独立文件，脚本 JSON 内容不变，故不能依赖数据变化触发）
+  // 事件驱动刷新（替代固定计时器盲刷）：流水线每推进一个阶段或状态变化时——这些变更
+  // 由父组件每 2s 轮询 run 感知到——重新拉取脚本/时间轴，并给图片/音频 URL 换一次
+  // cache-bust，使新生成的素材显示出来。即「生成完成」这一事件发生时才执行一次。
   useEffect(() => {
-    if (!live) return;
-    const id = setInterval(() => setLiveTick((t) => t + 1), 3000);
-    return () => clearInterval(id);
-  }, [live]);
+    mutateScript();
+    mutateTimeline();
+    setRefreshTick(Date.now());
+  }, [run.current_stage, run.status, mutateScript, mutateTimeline]);
 
   const handleRegenScript = async () => {
     setRegenning(true);
@@ -434,7 +434,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
                 const durS = entry ? ((entry.end_ms - entry.start_ms) / 1000).toFixed(1) : null;
                 return (
                   <SceneEditor key={scene.id} runId={runId} scene={scene} durationS={durS} mutateScript={mutateScript} imgSize={imgSize}
-                    liveTick={liveTick} onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} audioOnly={audioOnly} />
+                    refreshTick={refreshTick} onDelete={() => onDelete(scene.id)} canDelete={groupScenes.length > 1} audioOnly={audioOnly} />
                 );
               })}
             </div>
@@ -462,8 +462,8 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
   );
 }
 
-function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, liveTick = 0, onDelete, canDelete, audioOnly }: {
-  runId: number; scene: ScriptData["scenes"][0]; durationS: string | null; mutateScript: () => void; imgSize: string; liveTick?: number; onDelete?: () => void; canDelete?: boolean; audioOnly?: boolean;
+function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTick = 0, onDelete, canDelete, audioOnly }: {
+  runId: number; scene: ScriptData["scenes"][0]; durationS: string | null; mutateScript: () => void; imgSize: string; refreshTick?: number; onDelete?: () => void; canDelete?: boolean; audioOnly?: boolean;
 }) {
   const [narration, setNarration] = useState(scene.narration);
   const [prompt, setPrompt] = useState(scene.image_prompt);
@@ -512,9 +512,9 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, liveTick 
       <div className="flex gap-4">
         <div className="w-[200px] shrink-0">
           {!audioOnly && (
-            <img src={(imgTs || liveTick) ? `${imgSrc}?t=${imgTs || liveTick}` : imgSrc} className="w-full rounded-lg bg-white/[0.02]" onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
+            <img src={(imgTs || refreshTick) ? `${imgSrc}?t=${imgTs || refreshTick}` : imgSrc} className="w-full rounded-lg bg-white/[0.02]" onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
           )}
-          <audio controls src={(audioTs || liveTick) ? `${audioSrc}?t=${audioTs || liveTick}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-2"}`} />
+          <audio controls src={(audioTs || refreshTick) ? `${audioSrc}?t=${audioTs || refreshTick}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-2"}`} />
         </div>
         <div className="flex-1 space-y-3 min-w-0">
           <div className="flex justify-between items-center">

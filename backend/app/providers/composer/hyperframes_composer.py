@@ -1,6 +1,11 @@
+import os
 import subprocess
 import time
 from pathlib import Path
+
+# Windows 上 npx 是 npx.cmd，subprocess 需经 shell 才能解析；POSIX 上 npx 是真实
+# 可执行文件，且 shell=True 配合列表参数会丢掉除第一项外的所有参数，必须 shell=False。
+_NEEDS_SHELL = os.name == "nt"
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -28,7 +33,7 @@ class HyperframesComposer(ComposerProvider):
         log.info("Running npx hyperframes render → %s", abs_output)
         result = subprocess.run(
             ["npx", "hyperframes", "render", "--output", abs_output, "--fps", "30", "--quality", "standard"],
-            cwd=str(run_dir), capture_output=True, timeout=600, shell=True,
+            cwd=str(run_dir), capture_output=True, timeout=600, shell=_NEEDS_SHELL,
         )
 
         if result.returncode != 0:
@@ -103,7 +108,7 @@ class HyperframesComposer(ComposerProvider):
         try:
             subprocess.run(
                 ["ffmpeg", "-i", video_path, "-ss", "1", "-vframes", "1", "-q:v", "2", thumb_path, "-y"],
-                capture_output=True, timeout=30, shell=True,
+                capture_output=True, timeout=30,
             )
             if Path(thumb_path).exists():
                 log.info("Thumbnail extracted → %s", thumb_path)

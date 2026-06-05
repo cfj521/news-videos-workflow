@@ -906,7 +906,9 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) ->
            "-map", "[outv]", "-map", "[outa]",
            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
            "-c:a", "aac", "-b:a", "128k", "-shortest", output_path]
-    _run_ffmpeg(cmd, service="视频合成", shell=True)
+    # 注意：不能用 shell=True + 列表参数。POSIX 下那样只会把 cmd[0] 当命令、其余
+    # 当 shell 自身的参数，ffmpeg 实际收到零参数而打印用法退出（Docker/WSL 即如此）。
+    _run_ffmpeg(cmd, service="视频合成")
     return output_path
 
 

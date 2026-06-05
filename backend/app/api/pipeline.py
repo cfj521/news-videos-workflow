@@ -22,6 +22,9 @@ from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
 
 log = get_logger("api.pipeline")
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
+# 公开的只读媒体端点（图片/音频/预览 HTML/视频）：浏览器的 <img>/<audio>/<video>
+# 标签与 iframe 内的相对引用都无法携带 Authorization 头，故这些 GET 不挂登录守卫。
+public_router = APIRouter(prefix="/api/pipeline", tags=["pipeline-public"])
 
 
 def _run_dir(run_id: int) -> Path:
@@ -130,7 +133,7 @@ def delete_run(run_id: int, db: Session = Depends(get_db)):
 
 # ─── Asset serving ────────────────────────────────────────
 
-@router.get("/runs/{run_id}/assets/{filename:path}")
+@public_router.get("/runs/{run_id}/assets/{filename:path}")
 def get_asset(run_id: int, filename: str):
     # 防路径穿越：解析后必须仍落在该任务的 assets/ 目录内，否则视为不存在。
     assets_root = (_run_dir(run_id) / "assets").resolve()
@@ -442,7 +445,7 @@ async def regen_scene_image(run_id: int, scene_id: int, body: RegenImageRequest,
     img_provider = build_image_provider(cfg)
     image_path = str(rd / "assets" / f"scene_{scene_id:02d}_image.png")
     log.info("Regenerating image for run #%d scene %d: %s", run_id, scene_id, body.image_prompt[:60])
-    img_size = body.size or run.resolution or cfg.video.resolution
+    img_size = body.size or run.resolution or "1080x1920"
     await img_provider.generate(prompt=body.image_prompt, size=img_size, output_path=image_path)
 
     return {"status": "ok", "scene_id": scene_id}
@@ -643,7 +646,7 @@ def delete_scene(run_id: int, scene_id: int):
 
 # ─── Preview HTML ─────────────────────────────────────────
 
-@router.get("/runs/{run_id}/preview-html")
+@public_router.get("/runs/{run_id}/preview-html")
 def get_preview_html(run_id: int, db: Session = Depends(get_db)):
     rd = _run_dir(run_id)
     timeline_path = rd / "timeline.json"
@@ -651,7 +654,7 @@ def get_preview_html(run_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No timeline — run stage 4 first")
     cfg = get_settings()
     run = db.get(PipelineRun, run_id)
-    resolution = (run.resolution if run else None) or cfg.video.resolution
+    resolution = (run.resolution if run else None) or "1080x1920"
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
     from app.providers.composer.hyperframes_composer import HyperframesComposer
     composer = HyperframesComposer()
@@ -721,7 +724,7 @@ async def _render_video_async(run_id: int, session_factory):
 
         timeline = json.loads((rd / "timeline.json").read_text(encoding="utf-8"))
         output_mp4 = str((rd / "output.mp4").resolve())
-        resolution = run.resolution or cfg.video.resolution
+        resolution = run.resolution or "1080x1920"
 
         if run.video_route == "comfyui":
             _update(db, run, progress_detail="S5 ComfyUI 视频生成中...")
@@ -789,7 +792,7 @@ def _output_media_meta(path: Path) -> tuple[str, str]:
     return "video/mp4", "mp4"
 
 
-@router.get("/runs/{run_id}/video")
+@public_router.get("/runs/{run_id}/video")
 def get_video(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
     if not run or not run.output_path:
