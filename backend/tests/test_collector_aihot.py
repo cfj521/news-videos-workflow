@@ -156,7 +156,7 @@ async def test_aihot_weekly_aggregates_prev_week():
     with patch("app.providers.collector.aihot.httpx.AsyncClient") as mock_cls:
         client = _mock_router(mock_cls, routes)
         articles = await collector.collect(
-            source_config={"method": "weekly", "name": "AI HOT"}, time_range="7d")
+            source_config={"method": "weekly", "name": "AI HOT", "week_start": ws.isoformat()}, time_range="7d")
     assert len(articles) == 1
     a = articles[0]
     assert a.metadata["aihot_method"] == "weekly"
@@ -215,6 +215,25 @@ async def test_aihot_weekly_uses_configured_week_start():
             source_config={"method": "weekly", "week_start": ws.isoformat()}, time_range="7d")
     assert len(articles) == 1
     assert articles[0].metadata["week_start"] == ws.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_aihot_weekly_auto_picks_latest_data_week():
+    """自动（无 week_start）应取最近有数据的周，而非死板的上一日历周。"""
+    today = date.today()
+    this_monday = today - timedelta(days=today.weekday())
+    prev = this_monday - timedelta(days=7)
+    prev2 = this_monday - timedelta(days=14)
+    archive = {"items": [{"date": prev2.isoformat()}, {"date": prev.isoformat()}]}
+    routes = {"/dailies": (archive, 200),
+              f"/daily/{prev.isoformat()}": (_daily_for(prev.isoformat()), 200),
+              f"/daily/{prev2.isoformat()}": (_daily_for(prev2.isoformat()), 200)}
+    collector = AIHotCollector()
+    with patch("app.providers.collector.aihot.httpx.AsyncClient") as mock_cls:
+        _mock_router(mock_cls, routes)
+        articles = await collector.collect(source_config={"method": "weekly"}, time_range="7d")
+    assert len(articles) == 1
+    assert articles[0].metadata["week_start"] == prev.isoformat()  # 最近有数据的周
 
 
 @pytest.mark.asyncio

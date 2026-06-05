@@ -170,7 +170,7 @@ function AIHotGroupCard({ source, customIds, onChange }: {
           <button
             key={m}
             onClick={() => setConfig({ method: m })}
-            className={segItem(method === m)}
+            className={`${segItem(method === m)} !px-5 !py-2.5 !text-sm`}
           >
             {m === "items" ? "动态" : m === "daily" ? "日报" : "周报"}
           </button>
@@ -187,14 +187,13 @@ function AIHotGroupCard({ source, customIds, onChange }: {
             value={weekStart}
             onChange={(v) => setConfig({ week_start: v })}
             options={[
-              { value: "", label: "自动（上一完整周）" },
+              { value: "", label: "自动（最近有数据的周）" },
               ...(weeks ?? []).map((w) => ({
                 value: w.week_start,
                 label: `${w.week_start.slice(5).replace("-", "/")}~${w.week_end.slice(5).replace("-", "/")}（${w.days}天）`,
               })),
             ]}
           />
-          <p className="text-xs text-white/30 mt-1.5">按 /dailies 实际数据列出可选周，天数不足 7 的周也可选用。</p>
         </div>
       )}
     </div>

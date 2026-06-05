@@ -112,20 +112,13 @@ class AIHotCollector(CollectorProvider):
     async def _collect_weekly(self, source_config: dict) -> list[RawArticleData]:
         """聚合某一自然周（周一~周日）的每日日报，扁平汇总条目供 Stage1 提炼。
 
-        source_config["week_start"]（YYYY-MM-DD，须为周一）指定具体周；缺省取上一完整周。
+        source_config["week_start"]（YYYY-MM-DD，须为周一）指定具体周；
+        缺省（自动）取 /dailies 中「最近有数据」的那一周。
         """
         t0 = _time.time()
         today = date.today()
         this_monday = today - timedelta(days=today.weekday())
         ws_cfg = source_config.get("week_start")
-        if ws_cfg:
-            try:
-                week_start = date.fromisoformat(str(ws_cfg))
-            except (ValueError, TypeError):
-                week_start = this_monday - timedelta(days=7)
-        else:
-            week_start = this_monday - timedelta(days=7)
-        week_end = week_start + timedelta(days=6)
 
         async with httpx.AsyncClient(timeout=30, headers=_HEADERS) as client:
             resp = await client.get(f"{API}/dailies")
@@ -135,16 +128,29 @@ class AIHotCollector(CollectorProvider):
             resp.raise_for_status()
             archive = resp.json()
 
-            dates: list[str] = []
+            all_dates: list[date] = []
             for it in archive.get("items", []):
-                raw = it.get("date", "")
                 try:
-                    d = date.fromisoformat(raw)
-                except ValueError:
+                    all_dates.append(date.fromisoformat(str(it.get("date", ""))))
+                except (ValueError, TypeError):
                     continue
-                if week_start <= d <= week_end:
-                    dates.append(raw)
-            dates.sort()
+
+            if ws_cfg:
+                try:
+                    week_start = date.fromisoformat(str(ws_cfg))
+                except (ValueError, TypeError):
+                    week_start = this_monday - timedelta(days=7)
+            elif all_dates:
+                # 自动：取「最近有数据」的那一周（该日期所属周的周一），而非死板的上一日历周
+                latest = max(all_dates)
+                week_start = latest - timedelta(days=latest.weekday())
+            else:
+                week_start = this_monday - timedelta(days=7)
+            week_end = week_start + timedelta(days=6)
+            log.info("AI Hot weekly window: %s ~ %s (%s)", week_start, week_end,
+                     "指定周" if ws_cfg else "自动·最近有数据周")
+
+            dates = sorted(d.isoformat() for d in all_dates if week_start <= d <= week_end)
 
             weekly_items: list[dict] = []
             content_lines: list[str] = []
@@ -186,7 +192,7 @@ class AIHotCollector(CollectorProvider):
 
         content = "\n".join(content_lines).strip()
         article = RawArticleData(
-            title=f"本周 AI 热点回顾 {week_start}~{week_end}",
+            title=f"AI 热点周报 {week_start}~{week_end}",
             content=content,
             source_url="https://aihot.virxact.com",
             source_name="AI HOT 周报",
