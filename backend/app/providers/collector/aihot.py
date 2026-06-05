@@ -233,7 +233,8 @@ async def list_available_weeks(weeks_back: int = 8) -> list[dict]:
     today = date.today()
     this_monday = today - timedelta(days=today.weekday())
     weeks: list[dict] = []
-    for i in range(1, weeks_back + 1):
+    # 从本周（i=0）起回溯：本周往往有最新数据（自动也选它），需可在下拉中显式选到
+    for i in range(0, weeks_back + 1):
         ws = this_monday - timedelta(days=7 * i)
         days = counts.get(ws, 0)
         if days <= 0:

@@ -90,6 +90,22 @@ async def test_stage1_aihot_daily_single_passthrough():
     assert result[0].metadata["aihot_method"] == "daily"
 
 
+@pytest.mark.asyncio
+async def test_stage1_aihot_skips_compliance():
+    """AI HOT 已审编：items/daily/weekly 含「暴力」等正常新闻词都不应被本地合规删掉。"""
+    for method in ("items", "daily", "weekly"):
+        mock_collector = AsyncMock()
+        mock_collector.collect.return_value = [
+            _aihot_article("汇总", method=method, content="今日要闻：某地发生暴力冲突事件，AI 行业持续发展……"),
+        ]
+        result = await run_stage1(
+            sources=[{"name": "AI HOT", "type": "aihot", "url": "https://aihot.virxact.com/api/public"}],
+            collectors={"aihot": mock_collector}, time_range="7d", max_articles=5,
+        )
+        assert len(result) == 1, f"{method} 含敏感词被误删"
+        assert result[0].metadata["aihot_method"] == method
+
+
 class _FakeWeeklyCollector(CollectorProvider):
     async def collect(self, source_config, time_range, max_items=30):
         return [RawArticleData(

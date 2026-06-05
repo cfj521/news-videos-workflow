@@ -59,15 +59,16 @@ async def run_stage1(
 
     is_aihot = bool(all_articles) and all_articles[0].metadata.get("source_group") == "aihot"
 
-    # AI HOT：聚合平台已精选/去重，跳过去重与评分，仅做合规与截断
+    # AI HOT：聚合平台已精选/审编，跳过去重、评分，也跳过本地合规过滤。
+    # 本地关键词合规是为原始网页抓取设计的，会因正常新闻词（如"暴力/事故"）误删已审编内容；
+    # 既然去重/评分都因"聚合源已处理"而跳过，合规同理。日报/周报为单篇汇总，items 取前 N。
     if is_aihot:
         method = all_articles[0].metadata.get("aihot_method", "items")
-        compliant = _filter_compliant(all_articles)
         if method in ("daily", "weekly"):
-            log.info("AI HOT %s — single-doc passthrough", method)
-            return compliant[:1]
-        log.info("AI HOT items — taking top %d (no dedup/scoring)", max_articles)
-        return compliant[:max_articles]
+            log.info("AI HOT %s — single-doc passthrough (curated, no dedup/scoring/compliance)", method)
+            return all_articles[:1]
+        log.info("AI HOT items — taking top %d (curated, no dedup/scoring/compliance)", max_articles)
+        return all_articles[:max_articles]
 
     # 普通源：始终去重 → 合规 → 评分挑 top N
     dedup = DedupService()
