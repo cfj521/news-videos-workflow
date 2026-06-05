@@ -264,12 +264,12 @@ function PurposeSelect({ label, desc, providers, provider, model, onProvider, on
 
 const EMPTY_SETTINGS: AppSettings = {
   providers: {
-    claude: { base_url: "https://api.anthropic.com", api_key: "" },
-    openai: { base_url: "https://api.openai.com/v1", api_key: "" },
-    dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "" },
-    "openai-tts": { base_url: "https://api.openai.com/v1", api_key: "" },
-    "dashscope-tts": { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "" },
-    "azure-speech": { base_url: "", api_key: "" },
+    claude: { base_url: "https://api.anthropic.com", api_key: "", max_output_tokens: 4096 },
+    openai: { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 4096 },
+    dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 4096 },
+    "openai-tts": { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 4096 },
+    "dashscope-tts": { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 4096 },
+    "azure-speech": { base_url: "", api_key: "", max_output_tokens: 4096 },
   },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
@@ -298,6 +298,8 @@ const PROVIDER_TABS: { key: string; label: string }[] = [
   { key: "dashscope-tts", label: "阿里云 CosyVoice" },
   { key: "azure-speech", label: "Azure Speech" },
 ];
+const PRESET_PROVIDER_KEYS = PROVIDER_TABS.map((t) => t.key);
+const PROVIDER_LABELS: Record<string, string> = Object.fromEntries(PROVIDER_TABS.map((t) => [t.key, t.label]));
 
 // 流水线选型：各用途可选「供应商 → 模型建议」。tts 单独处理（供应商 + 音色）。
 const PURPOSE_PROVIDERS: Record<string, Record<string, string[]>> = {
@@ -459,6 +461,7 @@ export function SettingsPage() {
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<"pipeline" | "models" | "comfyui" | "prompts" | "users">("pipeline");
   const [providerTab, setProviderTab] = useState<string>(PROVIDER_TABS[0].key);
+  const [newProvider, setNewProvider] = useState("");
   const [imgWf, setImgWf] = useState<string>("z_image");
   const [vidWf, setVidWf] = useState<string>("wan5b");
   const { showToast } = useToast();
@@ -478,9 +481,25 @@ export function SettingsPage() {
   const patchProvider = (name: string, p: Partial<ProviderCreds>) => {
     setSettings((prev) => ({
       ...prev,
-      providers: { ...prev.providers, [name]: { ...(prev.providers[name] ?? { base_url: "", api_key: "" }), ...p } },
+      providers: { ...prev.providers, [name]: { ...(prev.providers[name] ?? { base_url: "", api_key: "", max_output_tokens: 4096 }), ...p } },
     }));
     setDirty(true);
+  };
+
+  // 供应商横铺：预设在前 + 用户自定义在后；自定义可选用于流水线选型
+  const customKeys = Object.keys(settings.providers).filter((k) => !PRESET_PROVIDER_KEYS.includes(k));
+  const providerTabs = [...PRESET_PROVIDER_KEYS, ...customKeys].map((k) => ({ key: k, label: PROVIDER_LABELS[k] ?? k }));
+  const activeProvider = providerTabs.some((t) => t.key === providerTab) ? providerTab : providerTabs[0].key;
+  const withCustom = (preset: Record<string, string[]>) => ({
+    ...preset,
+    ...Object.fromEntries(customKeys.filter((k) => !(k in preset)).map((k) => [k, [] as string[]])),
+  });
+  const addProvider = () => {
+    const name = newProvider.trim();
+    if (!name || settings.providers[name]) { setNewProvider(""); return; }
+    patchProvider(name, { base_url: "", api_key: "" });
+    setProviderTab(name);
+    setNewProvider("");
   };
 
   const handleSave = async () => {
@@ -524,16 +543,37 @@ export function SettingsPage() {
       </div>
 
       {activeTab === "models" && (<>
-      <Section title="模型供应商参数" desc="配置各供应商的接口地址与 API Key。「当前用哪个供应商 + 哪个模型」请在「流水线配置」页选择。">
-        <TabStrip tabs={PROVIDER_TABS} active={providerTab} onSelect={setProviderTab} />
+      <Section title="模型供应商参数" desc="配置各供应商的接口地址与 API Key（支持自定义供应商）。「当前用哪个供应商 + 哪个模型」请在「流水线配置」页选择。">
+        <TabStrip tabs={providerTabs} active={activeProvider} onSelect={setProviderTab} />
+        <div className="flex gap-2 mb-4">
+          <input value={newProvider} onChange={(e) => setNewProvider(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") addProvider(); }}
+            placeholder="自定义供应商名，如 deepseek / siliconflow" className={inputCls} />
+          <button onClick={addProvider} className={btnPrimary}>+ 添加</button>
+        </div>
         {(() => {
-          const creds = settings.providers[providerTab] ?? { base_url: "", api_key: "" };
+          const creds = settings.providers[activeProvider] ?? { base_url: "", api_key: "", max_output_tokens: 4096 };
+          const isCustom = !PRESET_PROVIDER_KEYS.includes(activeProvider);
           return (
             <>
               <Field label="接口地址">
-                <input value={creds.base_url} onChange={(e) => patchProvider(providerTab, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
+                <input value={creds.base_url} onChange={(e) => patchProvider(activeProvider, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
               </Field>
-              <SecretField label="API Key" value={creds.api_key} onChange={(v) => patchProvider(providerTab, { api_key: v })} />
+              <SecretField label="API Key" value={creds.api_key} onChange={(v) => patchProvider(activeProvider, { api_key: v })} />
+              <Field label="输出 tokens" desc="单次生成 token 上限；仅文本/视觉类模型生效">
+                <input type="number" value={creds.max_output_tokens} min={256} max={32000} step={256}
+                  onChange={(e) => patchProvider(activeProvider, { max_output_tokens: Number(e.target.value) })} className={inputCls} />
+              </Field>
+              {isCustom && (
+                <button
+                  onClick={() => {
+                    setSettings((prev) => { const p = { ...prev.providers }; delete p[activeProvider]; return { ...prev, providers: p }; });
+                    setDirty(true);
+                    setProviderTab(PRESET_PROVIDER_KEYS[0]);
+                  }}
+                  className="text-xs text-red-300/70 hover:text-red-300"
+                >删除此自定义供应商</button>
+              )}
             </>
           );
         })()}
@@ -557,16 +597,16 @@ export function SettingsPage() {
             { value: "1080x1080", label: "1080×1080 方形" }, { value: "720x1280", label: "720×1280 竖屏HD" }, { value: "1280x720", label: "1280×720 横屏HD" },
           ]} />
         </Field>
-        <PurposeSelect label="文章总结模型" providers={PURPOSE_PROVIDERS.summary}
+        <PurposeSelect label="文章总结模型" providers={withCustom(PURPOSE_PROVIDERS.summary)}
           provider={settings.pipeline.summary_provider} model={settings.pipeline.summary_model}
           onProvider={(v) => patch("pipeline", { summary_provider: v })} onModel={(v) => patch("pipeline", { summary_model: v })} />
-        <PurposeSelect label="文案脚本模型" providers={PURPOSE_PROVIDERS.script}
+        <PurposeSelect label="文案脚本模型" providers={withCustom(PURPOSE_PROVIDERS.script)}
           provider={settings.pipeline.script_provider} model={settings.pipeline.script_model}
           onProvider={(v) => patch("pipeline", { script_provider: v })} onModel={(v) => patch("pipeline", { script_model: v })} />
-        <PurposeSelect label="图片生成模型" providers={PURPOSE_PROVIDERS.image} desc="comfyui 时为图片 workflow"
+        <PurposeSelect label="图片生成模型" providers={withCustom(PURPOSE_PROVIDERS.image)} desc="comfyui 时为图片 workflow"
           provider={settings.pipeline.image_provider} model={settings.pipeline.image_model}
           onProvider={(v) => patch("pipeline", { image_provider: v })} onModel={(v) => patch("pipeline", { image_model: v })} />
-        <PurposeSelect label="文档解析模型" providers={PURPOSE_PROVIDERS.vision}
+        <PurposeSelect label="文档解析模型" providers={withCustom(PURPOSE_PROVIDERS.vision)}
           provider={settings.pipeline.vision_provider} model={settings.pipeline.vision_model}
           onProvider={(v) => patch("pipeline", { vision_provider: v })} onModel={(v) => patch("pipeline", { vision_model: v })} />
         <Field label="语音生成模型"

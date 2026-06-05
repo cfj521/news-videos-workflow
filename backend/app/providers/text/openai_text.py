@@ -9,12 +9,13 @@ log = get_logger("provider.text.openai")
 
 
 class OpenAITextProvider(TextProvider):
-    def __init__(self, api_key: str, model: str = "gpt-4o", base_url: str = ""):
+    def __init__(self, api_key: str, model: str = "gpt-4o", base_url: str = "", max_tokens: int = 4096):
         kwargs: dict = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
         self._client = openai.AsyncOpenAI(**kwargs)
         self._model = model
+        self._max_tokens = max_tokens or 4096
         self._base_url = base_url or "https://api.openai.com/v1"
         log.info("Initialized OpenAITextProvider model=%s base_url=%s", model, base_url or "(default)")
 
@@ -31,7 +32,7 @@ class OpenAITextProvider(TextProvider):
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_completion_tokens=4096,
+                max_completion_tokens=self._max_tokens,
             )
             text = response.choices[0].message.content or ""
             usage = response.usage

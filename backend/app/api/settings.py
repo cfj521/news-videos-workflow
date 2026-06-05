@@ -36,7 +36,9 @@ async def update_settings(payload: dict):
     for group_key, group_val in payload.items():
         if group_key == "infra":
             continue
-        if isinstance(group_val, dict) and isinstance(current.get(group_key), dict):
+        if group_key == "providers":
+            current["providers"] = group_val  # 整体替换：支持删除自定义供应商（前端发全量）
+        elif isinstance(group_val, dict) and isinstance(current.get(group_key), dict):
             _deep_merge(current[group_key], group_val)
         else:
             current[group_key] = group_val

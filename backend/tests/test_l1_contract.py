@@ -58,14 +58,15 @@ def test_settings_get_returns_full_key(env):
     assert got["providers"]["openai"]["api_key"] == "sk-1234567890abcdef"
 
 
-def test_settings_put_deep_merges_provider(env):
+def test_settings_put_replaces_providers(env):
     client, _, _ = env
-    client.put("/api/settings/", json={"providers": {"openai": {"base_url": "https://x", "api_key": "sk-abc"}}})
-    # 只更新 api_key，base_url 应被保留（深合并）
-    client.put("/api/settings/", json={"providers": {"openai": {"api_key": "sk-new"}}})
+    # providers 整体替换（前端发全量），以支持删除自定义供应商
+    client.put("/api/settings/", json={"providers": {
+        "openai": {"base_url": "https://x", "api_key": "sk-abc", "max_output_tokens": 8000}}})
     raw = client.get("/api/settings/raw").json()
-    assert raw["providers"]["openai"]["api_key"] == "sk-new"
+    assert raw["providers"]["openai"]["api_key"] == "sk-abc"
     assert raw["providers"]["openai"]["base_url"] == "https://x"
+    assert raw["providers"]["openai"]["max_output_tokens"] == 8000
 
 
 def test_settings_put_ignores_infra(env):

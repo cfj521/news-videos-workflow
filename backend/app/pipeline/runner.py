@@ -30,11 +30,12 @@ def _build_text_provider():
     from app.config import resolve
     cfg = get_settings()
     provider, base_url, api_key, model = resolve(cfg, "script")
+    max_tokens = cfg.provider_creds(provider).max_output_tokens
     if provider == "claude":
         from app.providers.text.claude import ClaudeTextProvider
-        return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url)
+        return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
     from app.providers.text.openai_text import OpenAITextProvider
-    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url)
+    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
 
 
 TYPE_TO_COLLECTOR: dict[str, type] = {}
@@ -159,11 +160,12 @@ def _build_summary_provider(cfg):
     provider, base_url, api_key, model = resolve(cfg, "summary")
     if not provider:
         provider, base_url, api_key, model = resolve(cfg, "script")
+    max_tokens = cfg.provider_creds(provider).max_output_tokens
     if provider == "claude":
         from app.providers.text.claude import ClaudeTextProvider
-        return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url)
+        return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
     from app.providers.text.openai_text import OpenAITextProvider
-    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url)
+    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
 
 
 async def _summarize_articles(articles, cfg, run, db, log):

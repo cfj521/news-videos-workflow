@@ -44,7 +44,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export interface ProviderCreds { base_url: string; api_key: string }
+export interface ProviderCreds { base_url: string; api_key: string; max_output_tokens: number }
 
 export interface AppSettings {
   // 供应商参数库：各供应商的连接凭证；当前用哪个由 pipeline 选型决定
