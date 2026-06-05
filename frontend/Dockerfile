@@ -16,4 +16,5 @@ FROM nginx:alpine
 # （只替换环境中定义的变量，$host/$uri 等 nginx 变量不受影响）
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 80
+# 实际监听端口由 ${FRONTEND_PORT} 经 envsubst 注入（见 compose environment）
+EXPOSE 8190
