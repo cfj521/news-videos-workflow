@@ -27,15 +27,15 @@ export function Login({ onSuccess }: { onSuccess: (username: string) => void }) 
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-surface)] text-white/90 px-6">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--color-surface)] text-white/96 px-6">
       <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] p-8 shadow-2xl">
         <div className="text-center space-y-1">
           <h1 className="text-xl font-bold tracking-tight">新闻视频工作流</h1>
-          <p className="text-xs text-white/30">请登录以继续</p>
+          <p className="text-xs text-white/60">请登录以继续</p>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-white/40 mb-1.5">用户名</label>
+            <label className="block text-xs font-medium text-white/66 mb-1.5">用户名</label>
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -46,7 +46,7 @@ export function Login({ onSuccess }: { onSuccess: (username: string) => void }) 
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-white/40 mb-1.5">密码</label>
+            <label className="block text-xs font-medium text-white/66 mb-1.5">密码</label>
             <PasswordInput value={password} onChange={setPassword} placeholder="请输入密码" autoComplete="current-password" className={inputCls} />
           </div>
         </div>

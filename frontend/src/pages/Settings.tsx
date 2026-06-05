@@ -111,19 +111,19 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
     <section className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-6 space-y-5">
       <div>
         <h3 className={sectionTitleCls}>{title}</h3>
-        {desc && <p className="text-xs text-white/30 mt-0.5">{desc}</p>}
+        {desc && <p className="text-xs text-white/60 mt-0.5">{desc}</p>}
       </div>
       {children}
     </section>
   );
 }
 
-function Field({ label, desc, children }: { label: string; desc?: string; children: React.ReactNode }) {
+function Field({ label, desc, children, center }: { label: string; desc?: string; children: React.ReactNode; center?: boolean }) {
   return (
-    <div className="grid grid-cols-[11rem_1fr] gap-4 items-start">
-      <label className="text-sm text-white/40 pt-2 select-none">
+    <div className={`grid grid-cols-[11rem_1fr] gap-4 ${center ? "items-center" : "items-start"}`}>
+      <label className={`text-sm text-white/66 select-none ${center ? "" : "pt-2"}`}>
         {label}
-        {desc && <span className="block text-xs text-white/25 mt-0.5 font-normal">{desc}</span>}
+        {desc && <span className="block text-xs text-white/52 mt-0.5 font-normal">{desc}</span>}
       </label>
       <div>{children}</div>
     </div>
@@ -139,15 +139,25 @@ function ParamFields({ meta, params, onChange }: {
   return (
     <>
       {meta.steps && (
-        <Field label="采样步数" desc={`${meta.steps.desc}；可设 ${meta.steps.min}–${meta.steps.max}`}>
-          <input type="number" value={params.steps} min={meta.steps.min} max={meta.steps.max}
-            onChange={(e) => onChange({ steps: Number(e.target.value) })} className={inputCls} />
+        <Field label="采样步数" center>
+          <div className="flex items-center gap-3">
+            <div className="w-24 shrink-0">
+              <input type="number" value={params.steps} min={meta.steps.min} max={meta.steps.max}
+                onChange={(e) => onChange({ steps: Number(e.target.value) })} className={inputCls} />
+            </div>
+            <span className="text-xs text-white/60 leading-snug">{meta.steps.desc}；范围 {meta.steps.min}–{meta.steps.max}</span>
+          </div>
         </Field>
       )}
       {meta.cfg && (
-        <Field label="CFG" desc={`${meta.cfg.desc}；可设 ${meta.cfg.min}–${meta.cfg.max}`}>
-          <input type="number" step={0.5} value={params.cfg} min={meta.cfg.min} max={meta.cfg.max}
-            onChange={(e) => onChange({ cfg: Number(e.target.value) })} className={inputCls} />
+        <Field label="CFG" center>
+          <div className="flex items-center gap-3">
+            <div className="w-24 shrink-0">
+              <input type="number" step={0.5} value={params.cfg} min={meta.cfg.min} max={meta.cfg.max}
+                onChange={(e) => onChange({ cfg: Number(e.target.value) })} className={inputCls} />
+            </div>
+            <span className="text-xs text-white/60 leading-snug">{meta.cfg.desc}；范围 {meta.cfg.min}–{meta.cfg.max}</span>
+          </div>
         </Field>
       )}
       {meta.note && <p className="text-xs text-amber-300/60 pl-1">{meta.note}</p>}
@@ -169,15 +179,15 @@ function SecretField({ label, value, onChange, placeholder }: {
 // Main page
 // ---------------------------------------------------------------------------
 
-// 横铺 tab 按钮条（供应商 / workflow 选择共用）
-function TabStrip({ tabs, active, onSelect }: {
-  tabs: { key: string; label: string }[]; active: string; onSelect: (k: string) => void;
+// 横铺 tab 按钮条（供应商 / workflow 选择共用）；className 可覆盖默认底部间距
+function TabStrip({ tabs, active, onSelect, className }: {
+  tabs: { key: string; label: string }[]; active: string; onSelect: (k: string) => void; className?: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5 mb-5">
+    <div className={`flex flex-wrap gap-1.5 ${className ?? "mb-5"}`}>
       {tabs.map((t) => (
         <button key={t.key} type="button" onClick={() => onSelect(t.key)}
-          className={`px-2.5 py-1 text-xs rounded-md transition ${active === t.key ? "bg-blue-500/15 text-blue-300 border border-blue-400/30" : "bg-white/[0.03] text-white/45 border border-white/[0.06] hover:text-white/70"}`}>
+          className={`px-2.5 py-1 text-xs rounded-md transition ${active === t.key ? "bg-blue-500/15 text-blue-300 border border-blue-400/30" : "bg-white/[0.03] text-white/70 border border-white/[0.06] hover:text-white/92"}`}>
           {t.label}
         </button>
       ))}
@@ -193,7 +203,7 @@ function AddProviderInline({ onAdd }: { onAdd: (name: string) => void }) {
     <div className="flex gap-2 mb-4">
       <input value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }}
         placeholder="自定义供应商名，如 deepseek / siliconflow" className={inputCls} />
-      <button onClick={add} className="shrink-0 px-2.5 py-1 text-xs rounded-md bg-white/[0.05] text-white/55 border border-white/[0.08] hover:text-white/80 transition">
+      <button onClick={add} className="shrink-0 px-2.5 py-1 text-xs rounded-md bg-white/[0.05] text-white/78 border border-white/[0.08] hover:text-white/96 transition">
         + 添加供应商
       </button>
     </div>
@@ -215,12 +225,12 @@ function ModelListEditor({ label, models, onChange }: {
       <div className="space-y-2">
         <div className="flex flex-wrap gap-1.5">
           {models.map((m) => (
-            <span key={m} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.06] text-xs text-white/70 font-mono">
+            <span key={m} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/[0.06] text-sm text-white/92 font-mono">
               {m}
-              <button onClick={() => onChange(models.filter((x) => x !== m))} className="text-white/30 hover:text-red-300">×</button>
+              <button onClick={() => onChange(models.filter((x) => x !== m))} className="text-white/60 hover:text-red-300">×</button>
             </span>
           ))}
-          {models.length === 0 && <span className="text-xs text-white/25">暂无，下方添加模型名</span>}
+          {models.length === 0 && <span className="text-xs text-white/52">暂无，下方添加模型名</span>}
         </div>
         <div className="flex gap-2">
           <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }}
@@ -385,7 +395,7 @@ function UsersTab() {
             <div key={u.id} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-white/80">{u.username}</span>
+                  <span className="text-sm text-white/96">{u.username}</span>
                   {me?.username === u.username && (
                     <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300">当前</span>
                   )}
@@ -481,7 +491,7 @@ export function SettingsPage() {
     const isCustom = !PRESET_PROVIDER_KEYS.includes(sel);
     return (
       <Section key={type} title={label} desc="选供应商后配置其接口/Key 与该类型的模型列表（接口/Key 按供应商共享）">
-        <TabStrip tabs={keys.map((k) => ({ key: k, label: PROVIDER_LABELS[k] ?? k }))} active={sel} onSelect={(k) => setModelSel((s) => ({ ...s, [type]: k }))} />
+        <TabStrip tabs={keys.map((k) => ({ key: k, label: PROVIDER_LABELS[k] ?? k }))} active={sel} onSelect={(k) => setModelSel((s) => ({ ...s, [type]: k }))} className="mb-2.5" />
         <AddProviderInline onAdd={(name) => { addProviderByName(name); setModelSel((s) => ({ ...s, [type]: name })); }} />
         <Field label="接口地址">
           <input value={creds.base_url} onChange={(e) => patchProvider(sel, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
@@ -522,8 +532,8 @@ export function SettingsPage() {
   if (loadError) {
     return (
       <div className="py-20 text-center">
-        <p className="text-white/30 text-sm">无法连接后端服务</p>
-        <p className="text-white/20 text-xs mt-1">请先启动 API 服务: uvicorn app.main:app --reload</p>
+        <p className="text-white/60 text-sm">无法连接后端服务</p>
+        <p className="text-white/46 text-xs mt-1">请先启动 API 服务: uvicorn app.main:app --reload</p>
       </div>
     );
   }
@@ -542,7 +552,7 @@ export function SettingsPage() {
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-2">
         {([["pipeline", "流水线配置"], ["models", "模型配置"], ["comfyui", "ComfyUI 参数"], ["prompts", "提示词配置"], ["users", "用户管理"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setActiveTab(k)}
-            className={`px-3 py-1.5 text-sm rounded-md transition ${activeTab === k ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70"}`}>
+            className={`px-3 py-1.5 text-sm rounded-md transition ${activeTab === k ? "bg-white/10 text-white" : "text-white/66 hover:text-white/92"}`}>
             {label}
           </button>
         ))}
@@ -553,7 +563,7 @@ export function SettingsPage() {
         {renderModelGroup("image", "图片模型", ["openai", "dashscope"])}
         {renderModelGroup("vision", "多模态模型", ["openai", "dashscope"])}
         {renderModelGroup("tts", "TTS 模型", ["openai-tts", "dashscope-tts", "azure-speech"])}
-        <p className="text-xs text-white/30 pl-1">提示：接口地址/API Key 按供应商共享（任一分组里改即全局生效）；Edge TTS 免费无需配置；ComfyUI 在「ComfyUI 参数」页配。点 API Key 眼睛图标看完整内容。</p>
+        <p className="text-xs text-white/60 pl-1">提示：接口地址/API Key 按供应商共享（任一分组里改即全局生效）；Edge TTS 免费无需配置；ComfyUI 在「ComfyUI 参数」页配。点 API Key 眼睛图标看完整内容。</p>
       </>)}
 
       {activeTab === "pipeline" && (<>
@@ -635,7 +645,7 @@ export function SettingsPage() {
         <Field label="场景间隔">
           <div className="flex items-center gap-3">
             <input type="range" value={settings.video.scene_gap_ms} onChange={(e) => patch("video", { scene_gap_ms: Number(e.target.value) })} min={0} max={2000} step={100} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/50 tabular-nums w-16 text-right">{settings.video.scene_gap_ms}ms</span>
+            <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.video.scene_gap_ms}ms</span>
           </div>
         </Field>
         <Field label="转场效果">
@@ -647,7 +657,7 @@ export function SettingsPage() {
         <Field label="字幕字号" desc="按渲染分辨率计的像素值，过小会看不清">
           <div className="flex items-center gap-3">
             <input type="range" value={settings.video.subtitle_font_size} onChange={(e) => patch("video", { subtitle_font_size: Number(e.target.value) })} min={24} max={96} step={2} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/50 tabular-nums w-16 text-right">{settings.video.subtitle_font_size}px</span>
+            <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.video.subtitle_font_size}px</span>
           </div>
         </Field>
         <Field label="字幕最多行数" desc="超长旁白会按此上限自动切分成多条短字幕">
@@ -708,22 +718,22 @@ export function SettingsPage() {
       <Section title="提示词" desc="流水线各步骤的 AI 提示词；中文/英文各一套（任务语言决定用哪套），留空回退内置默认。改后点上方「保存」。">
         {promptDefs && Object.entries(promptDefs).map(([key, def], idx) => {
           const rows = [0, 1, 6].includes(idx) ? 14 : 7;
-          const ta = "w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/80 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40";
+          const ta = "w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/96 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40";
           return (
             <div key={key} className="mb-5">
-              <label className="text-sm text-white/70">{def.label}<span className="text-white/30 text-xs ml-2">{def.desc}</span></label>
+              <label className="text-sm text-white/92">{def.label}<span className="text-white/60 text-xs ml-2">{def.desc}</span></label>
               <div className="grid grid-cols-2 gap-3 mt-1.5">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-white/40">中文</span>
-                    <button onClick={() => patch("prompts", { [key]: def.default })} className="text-xs text-white/30 hover:text-white/60">恢复默认</button>
+                    <span className="text-xs text-white/66">中文</span>
+                    <button onClick={() => patch("prompts", { [key]: def.default })} className="text-xs text-white/60 hover:text-white/85">恢复默认</button>
                   </div>
                   <textarea value={settings.prompts?.[key] || def.default} onChange={(e) => patch("prompts", { [key]: e.target.value })} rows={rows} className={ta} />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-white/40">English</span>
-                    <button onClick={() => patch("prompts", { [`${key}_en`]: def.default_en })} className="text-xs text-white/30 hover:text-white/60">恢复默认</button>
+                    <span className="text-xs text-white/66">English</span>
+                    <button onClick={() => patch("prompts", { [`${key}_en`]: def.default_en })} className="text-xs text-white/60 hover:text-white/85">恢复默认</button>
                   </div>
                   <textarea value={settings.prompts?.[`${key}_en`] || def.default_en} onChange={(e) => patch("prompts", { [`${key}_en`]: e.target.value })} rows={rows} className={ta} />
                 </div>
@@ -737,7 +747,7 @@ export function SettingsPage() {
       {activeTab === "users" && <UsersTab />}
 
       {activeTab !== "users" && (
-        <p className="text-xs text-white/20 text-center pt-2">
+        <p className="text-xs text-white/46 text-center pt-2">
           设置保存在 config.yaml
         </p>
       )}

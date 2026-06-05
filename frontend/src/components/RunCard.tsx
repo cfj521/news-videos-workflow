@@ -22,18 +22,18 @@ export function RunCard({ run }: { run: PipelineRun }) {
     >
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center gap-2.5">
-          <span className="text-sm text-white/30 font-mono">#{run.id}</span>
+          <span className="text-sm text-white/60 font-mono">#{run.id}</span>
           <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""}`}>{STATUS_LABEL[run.status] ?? run.status}</span>
         </div>
-        <span className="text-xs text-white/25">
+        <span className="text-xs text-white/52">
           {new Date(run.created_at).toLocaleString("zh-CN")}
         </span>
       </div>
       <StageIndicator currentStage={run.current_stage} status={run.status} />
       {run.progress_detail && (
-        <p className="mt-3 text-xs text-white/40">{run.progress_detail}</p>
+        <p className="mt-3 text-xs text-white/66">{run.progress_detail}</p>
       )}
-      <div className="mt-3 flex gap-2 flex-wrap text-xs text-white/30">
+      <div className="mt-3 flex gap-2 flex-wrap text-xs text-white/60">
         <span className="px-2 py-0.5 rounded bg-white/[0.04]">{run.mode}</span>
         <span className="px-2 py-0.5 rounded bg-white/[0.04]">{VIDEO_ROUTE_LABELS[run.video_route] ?? run.video_route}</span>
         <span className="px-2 py-0.5 rounded bg-white/[0.04]">{run.time_range}</span>

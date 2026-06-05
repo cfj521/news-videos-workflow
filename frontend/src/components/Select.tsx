@@ -63,11 +63,11 @@ export function Select({ value, onChange, options, className, placeholder }: Pro
         onClick={() => setOpen((v) => !v)}
         className={`${selectCls} text-left flex items-center justify-between`}
       >
-        <span className={selected ? "text-white/90" : "text-white/20"}>
+        <span className={selected ? "text-white/96" : "text-white/46"}>
           {selected?.label ?? placeholder ?? "请选择..."}
         </span>
         <svg
-          className={`w-3.5 h-3.5 text-white/30 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`w-3.5 h-3.5 text-white/60 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -95,7 +95,7 @@ export function Select({ value, onChange, options, className, placeholder }: Pro
                 className={`w-full text-left px-3 py-2 text-sm transition ${
                   isActive
                     ? "bg-blue-500/15 text-blue-300"
-                    : "text-white/60 hover:bg-white/[0.06] hover:text-white/80"
+                    : "text-white/85 hover:bg-white/[0.06] hover:text-white/96"
                 }`}
               >
                 {o.label}

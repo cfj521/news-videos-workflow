@@ -168,21 +168,21 @@ export function PublishersPage() {
               <div className="flex justify-between items-start">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-white/80">{t.name}</span>
-                    <span className={`${chipCls} ${PLATFORM_CHIP[t.platform] ?? "bg-white/[0.06] text-white/40"}`}>
+                    <span className="text-sm font-medium text-white/96">{t.name}</span>
+                    <span className={`${chipCls} ${PLATFORM_CHIP[t.platform] ?? "bg-white/[0.06] text-white/66"}`}>
                       {PLATFORM_LABELS[t.platform] ?? t.platform}
                     </span>
-                    <span className={`${chipCls} bg-white/[0.06] text-white/40`}>
+                    <span className={`${chipCls} bg-white/[0.06] text-white/66`}>
                       {MEDIA_LABEL[PLATFORM_MEDIA[t.platform] ?? "video"]}
                     </span>
-                    {!t.enabled && <span className="text-[10px] text-white/25 italic">已禁用</span>}
+                    {!t.enabled && <span className="text-[10px] text-white/52 italic">已禁用</span>}
                   </div>
                   <div className="flex gap-4 mt-2">
                     {fieldDefs.slice(0, 3).map((fd) => {
                       const val = cfg[fd.key];
                       if (!val) return null;
                       return (
-                        <span key={fd.key} className="text-[11px] text-white/25">
+                        <span key={fd.key} className="text-[11px] text-white/52">
                           {fd.label}: {fd.secret ? maskValue(val) : val}
                         </span>
                       );
@@ -206,8 +206,8 @@ export function PublishersPage() {
         })}
         {(!targets || targets.length === 0) && (
           <div className={`${cardCls} p-12 text-center`}>
-            <p className="text-white/30 text-sm">暂无发布平台</p>
-            <p className="text-white/20 text-xs mt-1">添加平台以启用视频发布功能</p>
+            <p className="text-white/60 text-sm">暂无发布平台</p>
+            <p className="text-white/46 text-xs mt-1">添加平台以启用视频发布功能</p>
           </div>
         )}
       </div>

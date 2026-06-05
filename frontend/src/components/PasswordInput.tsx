@@ -24,7 +24,7 @@ export function PasswordInput({ value, onChange, placeholder, className, autoCom
         tabIndex={-1}
         onClick={() => setShow((v) => !v)}
         title={show ? "隐藏" : "显示"}
-        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition"
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white/92 transition"
       >
         {show ? (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -155,8 +155,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
                 onChange={() => toggleStage(s)}
                 className="w-3.5 h-3.5 rounded accent-blue-500"
               />
-              <span className="text-xs text-white/25 font-mono w-5">S{s}</span>
-              <span className="text-sm text-white/70 flex-1">{stageLabel(s)}</span>
+              <span className="text-xs text-white/52 font-mono w-5">S{s}</span>
+              <span className="text-sm text-white/92 flex-1">{stageLabel(s)}</span>
             </label>
           ))}
         </div>
@@ -212,7 +212,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           <label className={labelCls}>采集方式</label>
           {mode === "auto" ? (
             <div className={`${selectCls} flex items-center justify-between opacity-50 cursor-not-allowed`}>
-              <span className="text-white/90">自动采集</span>
+              <span className="text-white/96">自动采集</span>
             </div>
           ) : (
             <Select value={autoCollect ? "auto" : "manual"} onChange={(v) => setAutoCollect(v === "auto")} options={[

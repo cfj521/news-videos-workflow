@@ -21,7 +21,7 @@ export function useToast() {
 const TYPE_STYLES: Record<ToastMessage["type"], string> = {
   success: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300",
   error: "bg-red-500/10 border-red-500/20 text-red-300",
-  info: "bg-white/[0.06] border-white/[0.08] text-white/80",
+  info: "bg-white/[0.06] border-white/[0.08] text-white/96",
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {

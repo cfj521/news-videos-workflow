@@ -65,7 +65,7 @@ function PresetInput({ value, onChange, onCommit, presets, className }: {
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="px-2 rounded-r-lg border border-white/[0.08] bg-white/[0.04] text-white/30 hover:text-white/50 hover:bg-white/[0.06] transition text-[10px]"
+          className="px-2 rounded-r-lg border border-white/[0.08] bg-white/[0.04] text-white/60 hover:text-white/76 hover:bg-white/[0.06] transition text-[10px]"
         >
           ▾
         </button>
@@ -78,7 +78,7 @@ function PresetInput({ value, onChange, onCommit, presets, className }: {
               type="button"
               onClick={() => { onChange(p.value); onCommit?.(p.value); setOpen(false); }}
               className={`w-full px-3 py-1.5 text-left text-xs transition hover:bg-white/[0.06] ${
-                value === p.value ? "text-blue-300 bg-white/[0.04]" : "text-white/60"
+                value === p.value ? "text-blue-300 bg-white/[0.04]" : "text-white/85"
               }`}
             >
               {p.label}
@@ -134,7 +134,7 @@ function Stepper({ run, onSelect, activeStage, locked = false }: { run: Pipeline
               } ${!clickable ? "opacity-30 cursor-default" : "cursor-pointer"}`}
             >
               <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotCls[ss]}`} />
-              <span className="text-xs text-white/60 truncate">{labelOf(s)}</span>
+              <span className="text-xs text-white/85 truncate">{labelOf(s)}</span>
             </button>
             {i < stages.length - 1 && <div className="w-4 h-px bg-white/[0.08] shrink-0" />}
           </div>
@@ -201,15 +201,15 @@ function ImportArticleDialog({ runId, onDone, onClose }: { runId: number; onDone
         <label className={labelCls}>上传文件（.docx / .pdf / .md / .txt）</label>
         <input type="file" accept=".docx,.pdf,.md,.txt" disabled={loading}
           onChange={(e) => { const f = e.target.files?.[0]; if (f) doFile(f); }}
-          className="mb-1 block w-full text-sm text-white/60" />
-        <p className="text-[11px] text-white/25 mb-4">PDF 走视觉模型解析，可能较慢</p>
+          className="mb-1 block w-full text-sm text-white/85" />
+        <p className="text-[11px] text-white/52 mb-4">PDF 走视觉模型解析，可能较慢</p>
         <label className={labelCls}>或粘贴网页 URL</label>
         <div className="flex gap-2 mb-4">
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." className={inputCls} />
           <button onClick={doUrl} disabled={loading} className={btnPrimary}>导入</button>
         </div>
         <div className="flex justify-end"><button onClick={onClose} className={btnCompact}>关闭</button></div>
-        {loading && <p className="text-xs text-white/40 mt-2">处理中...</p>}
+        {loading && <p className="text-xs text-white/66 mt-2">处理中...</p>}
       </div>
     </div>
   );
@@ -253,12 +253,12 @@ function S1Panel({ runId }: { runId: number }) {
   };
   const onDelete = async (idx: number) => { await save(list.filter((_, i) => i !== idx)); };
 
-  if (!articles) return <p className="text-white/30 text-sm">加载中...</p>;
+  if (!articles) return <p className="text-white/60 text-sm">加载中...</p>;
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <span className="text-sm text-white/40">{list.length} 篇文章</span>
+        <span className="text-sm text-white/66">{list.length} 篇文章</span>
         <div className="flex gap-2">
           <button onClick={() => setImporting(true)} className={btnAdd}>导入</button>
           <button onClick={() => setAdding(true)} className={btnAdd}>+ 添加文章</button>
@@ -267,7 +267,7 @@ function S1Panel({ runId }: { runId: number }) {
             {rerolling ? (isWeekly ? "总结中..." : "采集中...") : rerollLabel}</button>
         </div>
       </div>
-      {list.length === 0 && <p className="text-white/30 text-sm">暂无文章，点「导入」或「添加文章」</p>}
+      {list.length === 0 && <p className="text-white/60 text-sm">暂无文章，点「导入」或「添加文章」</p>}
       <div className="space-y-2">
         {list.map((a, i) => {
           const mainLink = String(a.aggregator_url ?? a.url ?? "");
@@ -275,10 +275,10 @@ function S1Panel({ runId }: { runId: number }) {
             <div key={i} className={`${cardCls} p-4`}>
               <div className="flex justify-between items-start gap-3">
                 <div className="min-w-0">
-                  {mainLink ? <a href={mainLink} target="_blank" rel="noreferrer" className="text-sm text-white/80 font-medium hover:text-blue-300 transition">{String(a.title ?? "")}</a>
-                    : <span className="text-sm text-white/80 font-medium">{String(a.title ?? "")}</span>}
-                  <div className="text-[11px] text-white/25 mt-1">{String(a.source ?? "")}</div>
-                  {a.summary ? <p className="text-xs text-white/40 mt-2 leading-relaxed">{String(a.summary)}</p> : null}
+                  {mainLink ? <a href={mainLink} target="_blank" rel="noreferrer" className="text-sm text-white/96 font-medium hover:text-blue-300 transition">{String(a.title ?? "")}</a>
+                    : <span className="text-sm text-white/96 font-medium">{String(a.title ?? "")}</span>}
+                  <div className="text-[11px] text-white/52 mt-1">{String(a.source ?? "")}</div>
+                  {a.summary ? <p className="text-xs text-white/66 mt-2 leading-relaxed">{String(a.summary)}</p> : null}
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <button onClick={() => setEditing({ idx: i, rec: a })} className={btnEdit}>编辑</button>
@@ -289,7 +289,7 @@ function S1Panel({ runId }: { runId: number }) {
           );
         })}
       </div>
-      <p className="text-[11px] text-white/25 mt-3">编辑文章后，到"脚本/图片"标签点【重生成脚本】以应用。</p>
+      <p className="text-[11px] text-white/52 mt-3">编辑文章后，到"脚本/图片"标签点【重生成脚本】以应用。</p>
 
       {(adding || editing) && (
         <ArticleDialog initial={editing?.rec ?? null} onSave={onSaveArticle} onClose={() => { setAdding(false); setEditing(null); }} />
@@ -300,7 +300,7 @@ function S1Panel({ runId }: { runId: number }) {
         <div className={dialogOverlayCls} onClick={() => { if (!rerolling) setConfirmReroll(false); }}>
           <div className={`${dialogPanelCls} w-[420px]`} onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-2">{rerollLabel}</h2>
-            <p className="text-sm text-white/50 mb-3 leading-relaxed">{isWeekly
+            <p className="text-sm text-white/76 mb-3 leading-relaxed">{isWeekly
               ? <>将重新 AI 总结上周日报，<span className="text-amber-300/80">覆盖现有周报结果</span>。</>
               : <>将按当前信息源重新采集，<span className="text-amber-300/80">覆盖现有文章列表</span>。</>}</p>
             <SourceSummary />
@@ -383,7 +383,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
     finally { setRegenning(false); }
   };
 
-  if (!script) return <p className="text-white/30 text-sm">暂无脚本</p>;
+  if (!script) return <p className="text-white/60 text-sm">暂无脚本</p>;
 
   const scenes = script.scenes ?? [];
   const order: number[] = [];
@@ -405,12 +405,12 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
       <div className="flex justify-between items-start mb-4 gap-4">
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-medium truncate">{script.title}</h3>
-          <p className="text-xs text-white/30 mt-0.5">{script.description}</p>
+          <p className="text-xs text-white/60 mt-0.5">{script.description}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {!audioOnly && (
             <>
-              <label className="text-[11px] text-white/30 whitespace-nowrap">图片尺寸</label>
+              <label className="text-[11px] text-white/60 whitespace-nowrap">图片尺寸</label>
               <PresetInput value={imgSize} onChange={setImgSize} onCommit={handleImgSizeCommit} presets={RES_PRESETS} className="w-40" />
             </>
           )}
@@ -450,7 +450,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
         <div className={dialogOverlayCls} onClick={() => { if (!regenning) setConfirmRegen(false); }}>
           <div className={`${dialogPanelCls} w-[420px]`} onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-2">重新生成脚本</h2>
-            <p className="text-sm text-white/50 mb-5 leading-relaxed">将根据当前文章列表重新生成整个脚本，<span className="text-amber-300/80">会覆盖所有分镜及手工编辑</span>，不可恢复。</p>
+            <p className="text-sm text-white/76 mb-5 leading-relaxed">将根据当前文章列表重新生成整个脚本，<span className="text-amber-300/80">会覆盖所有分镜及手工编辑</span>，不可恢复。</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmRegen(false)} disabled={regenning} className={btnSecondary}>取消</button>
               <button onClick={handleRegenScript} disabled={regenning} className={btnPrimary}>{regenning ? "生成中..." : "确认重新生成"}</button>
@@ -528,15 +528,15 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
         </div>
         <div className="flex-1 space-y-3 min-w-0">
           <div className="flex justify-between items-center">
-            <span className="text-xs text-white/30 font-mono">场景 {sid}</span>
-            {durationS && <span className="text-xs text-white/25 font-mono">{durationS}s</span>}
+            <span className="text-xs text-white/60 font-mono">场景 {sid}</span>
+            {durationS && <span className="text-xs text-white/52 font-mono">{durationS}s</span>}
             {onDelete && (
               <button onClick={() => setConfirmDel(true)} className={btnDeleteCompact} title="删除分镜">删除</button>
             )}
           </div>
 
           <div>
-            <div className="text-[11px] text-white/30 mb-1">旁白</div>
+            <div className="text-[11px] text-white/60 mb-1">旁白</div>
             <textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={3} className={`${inputCls} text-[13px]`} />
             <div className="flex gap-2 mt-1.5">
               <button onClick={handleRegenAudio} disabled={regenAudioLoading} className={btnRegenAudio}>
@@ -547,8 +547,8 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
 
           {!audioOnly && (
             <div>
-              <div className="text-[11px] text-white/30 mb-1">图片提示词</div>
-              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={5} className={`${inputCls} text-[13px] text-white/50 resize-y`} />
+              <div className="text-[11px] text-white/60 mb-1">图片提示词</div>
+              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={5} className={`${inputCls} text-[13px] text-white/76 resize-y`} />
               <div className="flex gap-2 mt-1.5">
                 <button onClick={handleRegenPrompt} disabled={regenPromptLoading} className={btnRegenPrompt}>
                   {regenPromptLoading ? "生成中..." : "重生成提示词"}
@@ -566,7 +566,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
         <div className={dialogOverlayCls} onClick={() => setConfirmDel(false)}>
           <div className={`${dialogPanelCls} w-[400px]`} onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-2">删除分镜 {sid}</h2>
-            <p className="text-sm text-white/50 mb-5 leading-relaxed">
+            <p className="text-sm text-white/76 mb-5 leading-relaxed">
               {canDelete
                 ? "确认删除此分镜？不可恢复。"
                 : <>这是该文章分组的最后一个分镜，<span className="text-amber-300/80">删除后将连带移除该组对应的文章</span>，不可恢复。</>}
@@ -584,7 +584,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
       {zoom && !audioOnly && (
         <div className={`${dialogOverlayCls} cursor-zoom-out p-8`} onClick={() => setZoom(false)}>
           <img src={imgUrl} className="max-w-[92vw] max-h-[92vh] rounded-lg shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} />
-          <button onClick={() => setZoom(false)} className="absolute top-5 right-6 text-white/60 hover:text-white text-3xl leading-none" title="关闭（Esc）">×</button>
+          <button onClick={() => setZoom(false)} className="absolute top-5 right-6 text-white/85 hover:text-white text-3xl leading-none" title="关闭（Esc）">×</button>
         </div>
       )}
     </div>
@@ -686,7 +686,7 @@ function Scrubber({ currentTime, totalDuration, onSeek, onScrubStart, onScrubEnd
         }}
         className="scrubber flex-1 h-6 cursor-pointer"
       />
-      <span className="text-[11px] text-white/30 font-mono text-right shrink-0 select-none whitespace-nowrap">
+      <span className="text-[11px] text-white/60 font-mono text-right shrink-0 select-none whitespace-nowrap">
         {displayTime.toFixed(1)}s/{totalDuration.toFixed(0)}s
       </span>
     </div>
@@ -910,7 +910,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className={labelCls}>分辨率</label>
-              <div className="text-sm text-white/60 font-mono mt-2">{run.resolution || "—"}</div>
+              <div className="text-sm text-white/85 font-mono mt-2">{run.resolution || "—"}</div>
             </div>
             <div>
               <label className={labelCls}>转场效果</label>
@@ -925,7 +925,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
               <label className={labelCls}>场景间隔</label>
               <div className="flex items-center gap-2 mt-1">
                 <input type="range" min={0} max={2000} step={100} value={sceneGap} onChange={(e) => setSceneGap(Number(e.target.value))} className="flex-1 accent-blue-500" />
-                <span className="text-xs text-white/40 w-14 text-right font-mono">{sceneGap}ms</span>
+                <span className="text-xs text-white/66 w-14 text-right font-mono">{sceneGap}ms</span>
               </div>
             </div>
           </div>
@@ -933,7 +933,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className={labelCls}>分辨率</label>
-              <div className="text-sm text-white/60 font-mono mt-2">{run.resolution || "—"}</div>
+              <div className="text-sm text-white/85 font-mono mt-2">{run.resolution || "—"}</div>
             </div>
             <div>
               <label className={labelCls}>帧率</label>
@@ -943,7 +943,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
               <label className={labelCls}>场景间隔</label>
               <div className="flex items-center gap-2 mt-1">
                 <input type="range" min={0} max={2000} step={100} value={sceneGap} onChange={(e) => setSceneGap(Number(e.target.value))} className="flex-1 accent-blue-500" />
-                <span className="text-xs text-white/40 w-14 text-right font-mono">{sceneGap}ms</span>
+                <span className="text-xs text-white/66 w-14 text-right font-mono">{sceneGap}ms</span>
               </div>
             </div>
           </div>
@@ -959,11 +959,11 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
           <div className="space-y-2">
             {timeline.entries.map((e) => (
               <div key={e.scene_id} className="flex items-center gap-3 text-xs">
-                <span className="text-white/25 font-mono w-6">S{e.scene_id}</span>
+                <span className="text-white/52 font-mono w-6">S{e.scene_id}</span>
                 <div className="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                   <div className="h-full bg-blue-500/40 rounded-full" style={{ width: `${((e.end_ms - e.start_ms) / timeline.total_duration_ms) * 100}%` }} />
                 </div>
-                <span className="text-white/30 w-10 text-right">{((e.end_ms - e.start_ms) / 1000).toFixed(1)}s</span>
+                <span className="text-white/60 w-10 text-right">{((e.end_ms - e.start_ms) / 1000).toFixed(1)}s</span>
               </div>
             ))}
           </div>
@@ -996,12 +996,12 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       <div className={`${cardCls} p-8 text-center`}>
         {isRendering ? (
           <div>
-            <div className="text-white/40 text-sm mb-1">{actionLabel}中...</div>
-            {run.progress_detail && <div className="text-xs text-white/25">{run.progress_detail}</div>}
+            <div className="text-white/66 text-sm mb-1">{actionLabel}中...</div>
+            {run.progress_detail && <div className="text-xs text-white/52">{run.progress_detail}</div>}
           </div>
         ) : (
           <div>
-            <p className="text-white/30 text-sm mb-4">{audioOnly ? "尚未合成音频" : "尚未渲染成片"}</p>
+            <p className="text-white/60 text-sm mb-4">{audioOnly ? "尚未合成音频" : "尚未渲染成片"}</p>
             <button onClick={handleRender} disabled={rendering} className={btnPrimary}>{audioOnly ? "合成音频" : "渲染成片"}</button>
           </div>
         )}
@@ -1046,7 +1046,7 @@ function S6Panel({ runId, run }: { runId: number; run: PipelineRun }) {
 
   // publish_platforms 存的是发布账号 id
   const ids: string[] = (() => { try { return JSON.parse(run.publish_platforms); } catch { return []; } })();
-  if (ids.length === 0) return <p className="text-white/30 text-sm">未选择发布账号</p>;
+  if (ids.length === 0) return <p className="text-white/60 text-sm">未选择发布账号</p>;
   const byId = new Map((targets ?? []).map((t) => [String(t.id), t]));
   const resultByName = new Map((results ?? []).map((r) => [r.target_name ?? r.platform, r]));
   const isPublishing = (run.current_stage === 6 && run.status === "processing") || publishing;
@@ -1071,7 +1071,7 @@ function S6Panel({ runId, run }: { runId: number; run: PipelineRun }) {
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-sm truncate">{name}</span>
                 {t && (
-                  <span className={`${chipCls} bg-white/[0.06] text-white/40`}>
+                  <span className={`${chipCls} bg-white/[0.06] text-white/66`}>
                     {PLATFORM_LABELS[t.platform] ?? t.platform}
                   </span>
                 )}
@@ -1085,9 +1085,9 @@ function S6Panel({ runId, run }: { runId: number; run: PipelineRun }) {
                 ) : r ? (
                   <span className={`${chipCls} bg-red-500/15 text-red-300`} title={r.error_message ?? ""}>失败</span>
                 ) : isPublishing ? (
-                  <span className={`${chipCls} bg-white/[0.06] text-white/40`}>发布中...</span>
+                  <span className={`${chipCls} bg-white/[0.06] text-white/66`}>发布中...</span>
                 ) : (
-                  <span className={`${chipCls} bg-white/[0.06] text-white/40`}>等待中</span>
+                  <span className={`${chipCls} bg-white/[0.06] text-white/66`}>等待中</span>
                 )}
               </div>
             </div>
@@ -1158,7 +1158,7 @@ function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () =>
         <div className="flex items-center gap-3">
           <span className="text-lg font-semibold">任务 #{r.id}</span>
           <span className={`${chipCls} ${STATUS_CHIP[r.status] ?? ""}`}>{STATUS_LABEL[r.status] ?? r.status}</span>
-          {r.progress_detail && <span className="text-xs text-white/30">{r.progress_detail}</span>}
+          {r.progress_detail && <span className="text-xs text-white/60">{r.progress_detail}</span>}
         </div>
         {r.status === "review" && (
           <button onClick={handleResume} className={btnApprove}>
@@ -1233,7 +1233,7 @@ export function DashboardPage() {
               className={`flex items-center gap-1.5 pl-1.5 pr-3 py-1.5 rounded-lg text-sm transition border cursor-pointer ${
                 expandedId === run.id
                   ? "bg-white/[0.08] border-white/[0.12] text-white"
-                  : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:text-white/60 hover:bg-white/[0.04]"
+                  : "bg-white/[0.02] border-white/[0.06] text-white/66 hover:text-white/85 hover:bg-white/[0.04]"
               }`}
             >
               <button
@@ -1246,13 +1246,13 @@ export function DashboardPage() {
                 ×
               </button>
               <span className="font-mono text-xs">#{run.id}</span>
-              <span className="text-xs text-white/25">{ts}</span>
+              <span className="text-xs text-white/52">{ts}</span>
               <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px]`}>{STATUS_LABEL[run.status] ?? run.status}</span>
             </div>
           );
         })}
         {(!runs || runs.length === 0) && (
-          <p className="text-white/30 text-sm">暂无任务，点击上方按钮创建</p>
+          <p className="text-white/60 text-sm">暂无任务，点击上方按钮创建</p>
         )}
       </div>
 
@@ -1271,7 +1271,7 @@ export function DashboardPage() {
         <div className={dialogOverlayCls} onClick={() => { if (!deleting) setPendingDelete(null); }}>
           <div className={`${dialogPanelCls} w-[360px]`} onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-2">删除任务 #{pendingDelete.id}</h2>
-            <p className="text-sm text-white/50 mb-5 leading-relaxed">将一并删除该任务的所有文件，此操作不可恢复。</p>
+            <p className="text-sm text-white/76 mb-5 leading-relaxed">将一并删除该任务的所有文件，此操作不可恢复。</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setPendingDelete(null)} disabled={deleting} className={btnSecondary}>取消</button>
               <button onClick={confirmDelete} disabled={deleting} className={btnDelete}>

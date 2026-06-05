@@ -19,13 +19,13 @@ export function SourceSummary() {
 
   return (
     <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5 text-xs leading-relaxed">
-      <span className="text-white/40">信息源：</span>
+      <span className="text-white/66">信息源：</span>
       {sources === undefined ? (
-        <span className="text-white/30">加载中…</span>
+        <span className="text-white/60">加载中…</span>
       ) : aihot ? (
         <span className="text-blue-300">{aihot.name} · {method === "daily" ? "每日日报" : method === "weekly" ? "每周周报" : "动态聚合"}</span>
       ) : customNames.length > 0 ? (
-        <span className="text-white/70">{customNames.join("、")}</span>
+        <span className="text-white/92">{customNames.join("、")}</span>
       ) : (
         <span className="text-amber-300/80">未启用任何信息源，将使用默认 Hacker News</span>
       )}

@@ -100,7 +100,7 @@ export function AddSourceDialog({ onCreated, onClose }: Props) {
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="text-xs text-white/30 hover:text-white/50 mb-2 flex items-center gap-1.5 transition"
+          className="text-xs text-white/60 hover:text-white/76 mb-2 flex items-center gap-1.5 transition"
         >
           <svg className={`w-3 h-3 transition-transform ${showAdvanced ? "rotate-90" : ""}`} viewBox="0 0 16 16" fill="currentColor">
             <path d="M6.5 3.5l5 4.5-5 4.5V3.5z" />

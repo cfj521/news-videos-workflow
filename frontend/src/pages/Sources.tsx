@@ -77,7 +77,7 @@ function useDragReorder(items: NewsSource[], onReorder: (ids: number[], priority
 
 function ConfigPreview({ json }: { json: string | null }) {
   const [expanded, setExpanded] = useState(false);
-  if (!json) return <span className="text-white/20 text-xs">--</span>;
+  if (!json) return <span className="text-white/46 text-xs">--</span>;
 
   let parsed: unknown;
   try { parsed = JSON.parse(json); } catch { parsed = json; }
@@ -87,7 +87,7 @@ function ConfigPreview({ json }: { json: string | null }) {
     <div>
       <button
         onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-        className="text-xs text-white/30 hover:text-white/50 flex items-center gap-1.5 transition"
+        className="text-xs text-white/60 hover:text-white/76 flex items-center gap-1.5 transition"
       >
         <svg className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 16 16" fill="currentColor">
           <path d="M6.5 3.5l5 4.5-5 4.5V3.5z" />
@@ -95,7 +95,7 @@ function ConfigPreview({ json }: { json: string | null }) {
         <span className="font-mono">{preview}</span>
       </button>
       {expanded && (
-        <pre className={`mt-2 text-xs ${cardCls} p-3 text-white/50 font-mono overflow-x-auto max-w-xs`}>
+        <pre className={`mt-2 text-xs ${cardCls} p-3 text-white/76 font-mono overflow-x-auto max-w-xs`}>
           {JSON.stringify(parsed, null, 2)}
         </pre>
       )}
@@ -111,7 +111,7 @@ function SortTh({ label, sortKey, currentKey, currentDir, onSort }: {
   const active = currentKey === sortKey;
   return (
     <th
-      className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap cursor-pointer select-none hover:text-white/60 transition`}
+      className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap cursor-pointer select-none hover:text-white/85 transition`}
       onClick={() => onSort(sortKey)}
     >
       <span className="inline-flex items-center gap-1">
@@ -159,7 +159,7 @@ function AIHotGroupCard({ source, customIds, onChange }: {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold">AI HOT 聚合</h2>
-          <p className="text-xs text-white/30 mt-0.5">聚合精选 AI 资讯 · 启用后与自定义源互斥</p>
+          <p className="text-xs text-white/60 mt-0.5">聚合精选 AI 资讯 · 启用后与自定义源互斥</p>
         </div>
         <button onClick={toggleGroup} className={toggleCls(source.enabled)}>
           <span className={toggleThumbCls(source.enabled)} />
@@ -313,7 +313,7 @@ export function SourcesPage() {
                   <button
                     onClick={(e) => togglePin(e, source)}
                     title={source.pinned ? "取消置顶" : pinnedCount >= 3 ? "置顶已满 (最多3条)" : "置顶"}
-                    className={`p-1.5 rounded transition ${source.pinned ? "text-amber-400 hover:text-amber-300" : "text-white/15 hover:text-white/30 hover:bg-white/[0.04]"} ${!source.pinned && pinnedCount >= 3 ? "opacity-30 cursor-not-allowed" : ""}`}
+                    className={`p-1.5 rounded transition ${source.pinned ? "text-amber-400 hover:text-amber-300" : "text-white/42 hover:text-white/60 hover:bg-white/[0.04]"} ${!source.pinned && pinnedCount >= 3 ? "opacity-30 cursor-not-allowed" : ""}`}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="4" y1="3" x2="20" y2="3" />
@@ -324,18 +324,18 @@ export function SourcesPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div>
-                    <div className="font-medium text-white/80">{source.name}</div>
-                    <div className="text-xs text-white/20 truncate max-w-xs mt-0.5">{source.url}</div>
+                    <div className="font-medium text-white/96">{source.name}</div>
+                    <div className="text-xs text-white/46 truncate max-w-xs mt-0.5">{source.url}</div>
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`${chipCls} ${TYPE_CHIP[source.type] ?? "bg-white/[0.06] text-white/40"}`}>
+                  <span className={`${chipCls} ${TYPE_CHIP[source.type] ?? "bg-white/[0.06] text-white/66"}`}>
                     {source.type}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-white/40">{source.category}</td>
-                <td className="px-4 py-3 text-white/40">{source.language}</td>
-                <td className="px-4 py-3 text-white/40">{source.priority}</td>
+                <td className="px-4 py-3 text-white/66">{source.category}</td>
+                <td className="px-4 py-3 text-white/66">{source.language}</td>
+                <td className="px-4 py-3 text-white/66">{source.priority}</td>
                 <td className="px-4 py-3"><ConfigPreview json={source.config_json} /></td>
                 <td className="px-4 py-3">
                   <button onClick={(e) => toggleSource(e, source)} className={toggleCls(source.enabled)}>
@@ -347,8 +347,8 @@ export function SourcesPage() {
             {customSources.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-16 text-center">
-                  <p className="text-white/30 text-sm">暂无信息源</p>
-                  <p className="text-white/20 text-xs mt-1">点击上方按钮添加</p>
+                  <p className="text-white/60 text-sm">暂无信息源</p>
+                  <p className="text-white/46 text-xs mt-1">点击上方按钮添加</p>
                 </td>
               </tr>
             )}

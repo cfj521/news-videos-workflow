@@ -76,7 +76,7 @@ export function RunDetailPage() {
       {/* Progress detail */}
       {run.progress_detail && (
         <div className={`${cardCls} p-4 mb-6`}>
-          <div className="text-sm text-white/70">{run.progress_detail}</div>
+          <div className="text-sm text-white/92">{run.progress_detail}</div>
         </div>
       )}
 
@@ -134,10 +134,10 @@ export function RunDetailPage() {
             >
               <div className="flex items-center gap-3">
                 <span className={`w-2 h-2 rounded-full ${stageDot[ss]}`} />
-                <span className="text-xs text-white/25 font-mono w-6">S{s}</span>
+                <span className="text-xs text-white/52 font-mono w-6">S{s}</span>
                 <span className="text-sm">{STAGE_LABELS[s]}</span>
               </div>
-              <span className="text-xs text-white/30">{STATUS_LABEL[ss] ?? ss}</span>
+              <span className="text-xs text-white/60">{STATUS_LABEL[ss] ?? ss}</span>
             </div>
           );
         })}

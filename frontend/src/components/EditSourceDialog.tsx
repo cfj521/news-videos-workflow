@@ -70,10 +70,10 @@ export function EditSourceDialog({ source, onUpdated, onClose }: Props) {
       <div className={`${dialogPanelCls} w-[480px]`}>
         <h2 className="text-lg font-semibold mb-1">
           编辑信息源
-          <span className="ml-2 text-sm text-white/25 font-normal font-mono">#{source.id}</span>
+          <span className="ml-2 text-sm text-white/52 font-normal font-mono">#{source.id}</span>
         </h2>
         {!source.enabled && (
-          <span className="text-xs text-white/25 italic">该信息源已禁用</span>
+          <span className="text-xs text-white/52 italic">该信息源已禁用</span>
         )}
         <div className="mt-4" />
 
@@ -124,7 +124,7 @@ export function EditSourceDialog({ source, onUpdated, onClose }: Props) {
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="text-xs text-white/30 hover:text-white/50 mb-2 flex items-center gap-1.5 transition"
+          className="text-xs text-white/60 hover:text-white/76 mb-2 flex items-center gap-1.5 transition"
         >
           <svg className={`w-3 h-3 transition-transform ${showAdvanced ? "rotate-90" : ""}`} viewBox="0 0 16 16" fill="currentColor">
             <path d="M6.5 3.5l5 4.5-5 4.5V3.5z" />
@@ -152,7 +152,7 @@ export function EditSourceDialog({ source, onUpdated, onClose }: Props) {
                   <button onClick={handleDisable} disabled={disabling} className={btnDeleteCompact}>
                     {disabling ? "..." : "确认"}
                   </button>
-                  <button onClick={() => setConfirmDisable(false)} className="px-2 py-1 text-xs text-white/30 hover:text-white/50 transition">
+                  <button onClick={() => setConfirmDisable(false)} className="px-2 py-1 text-xs text-white/60 hover:text-white/76 transition">
                     取消
                   </button>
                 </div>

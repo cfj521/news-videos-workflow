@@ -7,10 +7,39 @@
   --color-surface-raised: oklch(0.17 0.01 260);
 }
 
+/* 亮色（正常配色）主题：覆盖 Tailwind 主题变量即可整体翻转。
+   全站前景/边框/微弱底纹用 white/透明度（引用 --color-white），把 --color-white 改成深色即翻转；
+   按钮上必须保持真白的文字/开关滑块已改为字面量 #fff，不跟随。
+   强调色 -300 在本项目仅作文字用，白底下加深以保证对比度。 */
+html.light {
+  color-scheme: light;
+  --color-surface: oklch(0.975 0.003 260);
+  --color-surface-raised: oklch(1 0 0);
+  --color-white: oklch(0.23 0.018 260);
+  --color-blue-300: oklch(0.52 0.2 262);
+  --color-cyan-300: oklch(0.54 0.12 220);
+  --color-emerald-300: oklch(0.52 0.13 162);
+  --color-green-300: oklch(0.52 0.15 150);
+  --color-amber-300: oklch(0.56 0.13 75);
+  --color-red-300: oklch(0.55 0.21 25);
+  --color-rose-300: oklch(0.56 0.2 15);
+  --color-violet-300: oklch(0.53 0.22 292);
+  --color-amber-400: oklch(0.62 0.14 75);
+  --color-red-400: oklch(0.58 0.22 25);
+}
+
 html {
   color-scheme: dark;
   scrollbar-gutter: stable;
 }
+
+html.light body { background: var(--color-surface); }
+html.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.16); }
+html.light ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.26); }
+html.light .scrubber::-webkit-slider-runnable-track { background: rgba(0,0,0,0.1); }
+html.light .scrubber::-moz-range-track { background: rgba(0,0,0,0.1); }
+html.light .scrubber::-webkit-slider-thumb { border-color: #fff; }
+html.light .scrubber::-moz-range-thumb { border-color: #fff; }
 
 body {
   background: var(--color-surface);
