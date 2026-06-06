@@ -1,6 +1,12 @@
 import base64
 import json
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.models.base import Base
+from app.models.oauth_credential import OAuthCredential
 from app.oauth import openai_oauth as oo
 
 
@@ -90,3 +96,50 @@ def test_refresh_tokens_posts_refresh_grant(monkeypatch):
     assert captured["data"]["refresh_token"] == "RT"
     assert captured["data"]["client_id"] == oo.CLIENT_ID
     assert captured["data"]["scope"] == oo.SCOPE
+
+
+# ---- Task 5: token 服务 ----
+
+def _db():
+    eng = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(eng)
+    return sessionmaker(bind=eng)()
+
+
+def _jwt_with_exp(exp_ts: int) -> str:
+    return _fake_jwt({
+        "exp": exp_ts,
+        "https://api.openai.com/auth": {"chatgpt_account_id": "acc", "chatgpt_plan_type": "plus"},
+        "https://api.openai.com/profile": {"email": "a@b.com"},
+    })
+
+
+def test_store_tokens_parses_and_upserts():
+    db = _db()
+    exp = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
+    oo.store_tokens(db, {"access_token": _jwt_with_exp(exp), "refresh_token": "rt", "id_token": "idt"})
+    row = db.query(OAuthCredential).filter_by(provider="openai").one()
+    assert row.account_id == "acc"
+    assert row.plan_type == "plus"
+    assert row.account_email == "a@b.com"
+    assert row.refresh_token == "rt"
+
+
+def test_get_valid_access_token_refreshes_when_near_expiry(monkeypatch):
+    db = _db()
+    near = int((datetime.now(timezone.utc) + timedelta(seconds=60)).timestamp())  # < 5 分钟
+    oo.store_tokens(db, {"access_token": _jwt_with_exp(near), "refresh_token": "old"})
+    far = int((datetime.now(timezone.utc) + timedelta(hours=2)).timestamp())
+    monkeypatch.setattr(oo, "refresh_tokens",
+                        lambda rt: {"access_token": _jwt_with_exp(far), "refresh_token": "new"})
+    token, account_id = oo.get_valid_access_token(db)
+    assert account_id == "acc"
+    row = db.query(OAuthCredential).filter_by(provider="openai").one()
+    assert row.refresh_token == "new"  # 已刷新落库
+
+
+def test_get_valid_access_token_raises_when_not_logged_in():
+    db = _db()
+    import pytest
+    with pytest.raises(oo.NotLoggedInError):
+        oo.get_valid_access_token(db)

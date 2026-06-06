@@ -6,6 +6,8 @@ import hashlib
 import httpx
 import json
 import secrets
+import threading
+from datetime import datetime, timezone
 from urllib.parse import quote, urlencode
 
 # ---- 常量 ----
@@ -90,3 +92,86 @@ def refresh_tokens(refresh_token: str) -> dict:
         resp = c.post(TOKEN_URL, data=data)
         resp.raise_for_status()
         return resp.json()
+
+
+# ---- token 服务 ----
+
+_refresh_lock = threading.Lock()
+_REFRESH_MARGIN = 300  # 距过期 <5 分钟即刷新
+
+
+class NotLoggedInError(Exception):
+    pass
+
+
+def _apply_tokens(row, tok: dict) -> None:
+    """把 token dict 写入 row（解析 access_token 声明）。"""
+    access = tok["access_token"]
+    claims = parse_claims(access)
+    row.access_token = access
+    if tok.get("refresh_token"):
+        row.refresh_token = tok["refresh_token"]
+    if tok.get("id_token"):
+        row.id_token = tok["id_token"]
+    row.account_id = claims["account_id"] or row.account_id
+    row.plan_type = claims["plan_type"] or row.plan_type
+    row.account_email = claims["email"] or row.account_email
+    row.expires_at = datetime.fromtimestamp(claims["exp"], tz=timezone.utc)
+    row.last_refresh = datetime.now(timezone.utc)
+
+
+def store_tokens(db, tok: dict):
+    from app.models.oauth_credential import OAuthCredential
+    row = db.query(OAuthCredential).filter_by(provider="openai").first()
+    if row is None:
+        row = OAuthCredential(provider="openai", refresh_token="", access_token="", expires_at=datetime.now(timezone.utc))
+        db.add(row)
+    _apply_tokens(row, tok)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def get_valid_access_token(db) -> tuple[str, str]:
+    """返回 (access_token, account_id)；临期自动刷新。未登录抛 NotLoggedInError。"""
+    from app.models.oauth_credential import OAuthCredential
+    row = db.query(OAuthCredential).filter_by(provider="openai").first()
+    if row is None:
+        raise NotLoggedInError("未登录 OpenAI（订阅模式）")
+    now = datetime.now(timezone.utc)
+    # 兜底：SQLite 下 expires_at 可能是 naive datetime，统一视为 UTC
+    expires_at = row.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    remaining = (expires_at - now).total_seconds()
+    if remaining < _REFRESH_MARGIN:
+        with _refresh_lock:
+            db.refresh(row)
+            expires_at2 = row.expires_at
+            if expires_at2 is not None and expires_at2.tzinfo is None:
+                expires_at2 = expires_at2.replace(tzinfo=timezone.utc)
+            if (expires_at2 - datetime.now(timezone.utc)).total_seconds() < _REFRESH_MARGIN:
+                tok = refresh_tokens(row.refresh_token)
+                _apply_tokens(row, tok)
+                db.commit()
+                db.refresh(row)
+    return row.access_token, row.account_id
+
+
+def get_status(db) -> dict:
+    from app.models.oauth_credential import OAuthCredential
+    row = db.query(OAuthCredential).filter_by(provider="openai").first()
+    if row is None:
+        return {"logged_in": False}
+    return {
+        "logged_in": True,
+        "email": row.account_email,
+        "plan": row.plan_type,
+        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+    }
+
+
+def logout(db) -> None:
+    from app.models.oauth_credential import OAuthCredential
+    db.query(OAuthCredential).filter_by(provider="openai").delete()
+    db.commit()
