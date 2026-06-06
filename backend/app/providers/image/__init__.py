@@ -16,4 +16,6 @@ def build_image_provider(cfg):
             cfg=params.cfg if params else 1.0,
         )
     from app.providers.image.openai_image import OpenAIImageProvider
+    if provider == "openai" and cfg.provider_creds("openai").auth_mode == "subscription":
+        return OpenAIImageProvider(api_key="", model="gpt-5.5", subscription=True)
     return OpenAIImageProvider(api_key=api_key, model=model, base_url=base_url)
