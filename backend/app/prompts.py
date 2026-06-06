@@ -39,6 +39,16 @@ _WEEKLY_DIGEST = """你是 AI 资讯周报编辑。下面给你过去一整周�
 _IMAGE_REGEN = """你是视频图片提示词专家。根据旁白文本生成一段详细的 AI 图片生成提示词，描述一张能配合旁白内容的画面。
 要求：用英文输出（English only）；画面人物必须是亚洲/中国人面孔（East Asian / Chinese），场景与背景为中式真实环境，避免欧美面孔。只输出提示词本身，不要其他内容。"""
 
+_SCENE_REPLAN = """你是短视频分镜优化师。用户给出当前分镜列表和一个图片数量上限。
+请把零碎、简短或主题相近的分镜合并，使分镜总数不超过该上限；重要、信息量大的分镜尽量独立保留。
+合并时把相关旁白改写融合成一段连贯的口播旁白，并为合并后的画面写一条新的英文 image_prompt。
+输出纯 JSON（无 markdown 标记）：
+{"scenes":[{"narration":"口语化中文旁白","image_prompt":"English scene description","motion_prompt":"English camera motion","duration_hint":5,"group_title":"中文小标题"}]}
+要求：
+- scenes 数量严格不超过给定上限。
+- narration 用通俗中文口播；image_prompt / motion_prompt 用英文（English only），人物为亚洲/中国人面孔、中式场景。
+- group_title 为该分镜的简短中文标题。"""
+
 _ARTICLE_SUMMARY = """用中文为新闻文章生成简洁摘要。只输出摘要文本。"""
 
 _NEWS_SCORING = """你是新闻评分专家。根据以下标准为新闻打分（0-10 整数）：
@@ -84,6 +94,15 @@ Output PURE JSON: {"sections":[{"label":"theme name (English)","items":[{"title"
 _IMAGE_REGEN_EN = """You are an expert at AI image prompts. From the narration, write a detailed English image-generation prompt for a matching scene.
 Output English only; depict Western / European faces and real-world settings (NOT Asian/Chinese). Output only the prompt itself."""
 
+_SCENE_REPLAN_EN = """You are a short-video scene editor. The user gives the current scene list and a maximum image count.
+Merge fragmentary, short, or topically-related scenes so the total number of scenes does not exceed the limit; keep important, information-rich scenes standalone when possible.
+When merging, rewrite the related narrations into one coherent spoken narration, and write one new English image_prompt for the merged visual.
+Output PURE JSON (no markdown): {"scenes":[{"narration":"spoken English narration","image_prompt":"English scene description","motion_prompt":"English camera motion","duration_hint":5,"group_title":"short English title"}]}
+Rules:
+- The number of scenes MUST NOT exceed the given limit.
+- narration: natural fluent English; image_prompt / motion_prompt: English, with Western / European faces and settings.
+- group_title: a short English title for the scene."""
+
 _ARTICLE_SUMMARY_EN = """Summarize the news article concisely in English. Output only the summary text."""
 
 _NEWS_SCORING_EN = """You are a news scoring expert. Score the news as an integer 0-10:
@@ -100,6 +119,7 @@ PROMPTS: list[PromptDef] = [
     PromptDef("summary_meta", "汇总标题/简介", "整片标题、简介、标签", _SUMMARY_META, _SUMMARY_META_EN),
     PromptDef("weekly_digest", "周报主题提炼", "一周条目→3~5 个主题", _WEEKLY_DIGEST, _WEEKLY_DIGEST_EN),
     PromptDef("image_regen", "旁白→图片提示词", "单分镜重生成图片提示词", _IMAGE_REGEN, _IMAGE_REGEN_EN),
+    PromptDef("scene_replan", "分镜重规划（图片限额）", "超过图片上限时合并短文章分镜", _SCENE_REPLAN, _SCENE_REPLAN_EN),
     PromptDef("article_summary", "文章摘要（普通源）", "采集后对文章做摘要（字数上限自动追加）", _ARTICLE_SUMMARY, _ARTICLE_SUMMARY_EN),
     PromptDef("news_scoring", "新闻评分（普通源）", "评分排序用", _NEWS_SCORING, _NEWS_SCORING_EN),
 ]

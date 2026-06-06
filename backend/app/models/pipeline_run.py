@@ -33,5 +33,7 @@ class PipelineRun(Base, TimestampMixin):
     resolution: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # 任务级语言（zh|en），影响脚本/字幕/图片风格；创建时从流水线配置默认读取
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # 任务最多生成图片数（0=不限制）；超过则在生图前 AI 重规划分镜合并短文章
+    max_images: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     articles: Mapped[list["RawArticle"]] = relationship(back_populates="run")

@@ -43,11 +43,13 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [resolution, setResolution] = useState("");
   const [language, setLanguage] = useState("");
+  const [maxImages, setMaxImages] = useState<number | null>(null);  // null = 用流水线配置默认
 
   const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
   // 默认值取自流水线配置；用户可在此覆盖
   const effRes = resolution || settings?.pipeline?.resolution || "1080x1920";
   const effLang = language || settings?.pipeline?.default_language || "zh";
+  const effMaxImages = maxImages ?? settings?.pipeline?.max_images ?? 10;
   // 新建任务默认 hyperframes；用户可在弹窗内切换
   const effVideoRoute = videoRoute || settings?.pipeline?.default_video_route || "comfyui";
   const resOptions = (RES_PRESETS_DLG.some((o) => o.value === effRes)
@@ -129,6 +131,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         publish_platforms: Array.from(effectiveTargetIds),
         resolution: effRes,
         language: effLang,
+        max_images: effMaxImages,
         auto_collect: autoCollect,
       });
       onCreated();
@@ -202,6 +205,11 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
             <Select value={effLang} onChange={setLanguage} options={[
               { value: "zh", label: "中文" }, { value: "en", label: "English" },
             ]} />
+          </div>
+          <div>
+            <label className={labelCls}>最多图片数（0=不限制）</label>
+            <input type="number" value={effMaxImages} onChange={(e) => setMaxImages(Number(e.target.value))} min={0} max={100} className={inputCls} />
+            <p className="text-[11px] text-white/40 mt-1">超过则生图前 AI 重规划，合并零碎/短文章到同一张图</p>
           </div>
         </div>
         {effLang === "en" && (

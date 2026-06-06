@@ -46,31 +46,31 @@ class ProviderCreds(BaseModel):
     models: ProviderModels = ProviderModels()
 
 
-# 各供应商默认 base_url（初始化供应商库 / 旧配置迁移用）
+# 各供应商默认 base_url（初始化供应商库 / 旧配置迁移用）。
+# 语音生成与文本/图片共用同一供应商（openai/dashscope，共用 key）；edge-tts 免费无凭证。
 _PROVIDER_DEFAULTS: dict[str, str] = {
     "claude": "https://api.anthropic.com",
     "openai": "https://api.openai.com/v1",
     "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "openai-tts": "https://api.openai.com/v1",
-    "dashscope-tts": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "azure-speech": "",
+    "edge-tts": "",
 }
 
-# 各供应商默认模型列表（按类型分组）；用户可在「模型配置」页增删
+# 各供应商默认模型列表（按类型分组，含语音 tts）；用户可在「模型配置」页增删
 _PROVIDER_DEFAULT_MODELS: dict[str, dict[str, list[str]]] = {
     "claude": {"text": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]},
     "openai": {
         "text": ["gpt-5.5", "gpt-5.5-pro", "gpt-5"],
         "image": ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"],
         "vision": ["gpt-5.5", "gpt-5", "gpt-4o"],
+        "tts": ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"],
     },
     "dashscope": {
         "text": ["qwen3.7-max", "qwen3.6-plus", "qwen3.6-flash"],
-        "image": ["wan2.5-t2i-preview", "wanx2.1-t2i-turbo", "wanx2.1-t2i-plus"],
-        "vision": ["qwen3-vl-plus", "qwen-vl-max", "qwen-vl-plus"],
+        "image": ["qwen-image-2.0", "qwen-image-2.0-pro", "wan2.7-image", "wan2.7-image-pro"],
+        "vision": ["qwen3.6-plus", "qwen3.6-flash"],
+        "tts": ["qwen3-tts-flash", "cosyvoice-v3-flash"],
     },
-    "openai-tts": {"tts": ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"]},
-    "dashscope-tts": {"tts": ["cosyvoice-v2", "cosyvoice-v1"]},
+    # edge-tts：微软免费语音，无模型概念（只有音色），无默认模型
 }
 
 
@@ -116,6 +116,7 @@ class PipelineCfg(BaseModel):
     default_video_route: str = "comfyui"
     default_language: str = "zh"
     dedup_lookback: str = "30d"
+    max_images: int = 10  # 单任务最多生成图片数（0=不限制）；超过则生图前 AI 重规划分镜合并短文章
     resolution: str = "1080x1920"  # 默认图片/视频分辨率（per-run 可覆盖）
     # ---- 当前选型：各用途用「哪个供应商 + 哪个模型」（参数在 providers / comfyui 库）----
     summary_provider: str = "openai"
@@ -127,7 +128,8 @@ class PipelineCfg(BaseModel):
     image_model: str = "z_image"           # comfyui 时为图片 workflow
     vision_provider: str = "openai"        # 文档解析（导入 PDF）
     vision_model: str = "gpt-4o"
-    tts_provider: str = "edge-tts"
+    tts_provider: str = "edge-tts"     # edge-tts | openai | dashscope（与文本/图片共用 key）
+    tts_model: str = ""                # 语音模型（edge-tts 无模型留空；openai/dashscope 选具体模型）
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
     video_model: str = "wan5b"             # comfyui 视频 workflow
     video_fps: int = 24                    # comfyui 视频帧率（原 comfyui.video_fps）
@@ -161,6 +163,7 @@ class PromptsCfg(BaseModel):
     summary_meta: str = ""
     weekly_digest: str = ""
     image_regen: str = ""
+    scene_replan: str = ""
     article_summary: str = ""
     news_scoring: str = ""
     roundup_article_en: str = ""
@@ -168,6 +171,7 @@ class PromptsCfg(BaseModel):
     summary_meta_en: str = ""
     weekly_digest_en: str = ""
     image_regen_en: str = ""
+    scene_replan_en: str = ""
     article_summary_en: str = ""
     news_scoring_en: str = ""
 

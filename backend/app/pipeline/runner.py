@@ -25,7 +25,6 @@ from app.pipeline.stage5_compose import run_stage5
 from app.providers.base import ImageProvider, ProviderError
 from app.providers.collector.hackernews import HackerNewsCollector
 from app.providers.composer.hyperframes_composer import HyperframesComposer
-from app.providers.tts.edge_tts_provider import EdgeTTSProvider
 
 
 def _build_text_provider():
@@ -549,6 +548,15 @@ async def _run_inner(run_id: int, db: Session) -> None:
         script = await run_stage2_multi(
             articles, text_provider, language=(run.language or cfg.pipeline.default_language))
 
+        # 图片数量上限：分镜数超过则在生图前用 AI 重规划合并（仅出图路线需要）
+        limit = run.max_images if run.max_images is not None else cfg.pipeline.max_images
+        if run.video_route != "audio" and limit and len(script.get("scenes", [])) > limit:
+            from app.pipeline.stage2_script import replan_scenes_to_limit
+            _update(db, run, progress_detail=f"S2 分镜 {len(script['scenes'])} 超图片上限 {limit}，AI 重规划合并中...")
+            log.info("[S2] %d scenes > limit %d → replanning", len(script["scenes"]), limit)
+            script = await replan_scenes_to_limit(
+                script, limit, text_provider, run.language or cfg.pipeline.default_language)
+
         (run_dir / "script.json").write_text(
             json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
         scene_count = len(script.get("scenes", []))
@@ -584,8 +592,12 @@ async def _run_inner(run_id: int, db: Session) -> None:
                  total, cfg.pipeline.image_provider, cfg.pipeline.image_model)
 
         from app.providers.image import build_image_provider
+        from app.providers.tts import build_tts_provider
         image_provider = build_image_provider(cfg)
-        tts_provider = EdgeTTSProvider(default_voice=cfg.pipeline.tts_voice)
+        # 按流水线选型构建语音 provider（edge-tts | openai | dashscope，共用供应商库 key）
+        tts_provider = build_tts_provider(cfg)
+        log.info("[S3] TTS provider: %s / %s / voice=%s",
+                 cfg.pipeline.tts_provider, cfg.pipeline.tts_model or "-", cfg.pipeline.tts_voice)
         img_count = 0
         tts_count = 0
 

@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from pydantic import BaseModel as _PydBase
@@ -17,7 +17,6 @@ from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
 from app.pipeline.runner import execute_pipeline, build_collectors, build_collectors_from_db, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final
-from app.providers.tts.edge_tts_provider import EdgeTTSProvider
 from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
 
 log = get_logger("api.pipeline")
@@ -63,6 +62,7 @@ def create_run(body: PipelineRunCreate, background_tasks: BackgroundTasks, db: S
         auto_collect=body.auto_collect,
         resolution=body.resolution or cfg.pipeline.resolution,
         language=body.language or cfg.pipeline.default_language,
+        max_images=body.max_images if body.max_images is not None else cfg.pipeline.max_images,
     )
     session_factory = get_session_factory()
     background_tasks.add_task(_run_pipeline_bg, run.id, session_factory)
@@ -115,6 +115,49 @@ def resume_run(run_id: int, db: Session = Depends(get_db)):
     engine = PipelineEngine(db)
     resumed = engine.resume_run(run_id)
     return {"status": "resumed", "run_id": resumed.id}
+
+
+class _TTSPreview(BaseModel):
+    provider: str = ""
+    model: str = ""
+    voice: str = ""
+    text: str = ""
+
+
+@router.post("/tts/preview")
+async def tts_preview(body: _TTSPreview):
+    """试听：用所选供应商/模型/音色合成一小段示例音频，直接返回音频字节供前端播放。"""
+    import os as _os
+    import tempfile
+
+    from app.providers.tts import build_tts_provider
+    cfg = get_settings()
+    prov = body.provider or cfg.pipeline.tts_provider or "edge-tts"
+    # 前置校验：openai/dashscope 走真实接口，需对应供应商 key（与文本/图片共用）
+    if prov in ("openai", "dashscope") and not cfg.provider_creds(prov).api_key:
+        raise HTTPException(status_code=400, detail=f"未配置 {prov} 的 API Key，请在「模型配置」中填写（与文本/图片共用）")
+    text = body.text or "你好，这是语音试听示例。Hello, this is a voice preview."
+    fd, tmp = tempfile.mkstemp(suffix=".audio")
+    _os.close(fd)
+    try:
+        provider = build_tts_provider(cfg, provider=body.provider, model=body.model, voice=body.voice)
+        await provider.synthesize(text=text, voice=body.voice, output_path=tmp)
+        data = Path(tmp).read_bytes()
+    except ModuleNotFoundError as e:
+        log.warning("TTS preview missing dep: %s", e)
+        raise HTTPException(status_code=400, detail="阿里云语音需安装 dashscope 依赖（本机 pip install dashscope；容器重建）")
+    except Exception as e:
+        log.warning("TTS preview failed: %s", e)
+        raise HTTPException(status_code=400, detail=f"试听失败: {e}")
+    finally:
+        try:
+            _os.remove(tmp)
+        except OSError:
+            pass
+    # qwen-tts 返回 wav，其余(openai/edge/cosyvoice)为 mp3
+    is_qwen = prov == "dashscope" and not (body.model or cfg.pipeline.tts_model).startswith("cosyvoice")
+    media = "audio/wav" if is_qwen else "audio/mpeg"
+    return Response(content=data, media_type=media)
 
 
 @router.post("/runs/{run_id}/stop")
@@ -470,7 +513,8 @@ async def regen_scene_audio(run_id: int, scene_id: int, body: RegenAudioRequest,
     script_path.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
 
     cfg = get_settings()
-    tts = EdgeTTSProvider(default_voice=cfg.pipeline.tts_voice)
+    from app.providers.tts import build_tts_provider
+    tts = build_tts_provider(cfg)  # 按流水线选型（edge-tts|openai|dashscope）
     audio_path = str(rd / "assets" / f"scene_{scene_id:02d}_audio.mp3")
     log.info("Regenerating audio for run #%d scene %d", run_id, scene_id)
     await tts.synthesize(text=body.narration, output_path=audio_path)

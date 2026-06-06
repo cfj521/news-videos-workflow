@@ -30,25 +30,18 @@ providers:
       text: [gpt-5.5, gpt-5.5-pro, gpt-5]
       image: [gpt-image-2, gpt-image-1.5, gpt-image-1]
       vision: [gpt-5.5, gpt-5, gpt-4o]
+      tts: [gpt-4o-mini-tts, tts-1-hd, tts-1]
   dashscope:
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
     api_key: ""
     max_output_tokens: 65535
     models:
       text: [qwen3.7-max, qwen3.6-plus, qwen3.6-flash]
-      image: [wan2.5-t2i-preview, wanx2.1-t2i-turbo, wanx2.1-t2i-plus]
-      vision: [qwen3-vl-plus, qwen-vl-max, qwen-vl-plus]
-  openai-tts:
-    base_url: https://api.openai.com/v1
-    api_key: ""
-    models:
-      tts: [gpt-4o-mini-tts, tts-1-hd, tts-1]
-  dashscope-tts:
-    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    api_key: ""
-    models:
-      tts: [cosyvoice-v2, cosyvoice-v1]
-  azure-speech:
+      image: [qwen-image-2.0, qwen-image-2.0-pro, wan2.7-image, wan2.7-image-pro]
+      vision: [qwen3.6-plus, qwen3.6-flash]
+      tts: [qwen3-tts-flash, cosyvoice-v3-flash]   # 语音与文本/图片共用同一 dashscope key
+  # 语音生成：openai/dashscope 复用上面的供应商（共用 key），edge-tts 为微软免费语音（无凭证）
+  edge-tts:
     base_url: ""
     api_key: ""
 
@@ -71,6 +64,7 @@ pipeline:
   default_language: zh                  # zh | en
   dedup_lookback: 30d
   resolution: 1080x1920                 # 默认图片/视频分辨率
+  max_images: 10                        # 单任务最多生成图片数（0=不限制）；超过则生图前 AI 重规划分镜合并短文章
   # 各用途选型：provider 对应上面 providers 的 key，model 为具体模型
   summary_provider: openai
   summary_model: gpt-5
@@ -81,7 +75,8 @@ pipeline:
   image_model: z_image                  # comfyui 时为图片 workflow：z_image | qwen
   vision_provider: openai               # 文档解析（导入 PDF）
   vision_model: gpt-4o
-  tts_provider: edge-tts                # edge-tts | openai-tts | dashscope-tts | azure-speech
+  tts_provider: edge-tts                # edge-tts(微软免费) | openai | dashscope（共用对应 key）
+  tts_model: ""                         # edge-tts 无模型留空；openai/dashscope 选具体模型
   tts_voice: zh-CN-XiaoxiaoNeural
   video_model: wan5b                    # comfyui 视频 workflow：wan5b | wan14b | wan14b_lightx2v | ltx
   video_fps: 24                         # comfyui 视频帧率

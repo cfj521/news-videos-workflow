@@ -24,6 +24,7 @@ class PipelineEngine:
         auto_collect: bool = True,
         resolution: str = "",
         language: str = "",
+        max_images: int | None = None,
     ) -> PipelineRun:
         stages = selected_stages or [1, 2, 3, 4, 5]
         platforms = publish_platforms or []
@@ -35,6 +36,7 @@ class PipelineEngine:
             auto_collect=auto_collect,
             resolution=resolution or None,
             language=language or None,
+            max_images=max_images,
         )
         self.db.add(run)
         self.db.commit()

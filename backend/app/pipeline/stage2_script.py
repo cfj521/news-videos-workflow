@@ -197,3 +197,44 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
     meta = await _gen_summary_meta(titles, text_provider, language)
     log.info("[S2] multi script: %d groups, %d scenes", len(groups), len(scenes))
     return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"], "groups": groups, "scenes": scenes}
+
+
+async def replan_scenes_to_limit(script: dict, limit: int, text_provider, language: str = "zh") -> dict:
+    """分镜数超过图片上限时，调 AI 把零碎/简短/相近的分镜合并成 ≤limit 个（合并旁白+单图）。
+
+    失败或无需合并则原样返回。重建后每个合并分镜各自一组，id/group_id 连续。
+    """
+    scenes = script.get("scenes", [])
+    if limit <= 0 or len(scenes) <= limit:
+        return script
+
+    lines = [
+        f"S{sc.get('id')} [{sc.get('group_title', '')}] 旁白:{sc.get('narration', '')} | 画面:{sc.get('image_prompt', '')}"
+        for sc in scenes
+    ]
+    user = f"图片数量上限：{limit}。当前分镜共 {len(scenes)} 个：\n" + "\n".join(lines)
+    try:
+        resp = await text_provider.generate(prompt=user, system_prompt=resolve_prompt("scene_replan", language))
+        new_scenes = _parse_json(resp).get("scenes", [])
+    except Exception:
+        log.exception("[S2] scene replan failed, keep original script")
+        return script
+    if not new_scenes:
+        log.warning("[S2] scene replan returned empty, keep original")
+        return script
+
+    new_scenes = new_scenes[:limit]
+    out: list[dict] = []
+    groups: list[dict] = []
+    for i, sc in enumerate(new_scenes, start=1):
+        gtitle = sc.get("group_title") or f"分镜 {i}"
+        out.append({
+            "id": i, "group_id": i, "group_title": gtitle,
+            "narration": sc.get("narration", ""),
+            "image_prompt": sc.get("image_prompt", ""),
+            "motion_prompt": sc.get("motion_prompt", ""),
+            "duration_hint": sc.get("duration_hint", 5),
+        })
+        groups.append({"id": i, "title": gtitle, "source_index": i - 1})
+    log.info("[S2] replan: %d scenes → %d (limit %d)", len(scenes), len(out), limit)
+    return {**script, "groups": groups, "scenes": out}

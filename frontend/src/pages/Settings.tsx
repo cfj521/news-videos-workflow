@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import { api, type AppSettings, type AuthUser, type ProviderCreds } from "../api/client";
 import { useToast } from "../components/Toast";
@@ -61,42 +61,59 @@ const VIDEO_PARAM_META: Record<string, ParamMeta> = {
   },
 };
 
+// 语音供应商（与文本/图片对齐，共用 key）：edge-tts 免费、openai、dashscope
 const TTS_PRESETS: Record<string, ProviderPreset> = {
-  "edge-tts": { label: "Edge TTS", baseUrl: "", models: [], needsKey: false },
-  "openai-tts": { label: "OpenAI TTS", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"], needsKey: true },
-  "dashscope-tts": { label: "阿里云 CosyVoice", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["cosyvoice-v2", "cosyvoice-v1"], needsKey: true },
-  "azure-speech": { label: "Azure Speech", baseUrl: "https://{region}.tts.speech.microsoft.com", models: [], needsKey: true },
+  "edge-tts": { label: "微软 Edge TTS", baseUrl: "", models: [], needsKey: false },
+  "openai": { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"], needsKey: true },
+  "dashscope": { label: "阿里云 DashScope", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen3-tts-flash"], needsKey: true },
 };
 
-const VOICES: Record<string, { label: string; value: string }[]> = {
-  "edge-tts": [
-    { value: "zh-CN-XiaoxiaoNeural", label: "晓晓 (女)" },
-    { value: "zh-CN-YunxiNeural", label: "云希 (男)" },
-    { value: "zh-CN-XiaohanNeural", label: "晓涵 (女)" },
-    { value: "zh-CN-YunyangNeural", label: "云扬 (男·播报)" },
-    { value: "en-US-JennyNeural", label: "Jenny (Female)" },
-    { value: "en-US-GuyNeural", label: "Guy (Male)" },
-    { value: "en-US-AriaNeural", label: "Aria (Female)" },
-  ],
-  "openai-tts": [
-    { value: "alloy", label: "Alloy" }, { value: "echo", label: "Echo" },
-    { value: "fable", label: "Fable" }, { value: "onyx", label: "Onyx" },
-    { value: "nova", label: "Nova" }, { value: "shimmer", label: "Shimmer" },
-  ],
-  "dashscope-tts": [
-    { value: "longxiaochun", label: "龙小淳 (女·温柔)" },
-    { value: "longxiaoxia", label: "龙小夏 (女·热情)" },
-    { value: "longyue", label: "龙悦 (女·播报)" },
-    { value: "longcheng", label: "龙城 (男·磁性)" },
-    { value: "longjielidou", label: "龙杰力豆 (男·活力)" },
-    { value: "longshu", label: "龙书 (男·沉稳)" },
-  ],
-  "azure-speech": [
-    { value: "zh-CN-XiaoxiaoNeural", label: "晓晓 (女)" },
-    { value: "zh-CN-YunxiNeural", label: "云希 (男)" },
-    { value: "en-US-JennyNeural", label: "Jenny (Female)" },
-    { value: "en-US-GuyNeural", label: "Guy (Male)" },
-  ],
+// 音色按「供应商 + 模型」区分（dashscope 的 qwen-tts 与 cosyvoice 音色完全不同）。value = API 实际音色参数。
+type Voice = { value: string; label: string };
+const VOICES_EDGE: Voice[] = [
+  { value: "zh-CN-XiaoxiaoNeural", label: "晓晓 (女)" },
+  { value: "zh-CN-YunxiNeural", label: "云希 (男)" },
+  { value: "zh-CN-XiaohanNeural", label: "晓涵 (女)" },
+  { value: "zh-CN-YunyangNeural", label: "云扬 (男·播报)" },
+  { value: "en-US-JennyNeural", label: "Jenny (Female)" },
+  { value: "en-US-GuyNeural", label: "Guy (Male)" },
+  { value: "en-US-AriaNeural", label: "Aria (Female)" },
+];
+const VOICES_OPENAI: Voice[] = [
+  { value: "alloy", label: "Alloy" }, { value: "ash", label: "Ash" }, { value: "coral", label: "Coral" },
+  { value: "echo", label: "Echo" }, { value: "fable", label: "Fable" }, { value: "nova", label: "Nova" },
+  { value: "onyx", label: "Onyx" }, { value: "sage", label: "Sage" }, { value: "shimmer", label: "Shimmer" },
+];
+const VOICES_QWEN: Voice[] = [
+  { value: "Cherry", label: "芊悦·阳光自然女" }, { value: "Ryan", label: "甜茶·美剧张力男" },
+  { value: "Marcus", label: "秦川·陕北汉子" }, { value: "Seren", label: "小婉·舒缓女声" },
+  { value: "EldricSage", label: "沧明子·沧桑老者" }, { value: "Ethan", label: "晨煦·北方口音男" },
+  { value: "Katerina", label: "卡捷琳娜·御姐深情女" }, { value: "Roy", label: "阿杰·闽南哥仔" },
+  { value: "Dylan", label: "晓东·北京少年" }, { value: "Dolce", label: "多尔切·慵懒大叔" },
+  { value: "Nofish", label: "不吃鱼·南方口音男" }, { value: "Elias", label: "墨讲师·学术讲师" },
+  { value: "Andre", label: "安德雷·葡萄牙男声" }, { value: "Kiki", label: "阿清·甜美港妹(粤)" },
+  { value: "Sohee", label: "素熙·温柔欧尼" }, { value: "Jennifer", label: "詹妮弗·美剧大女主" },
+  { value: "Li", label: "老李·南京大叔" }, { value: "Chelsie", label: "千雪·乖巧柔弱" },
+  { value: "Sunny", label: "晴儿·甜飒川妹" },
+];
+const VOICES_COSYVOICE: Voice[] = [
+  { value: "longanhuan_v3", label: "龙安欢·欢脱元气女" }, { value: "longyingtao_v3", label: "龙应桃·温柔淡定女" },
+  { value: "loongtomoka_v3", label: "Tomoka·日语女" }, { value: "longyan_v3", label: "龙颜温·暖春风女" },
+  { value: "longyichen_v3", label: "龙逸尘·洒脱活力男" }, { value: "longdaiyu_v3", label: "龙黛玉·娇率才女" },
+  { value: "longanyang_v3", label: "龙安洋·阳光大男孩" }, { value: "longsanshu_v3", label: "龙三叔·沉稳质感男" },
+  { value: "longyuan_v3", label: "龙媛温·暖治愈女" }, { value: "longjielidou_v3", label: "龙杰力豆·阳光顽皮男" },
+  { value: "longhuhu_v3", label: "龙呼呼·天真烂漫女童" }, { value: "longlaoyi_v3", label: "龙老姨·烟火从容阿姨" },
+  { value: "loongdavid_v3", label: "David·美式英文男" }, { value: "longyingxiao_v3", label: "龙应笑·清甜推销女" },
+  { value: "longling_v3", label: "龙铃·稚气呆板女" }, { value: "longanxuan_v3", label: "龙安宣·经典直播女" },
+  { value: "longanli_v3", label: "龙安莉·利落从容女" }, { value: "longwanjun_v3", label: "龙婉君·细腻柔声女" },
+  { value: "longyue_v3", label: "龙悦温·暖磁性女" }, { value: "longxiaoxia_v3", label: "龙小夏·沉稳权威女" },
+];
+// 按 供应商+模型 取音色列表
+const voicesFor = (provider: string, model: string): Voice[] => {
+  if (provider === "openai") return VOICES_OPENAI;
+  if (provider === "edge-tts") return VOICES_EDGE;
+  if (provider === "dashscope") return model.startsWith("cosyvoice") ? VOICES_COSYVOICE : VOICES_QWEN;
+  return [];
 };
 
 // ---------------------------------------------------------------------------
@@ -268,20 +285,18 @@ const EMPTY_SETTINGS: AppSettings = {
     claude: { base_url: "https://api.anthropic.com", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
     openai: { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
     dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
-    "openai-tts": { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
-    "dashscope-tts": { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
-    "azure-speech": { base_url: "", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
+    "edge-tts": { base_url: "", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
   },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
   youtube: { client_id: "", client_secret: "" },
   pipeline: {
     default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui",
-    default_language: "zh", dedup_lookback: "30d", resolution: "1080x1920",
+    default_language: "zh", dedup_lookback: "30d", resolution: "1080x1920", max_images: 10,
     summary_provider: "openai", summary_model: "gpt-5", summary_max_length: 150,
     script_provider: "claude", script_model: "claude-sonnet-4-6",
     image_provider: "comfyui", image_model: "z_image",
     vision_provider: "openai", vision_model: "gpt-4o",
-    tts_provider: "edge-tts", tts_voice: "zh-CN-XiaoxiaoNeural",
+    tts_provider: "edge-tts", tts_model: "", tts_voice: "zh-CN-XiaoxiaoNeural",
     video_model: "wan5b", video_fps: 24,
   },
   storage: { work_dir: "", output_dir: "" },
@@ -295,9 +310,7 @@ const PROVIDER_TABS: { key: string; label: string }[] = [
   { key: "claude", label: "Anthropic Claude" },
   { key: "openai", label: "OpenAI" },
   { key: "dashscope", label: "阿里云 DashScope" },
-  { key: "openai-tts", label: "OpenAI TTS" },
-  { key: "dashscope-tts", label: "阿里云 CosyVoice" },
-  { key: "azure-speech", label: "Azure Speech" },
+  { key: "edge-tts", label: "微软 Edge TTS" },
 ];
 const PRESET_PROVIDER_KEYS = PROVIDER_TABS.map((t) => t.key);
 const PROVIDER_LABELS: Record<string, string> = { ...Object.fromEntries(PROVIDER_TABS.map((t) => [t.key, t.label])), comfyui: "ComfyUI" };
@@ -448,7 +461,40 @@ export function SettingsPage() {
   const [modelSel, setModelSel] = useState<Record<string, string>>({});  // 每个类型分组当前选中的供应商
   const [imgWf, setImgWf] = useState<string>("z_image");
   const [vidWf, setVidWf] = useState<string>("wan5b");
+  const [ttsState, setTtsState] = useState<"idle" | "loading" | "playing">("idle");
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsUrlRef = useRef<string>("");
   const { showToast } = useToast();
+
+  const stopTtsPreview = () => {
+    const a = ttsAudioRef.current;
+    if (a) { a.pause(); a.currentTime = 0; }
+    if (ttsUrlRef.current) { URL.revokeObjectURL(ttsUrlRef.current); ttsUrlRef.current = ""; }
+    ttsAudioRef.current = null;
+    setTtsState("idle");
+  };
+
+  // 试听：用当前选型合成示例并播放；合成中不重复发送，播放中再点即停止
+  const playTtsPreview = async () => {
+    if (ttsState === "loading") return;            // 合成中：防重复发送
+    if (ttsState === "playing") { stopTtsPreview(); return; }  // 播放中：停止
+    const p = settings.pipeline;
+    setTtsState("loading");
+    try {
+      const blob = await api.runs.ttsPreview({ provider: p.tts_provider, model: p.tts_model, voice: p.tts_voice });
+      const url = URL.createObjectURL(blob);
+      ttsUrlRef.current = url;
+      const audio = new Audio(url);
+      ttsAudioRef.current = audio;
+      audio.onended = stopTtsPreview;
+      audio.onerror = stopTtsPreview;
+      await audio.play();
+      setTtsState("playing");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "试听失败", "error");
+      stopTtsPreview();
+    }
+  };
 
   useEffect(() => {
     if (remote) {
@@ -473,8 +519,8 @@ export function SettingsPage() {
   // 用户自定义供应商（出现在各分组的供应商 chip + 流水线选型）
   const customKeys = Object.keys(settings.providers).filter((k) => !PRESET_PROVIDER_KEYS.includes(k));
   const allProviderKeys = [...PRESET_PROVIDER_KEYS, ...customKeys];
-  // 文本/图片/视觉用途的可选供应商：排除纯 TTS 供应商
-  const llmProviderKeys = allProviderKeys.filter((k) => !["openai-tts", "dashscope-tts", "azure-speech"].includes(k));
+  // 文本/图片/视觉用途的可选供应商：排除纯语音供应商（edge-tts）
+  const llmProviderKeys = allProviderKeys.filter((k) => k !== "edge-tts");
   const modelsOf = (p: string, t: "text" | "image" | "vision" | "tts") => settings.providers[p]?.models?.[t] ?? [];
   // 新增自定义供应商（供分组内的「添加供应商」一行调用）
   const addProviderByName = (name: string) => {
@@ -493,6 +539,9 @@ export function SettingsPage() {
       <Section key={type} title={label} desc="选供应商后配置其接口/Key 与该类型的模型列表（接口/Key 按供应商共享）">
         <TabStrip tabs={keys.map((k) => ({ key: k, label: PROVIDER_LABELS[k] ?? k }))} active={sel} onSelect={(k) => setModelSel((s) => ({ ...s, [type]: k }))} className="mb-2.5" />
         <AddProviderInline onAdd={(name) => { addProviderByName(name); setModelSel((s) => ({ ...s, [type]: name })); }} />
+        {sel === "edge-tts" ? (
+          <p className="text-sm text-white/52">微软 Edge TTS 免费，无需接口/Key/模型；音色在「流水线配置」选择。</p>
+        ) : (<>
         <Field label="接口地址">
           <input value={creds.base_url} onChange={(e) => patchProvider(sel, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
         </Field>
@@ -514,6 +563,7 @@ export function SettingsPage() {
             className="text-xs text-red-300/70 hover:text-red-300"
           >删除自定义供应商「{sel}」</button>
         )}
+        </>)}
       </Section>
     );
   };
@@ -562,7 +612,7 @@ export function SettingsPage() {
         {renderModelGroup("text", "文本模型", ["claude", "openai", "dashscope"])}
         {renderModelGroup("image", "图片模型", ["openai", "dashscope"])}
         {renderModelGroup("vision", "多模态模型", ["openai", "dashscope"])}
-        {renderModelGroup("tts", "TTS 模型", ["openai-tts", "dashscope-tts", "azure-speech"])}
+        {renderModelGroup("tts", "语音生成模型", ["openai", "dashscope", "edge-tts"])}
         <p className="text-xs text-white/60 pl-1">提示：接口地址/API Key 按供应商共享（任一分组里改即全局生效）；Edge TTS 免费无需配置；ComfyUI 在「ComfyUI 参数」页配。点 API Key 眼睛图标看完整内容。</p>
       </>)}
 
@@ -575,6 +625,9 @@ export function SettingsPage() {
         </Field>
         <Field label="最大文章数">
           <input type="number" value={settings.pipeline.default_max_articles} onChange={(e) => patch("pipeline", { default_max_articles: Number(e.target.value) })} min={1} max={50} className={inputCls} />
+        </Field>
+        <Field label="最多图片数" desc="0=不限制；超过则生图前 AI 重规划分镜，合并零碎/短文章到同一张图">
+          <input type="number" value={settings.pipeline.max_images} onChange={(e) => patch("pipeline", { max_images: Number(e.target.value) })} min={0} max={100} className={inputCls} />
         </Field>
         <Field label="分辨率" desc="图片与视频共用">
           <Select value={settings.pipeline.resolution} onChange={(v) => patch("pipeline", { resolution: v })} options={[
@@ -599,15 +652,36 @@ export function SettingsPage() {
           modelOptions={modelsOf(settings.pipeline.vision_provider, "vision")}
           onProvider={(v) => patch("pipeline", { vision_provider: v, vision_model: modelsOf(v, "vision")[0] ?? "" })} onModel={(v) => patch("pipeline", { vision_model: v })} />
         <Field label="语音生成模型"
-          desc={settings.pipeline.default_language === "en" && !settings.pipeline.tts_voice.startsWith("en") ? "⚠ 当前语言为英文，建议选英文音色（en-US-*）" : "供应商 + 音色"}>
-          <div className="grid grid-cols-2 gap-2">
-            <Select value={settings.pipeline.tts_provider} onChange={(v) => patch("pipeline", { tts_provider: v })}
+          desc={settings.pipeline.default_language === "en" && !settings.pipeline.tts_voice.startsWith("en") ? "⚠ 当前语言为英文，建议选英文音色（en-US-*）" : "供应商 + 模型 + 音色"}>
+          <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+            <Select value={settings.pipeline.tts_provider}
+              onChange={(v) => {
+                stopTtsPreview();
+                const ttsModels = settings.providers[v]?.models?.tts ?? [];
+                const model = ttsModels[0] ?? "";
+                const voices = voicesFor(v, model);
+                patch("pipeline", { tts_provider: v, tts_model: model, tts_voice: voices[0]?.value ?? settings.pipeline.tts_voice });
+              }}
               options={Object.keys(TTS_PRESETS).map((k) => ({ value: k, label: TTS_PRESETS[k].label }))} />
-            {(VOICES[settings.pipeline.tts_provider]?.length ?? 0) > 0 ? (
-              <Select value={settings.pipeline.tts_voice} onChange={(v) => patch("pipeline", { tts_voice: v })} options={VOICES[settings.pipeline.tts_provider]} />
+            {settings.pipeline.tts_provider === "edge-tts" ? (
+              <div className={`${inputCls} flex items-center text-white/40`}>无需模型</div>
             ) : (
-              <input value={settings.pipeline.tts_voice} onChange={(e) => patch("pipeline", { tts_voice: e.target.value })} placeholder="音色 ID" className={inputCls} />
+              <Select value={settings.pipeline.tts_model}
+                onChange={(v) => { stopTtsPreview(); const vs = voicesFor(settings.pipeline.tts_provider, v); patch("pipeline", { tts_model: v, tts_voice: vs[0]?.value ?? settings.pipeline.tts_voice }); }}
+                options={(settings.providers[settings.pipeline.tts_provider]?.models?.tts ?? []).map((m) => ({ value: m, label: m }))} />
             )}
+            {(() => {
+              const vs = voicesFor(settings.pipeline.tts_provider, settings.pipeline.tts_model);
+              return vs.length > 0 ? (
+                <Select value={settings.pipeline.tts_voice} onChange={(v) => { stopTtsPreview(); patch("pipeline", { tts_voice: v }); }} options={vs} />
+              ) : (
+                <input value={settings.pipeline.tts_voice} onChange={(e) => patch("pipeline", { tts_voice: e.target.value })} placeholder="音色 ID" className={inputCls} />
+              );
+            })()}
+            <button onClick={playTtsPreview} disabled={ttsState === "loading"}
+              className="shrink-0 px-3 py-2 text-xs rounded-md bg-white/[0.06] text-white/70 border border-white/[0.08] hover:bg-white/[0.1] transition disabled:opacity-50 whitespace-nowrap">
+              {ttsState === "loading" ? "合成中..." : ttsState === "playing" ? "■ 停止" : "▶ 试听"}
+            </button>
           </div>
         </Field>
         <Field label="视频路线">

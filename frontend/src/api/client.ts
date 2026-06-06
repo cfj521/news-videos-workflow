@@ -54,12 +54,12 @@ export interface AppSettings {
   youtube: { client_id: string; client_secret: string };
   pipeline: {
     default_time_range: string; default_max_articles: number; default_video_route: string;
-    default_language: string; dedup_lookback: string; resolution: string;
+    default_language: string; dedup_lookback: string; resolution: string; max_images: number;
     summary_provider: string; summary_model: string; summary_max_length: number;
     script_provider: string; script_model: string;
     image_provider: string; image_model: string;
     vision_provider: string; vision_model: string;
-    tts_provider: string; tts_voice: string;
+    tts_provider: string; tts_model: string; tts_voice: string;
     video_model: string; video_fps: number;
   };
   storage: { work_dir: string; output_dir: string };
@@ -112,6 +112,7 @@ export const api = {
       auto_collect?: boolean;
       resolution?: string;
       language?: string;
+      max_images?: number;
     }) =>
       fetchJSON<PipelineRun>("/pipeline/runs", {
         method: "POST",
@@ -131,6 +132,16 @@ export const api = {
       fetchJSON<{ status: string }>(`/pipeline/runs/${id}`, {
         method: "DELETE",
       }),
+    ttsPreview: async (body: { provider: string; model: string; voice: string }): Promise<Blob> => {
+      const res = await fetch(`${BASE}/pipeline/tts/preview`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => ({}))).detail;
+        throw new Error(detail ?? `试听失败: ${res.status}`);
+      }
+      return res.blob();
+    },
     logs: (id: number) => fetchJSON<{ lines: string[] }>(`/pipeline/runs/${id}/logs`),
     script: (id: number) => fetchJSON<ScriptData>(`/pipeline/runs/${id}/script`),
     timeline: (id: number) => fetchJSON<TimelineData>(`/pipeline/runs/${id}/timeline`),

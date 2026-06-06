@@ -21,10 +21,11 @@ from app.prompts import DEFAULTS, PROMPTS, resolve_prompt
 from app import config
 
 
-def test_defaults_have_7_entries():
-    assert len(PROMPTS) == 7
+def test_defaults_have_8_entries():
+    assert len(PROMPTS) == 8
     assert set(DEFAULTS) == {"roundup_article", "daily_batch", "summary_meta",
-                             "weekly_digest", "image_regen", "article_summary", "news_scoring"}
+                             "weekly_digest", "image_regen", "scene_replan",
+                             "article_summary", "news_scoring"}
 
 
 def test_default_content_enforces_asian_chinese():

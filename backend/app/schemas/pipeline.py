@@ -13,6 +13,7 @@ class PipelineRunCreate(BaseModel):
     auto_collect: bool = True
     resolution: str = ""
     language: str = ""
+    max_images: int | None = None
 
 
 class PipelineRunRead(BaseModel):
@@ -34,6 +35,7 @@ class PipelineRunRead(BaseModel):
     auto_collect: bool
     resolution: str | None
     language: str | None
+    max_images: int | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
