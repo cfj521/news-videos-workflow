@@ -168,3 +168,35 @@ def test_store_tokens_raises_when_exp_missing():
     })
     with pytest.raises(ValueError):
         oo.store_tokens(db, {"access_token": token, "refresh_token": "rt"})
+
+
+# ---- Task 6: 回调监听 + subscription_creds + codex client ----
+
+def test_handle_callback_success(monkeypatch):
+    db = _db()
+    from app.models.oauth_credential import OAuthLoginSession, OAuthCredential
+    db.add(OAuthLoginSession(state="S1", code_verifier="V1", status="pending"))
+    db.commit()
+    far = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
+    monkeypatch.setattr(oo, "exchange_code",
+                        lambda code, cv: {"access_token": _jwt_with_exp(far), "refresh_token": "rt"})
+    ok = oo.handle_callback(db, {"code": "C", "state": "S1"})
+    assert ok is True
+    assert db.query(OAuthLoginSession).filter_by(state="S1").one().status == "success"
+    assert db.query(OAuthCredential).filter_by(provider="openai").one().refresh_token == "rt"
+
+
+def test_handle_callback_bad_state():
+    db = _db()
+    ok = oo.handle_callback(db, {"code": "C", "state": "NOPE"})
+    assert ok is False
+
+
+def test_subscription_creds(monkeypatch):
+    db = _db()
+    far = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
+    oo.store_tokens(db, {"access_token": _jwt_with_exp(far), "refresh_token": "rt"})
+    monkeypatch.setattr(oo, "_open_session", lambda: db)
+    base_url, token, account_id = oo.subscription_creds()
+    assert base_url == oo.CODEX_BASE
+    assert account_id == "acc"
