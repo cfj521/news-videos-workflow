@@ -143,3 +143,28 @@ def test_get_valid_access_token_raises_when_not_logged_in():
     import pytest
     with pytest.raises(oo.NotLoggedInError):
         oo.get_valid_access_token(db)
+
+
+def test_get_status_and_logout():
+    db = _db()
+    assert oo.get_status(db) == {"logged_in": False}
+    exp = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
+    oo.store_tokens(db, {"access_token": _jwt_with_exp(exp), "refresh_token": "rt"})
+    st = oo.get_status(db)
+    assert st["logged_in"] is True
+    assert st["email"] == "a@b.com"
+    assert st["plan"] == "plus"
+    assert st["expires_at"].endswith("+00:00")  # 带时区后缀
+    oo.logout(db)
+    assert oo.get_status(db) == {"logged_in": False}
+
+
+def test_store_tokens_raises_when_exp_missing():
+    db = _db()
+    import pytest
+    token = _fake_jwt({  # 无 exp 声明
+        "https://api.openai.com/auth": {"chatgpt_account_id": "acc", "chatgpt_plan_type": "plus"},
+        "https://api.openai.com/profile": {"email": "a@b.com"},
+    })
+    with pytest.raises(ValueError):
+        oo.store_tokens(db, {"access_token": token, "refresh_token": "rt"})

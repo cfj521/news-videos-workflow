@@ -116,6 +116,8 @@ def _apply_tokens(row, tok: dict) -> None:
     row.account_id = claims["account_id"] or row.account_id
     row.plan_type = claims["plan_type"] or row.plan_type
     row.account_email = claims["email"] or row.account_email
+    if claims["exp"] is None:
+        raise ValueError("access_token 缺少 exp 声明")
     row.expires_at = datetime.fromtimestamp(claims["exp"], tz=timezone.utc)
     row.last_refresh = datetime.now(timezone.utc)
 
@@ -163,11 +165,19 @@ def get_status(db) -> dict:
     row = db.query(OAuthCredential).filter_by(provider="openai").first()
     if row is None:
         return {"logged_in": False}
+    expires_at = row.expires_at
+    if expires_at is not None:
+        # 兜底：SQLite 下可能是 naive datetime，统一视为 UTC，保证 isoformat 带时区后缀
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_iso = expires_at.isoformat()
+    else:
+        expires_iso = None
     return {
         "logged_in": True,
         "email": row.account_email,
         "plan": row.plan_type,
-        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        "expires_at": expires_iso,
     }
 
 
