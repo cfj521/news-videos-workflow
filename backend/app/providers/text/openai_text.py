@@ -78,7 +78,7 @@ class OpenAITextProvider(TextProvider):
             ) as stream:
                 async for event in stream:
                     if event.type == "response.output_text.delta":
-                        parts.append(event.delta)
+                        parts.append(event.delta or "")
             text = "".join(parts)
             log.info("generate(sub) done — %d chars in %.1fs", len(text), time.time() - t0)
             return text
