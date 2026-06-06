@@ -25,6 +25,7 @@ providers:
   openai:
     base_url: https://api.openai.com/v1
     api_key: ""
+    auth_mode: api_key            # api_key（填 key 按量计费）| subscription（ChatGPT 订阅登录，在「模型配置」页登录）
     max_output_tokens: 65535
     models:
       text: [gpt-5.5, gpt-5.5-pro, gpt-5]
