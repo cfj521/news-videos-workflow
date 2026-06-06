@@ -488,9 +488,11 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
   const [imgTs, setImgTs] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
   const [zoom, setZoom] = useState(false);
-  const [imgBroken, setImgBroken] = useState(false); // 图片未生成/加载失败 → 禁止放大
+  const [imgBroken, setImgBroken] = useState(false); // 图片未生成/加载失败 → 用占位图、禁止放大
   const imgUrl = (imgTs || refreshTick) ? `${imgSrc}?t=${imgTs || refreshTick}` : imgSrc;
   useEffect(() => { setImgBroken(false); }, [imgUrl]); // 换图后重置有效性
+  const arMatch = /^(\d+)x(\d+)$/.exec(imgSize || "");
+  const placeholderAspect = arMatch ? `${arMatch[1]} / ${arMatch[2]}` : "9 / 16"; // 占位图按分辨率比例，避免布局跳动
 
   // 放大预览：Esc 关闭
   useEffect(() => {
@@ -530,14 +532,28 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
       <div className="flex gap-4">
         <div className="w-[260px] shrink-0 flex flex-col">
           {!audioOnly && (
-            <img
-              src={imgUrl}
-              className={`w-full rounded-lg bg-white/[0.02] transition ${imgBroken ? "cursor-default opacity-[0.15]" : "cursor-zoom-in hover:opacity-90"}`}
-              title={imgBroken ? "图片未生成或加载失败" : "点击放大预览"}
-              onClick={() => { if (!imgBroken) setZoom(true); }}
-              onError={() => setImgBroken(true)}
-              onLoad={() => setImgBroken(false)}
-            />
+            <>
+              {/* 隐藏的真实图：仍在后台加载，成功则显示、失败则换占位图（无文字提示） */}
+              <img
+                src={imgUrl}
+                className={`w-full rounded-lg bg-white/[0.02] transition ${imgBroken ? "hidden" : "cursor-zoom-in hover:opacity-90"}`}
+                title="点击放大预览"
+                onClick={() => { if (!imgBroken) setZoom(true); }}
+                onError={() => setImgBroken(true)}
+                onLoad={() => setImgBroken(false)}
+              />
+              {imgBroken && (
+                <div className="w-full rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center"
+                     style={{ aspectRatio: placeholderAspect }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+                       strokeLinecap="round" strokeLinejoin="round" className="text-white/20">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="9" cy="9" r="2" />
+                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                  </svg>
+                </div>
+              )}
+            </>
           )}
           <audio controls src={(audioTs || refreshTick) ? `${audioSrc}?t=${audioTs || refreshTick}` : audioSrc} className={`w-full ${audioOnly ? "" : "mt-auto pt-2"}`} />
         </div>

@@ -67,10 +67,13 @@ class AIHotCollector(CollectorProvider):
 
     async def _collect_daily(self, source_config: dict) -> list[RawArticleData]:
         t0 = _time.time()
+        # report_date（YYYY-MM-DD）指定具体某天，缺省取最新一期 /daily
+        rd = (source_config.get("report_date") or "").strip()
+        endpoint = f"{API}/daily/{rd}" if rd else f"{API}/daily"
         async with httpx.AsyncClient(timeout=30, headers=_HEADERS) as client:
-            resp = await client.get(f"{API}/daily")
+            resp = await client.get(endpoint)
             if resp.status_code == 404:
-                log.warning("AI Hot daily report not available (404)")
+                log.warning("AI Hot daily report not available (404): %s", endpoint)
                 return []
             resp.raise_for_status()
         report = resp.json()
@@ -242,3 +245,21 @@ async def list_available_weeks(weeks_back: int = 8) -> list[dict]:
         weeks.append({"week_start": ws.isoformat(),
                       "week_end": (ws + timedelta(days=6)).isoformat(), "days": days})
     return weeks
+
+
+async def list_available_days() -> list[dict]:
+    """基于 /dailies 归档返回可选的日报日期，供前端选具体某天。按时间倒序：[{date}]。"""
+    async with httpx.AsyncClient(timeout=30, headers=_HEADERS) as client:
+        resp = await client.get(f"{API}/dailies")
+        if resp.status_code == 404:
+            return []
+        resp.raise_for_status()
+        archive = resp.json()
+
+    days: list[date] = []
+    for it in archive.get("items", []):
+        try:
+            days.append(date.fromisoformat(str(it.get("date", ""))))
+        except (ValueError, TypeError):
+            continue
+    return [{"date": d.isoformat()} for d in sorted(days, reverse=True)]

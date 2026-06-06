@@ -140,7 +140,9 @@ function AIHotGroupCard({ source, customIds, mutate }: {
   const method = (cfg.method as string) ?? "items";
   const category = (cfg.category as string) ?? "";
   const weekStart = (cfg.week_start as string) ?? "";
+  const reportDate = (cfg.report_date as string) ?? "";
   const { data: weeks } = useSWR(method === "weekly" ? "aihot-weeks" : null, api.sources.aihotWeeks);
+  const { data: days } = useSWR(method === "daily" ? "aihot-days" : null, api.sources.aihotDays);
 
   const setConfig = async (patch: Record<string, unknown>) => {
     const next = { ...cfg, ...patch };
@@ -190,6 +192,18 @@ function AIHotGroupCard({ source, customIds, mutate }: {
         {method === "items" && (
           <div className="w-48 ml-3">
             <Select value={category} onChange={(v) => setConfig({ category: v })} options={AIHOT_CATEGORIES} />
+          </div>
+        )}
+        {method === "daily" && (
+          <div className="w-56 ml-3">
+            <Select
+              value={reportDate}
+              onChange={(v) => setConfig({ report_date: v })}
+              options={[
+                { value: "", label: "自动（最新一期）" },
+                ...(days ?? []).map((d) => ({ value: d.date, label: d.date })),
+              ]}
+            />
           </div>
         )}
         {method === "weekly" && (

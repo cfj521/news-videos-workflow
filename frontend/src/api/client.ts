@@ -200,6 +200,7 @@ export const api = {
   sources: {
     list: () => fetchJSON<NewsSource[]>("/sources/"),
     aihotWeeks: () => fetchJSON<{ week_start: string; week_end: string; days: number }[]>("/sources/aihot/weeks"),
+    aihotDays: () => fetchJSON<{ date: string }[]>("/sources/aihot/days"),
     create: (body: Partial<NewsSource>) =>
       fetchJSON<NewsSource>("/sources/", {
         method: "POST",

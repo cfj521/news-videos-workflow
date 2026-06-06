@@ -26,6 +26,17 @@ async def aihot_weeks():
         return []
 
 
+@router.get("/aihot/days")
+async def aihot_days():
+    """AI HOT 日报可选的日期（供前端日选择框）。"""
+    from app.providers.collector.aihot import list_available_days
+    try:
+        return await list_available_days()
+    except Exception as e:
+        log.warning("Failed to list AI HOT days: %s", e)
+        return []
+
+
 @router.post("/", response_model=NewsSourceRead, status_code=201)
 def create_source(body: NewsSourceCreate, db: Session = Depends(get_db)):
     source = NewsSource(**body.model_dump())
