@@ -15,6 +15,11 @@ def build_tts_provider(cfg, provider: str = "", model: str = "", voice: str = ""
     if provider == "openai":
         from app.providers.tts.openai_tts import OpenAITTSProvider
         creds = cfg.provider_creds("openai")
+        # 订阅模式走 Codex/OAuth，不提供 audio/speech 端点，无法生成语音
+        if creds.auth_mode == "subscription":
+            raise ValueError(
+                "OpenAI 订阅模式不支持语音合成(TTS)，请改用 edge-tts 或将 openai 切回 API Key 模式"
+            )
         return OpenAITTSProvider(api_key=creds.api_key, model=model or "gpt-4o-mini-tts",
                                  base_url=creds.base_url, default_voice=voice or "alloy")
     if provider == "dashscope":
