@@ -3,6 +3,8 @@ from .base import Base as Base
 from .base import TimestampMixin as TimestampMixin
 from .issue_summary import IssueSummary as IssueSummary
 from .news_source import NewsSource as NewsSource
+from .oauth_credential import OAuthCredential as OAuthCredential
+from .oauth_credential import OAuthLoginSession as OAuthLoginSession
 from .pipeline_run import PipelineRun as PipelineRun
 from .publish_record import PublishRecord as PublishRecord
 from .raw_article import RawArticle as RawArticle
@@ -10,5 +12,3 @@ from .script import Script as Script
 from .timeline import Timeline as Timeline
 from .user import User as User
 from .video import Video as Video
-from .oauth_credential import OAuthCredential as OAuthCredential
-from .oauth_credential import OAuthLoginSession as OAuthLoginSession
