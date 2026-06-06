@@ -89,3 +89,4 @@ def test_refresh_tokens_posts_refresh_grant(monkeypatch):
     assert captured["data"]["grant_type"] == "refresh_token"
     assert captured["data"]["refresh_token"] == "RT"
     assert captured["data"]["client_id"] == oo.CLIENT_ID
+    assert captured["data"]["scope"] == oo.SCOPE
