@@ -3,15 +3,16 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import httpx
 import json
 import logging
-import openai
 import secrets
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, quote, urlencode, urlparse
+
+import httpx
+import openai
 
 # ---- 常量 ----
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -129,7 +130,10 @@ def store_tokens(db, tok: dict):
     from app.models.oauth_credential import OAuthCredential
     row = db.query(OAuthCredential).filter_by(provider="openai").first()
     if row is None:
-        row = OAuthCredential(provider="openai", refresh_token="", access_token="", expires_at=datetime.now(timezone.utc))
+        row = OAuthCredential(
+            provider="openai", refresh_token="", access_token="",
+            expires_at=datetime.now(timezone.utc),
+        )
         db.add(row)
     _apply_tokens(row, tok)
     db.commit()
