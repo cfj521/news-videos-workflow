@@ -37,7 +37,8 @@ def _build_text_provider():
         from app.providers.text.claude import ClaudeTextProvider
         return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
     from app.providers.text.openai_text import OpenAITextProvider
-    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
+    sub = cfg.provider_creds("openai").auth_mode == "subscription"
+    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens, subscription=sub)
 
 
 TYPE_TO_COLLECTOR: dict[str, type] = {}
@@ -167,7 +168,8 @@ def _build_summary_provider(cfg):
         from app.providers.text.claude import ClaudeTextProvider
         return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
     from app.providers.text.openai_text import OpenAITextProvider
-    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
+    sub = cfg.provider_creds("openai").auth_mode == "subscription"
+    return OpenAITextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens, subscription=sub)
 
 
 async def _summarize_articles(articles, cfg, run, db, log):
