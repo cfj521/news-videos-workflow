@@ -310,8 +310,12 @@ async def import_article_file(run_id: int, file: UploadFile = File(...)):
     cfg = get_settings()
     from app.config import ProviderCfg, resolve
     vp, vb, vk, vm = resolve(cfg, "vision")
+    v_auth = cfg.provider_creds("openai").auth_mode if vp == "openai" else "api_key"
+    if vp == "openai" and v_auth == "subscription":
+        vm = "gpt-5.5"  # 订阅解析端点支持的模型
+    vcfg = ProviderCfg(provider=vp, base_url=vb, model=vm, api_key=vk, auth_mode=v_auth)
     try:
-        art = await import_file(data, file.filename or "", ProviderCfg(provider=vp, base_url=vb, model=vm, api_key=vk))
+        art = await import_file(data, file.filename or "", vcfg)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
