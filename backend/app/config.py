@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -28,7 +28,8 @@ class ProviderCfg(BaseModel):
     base_url: str = ""
     model: str = ""
     api_key: str = ""
-    auth_mode: str = "api_key"   # 透传给 vision 解析，决定走 chat.completions 还是 codex responses
+    # api_key | subscription：从 providers.<name>.auth_mode 透传过来，决定走 chat.completions 还是 codex responses
+    auth_mode: Literal["api_key", "subscription"] = "api_key"
     account_id: str = ""         # 订阅模式的 ChatGPT account id
 
 
@@ -44,7 +45,7 @@ class ProviderCreds(BaseModel):
     """单个供应商的连接凭证与参数。供应商参数库 providers 的一项，被各用途按需引用。"""
     base_url: str = ""
     api_key: str = ""
-    auth_mode: str = "api_key"  # api_key | subscription（仅 openai 用，subscription 走 OAuth 订阅）
+    auth_mode: Literal["api_key", "subscription"] = "api_key"  # api_key | subscription（仅 openai 用，subscription 走 OAuth 订阅）
     max_output_tokens: int = 65535  # 文本/视觉模型单次生成的输出 token 上限
     models: ProviderModels = ProviderModels()
 
