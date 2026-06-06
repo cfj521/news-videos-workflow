@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import useSWR from "swr";
-import { api, type AppSettings, type AuthUser, type ProviderCreds } from "../api/client";
+import { api, type AppSettings, type AuthUser, type ProviderCreds, type OpenAIAuthStatus } from "../api/client";
 import { useToast } from "../components/Toast";
 import { Select } from "../components/Select";
 import { PasswordInput } from "../components/PasswordInput";
@@ -357,6 +357,127 @@ const PRESET_PROVIDER_KEYS = PROVIDER_TABS.map((t) => t.key);
 const PROVIDER_LABELS: Record<string, string> = { ...Object.fromEntries(PROVIDER_TABS.map((t) => [t.key, t.label])), comfyui: "ComfyUI" };
 
 // ---------------------------------------------------------------------------
+// OpenAI 订阅登录面板（仅在 auth_mode === "subscription" 时渲染）
+// ---------------------------------------------------------------------------
+
+function OpenAILoginPanel() {
+  const { showToast } = useToast();
+  const [status, setStatus] = useState<OpenAIAuthStatus | null>(null);
+  const [loading, setLoading] = useState(false);         // 拉取状态 / 登录操作 loading
+  const [polling, setPolling] = useState(false);          // 正在轮询登录结果
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPoll = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    setPolling(false);
+  }, []);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const s = await api.auth.openaiStatus();
+      setStatus(s);
+    } catch {
+      // 不显示 toast，静默处理
+    }
+  }, []);
+
+  // 挂载时拉取一次状态
+  useEffect(() => {
+    fetchStatus();
+    return () => stopPoll();
+  }, [fetchStatus, stopPoll]);
+
+  const handleLogin = async () => {
+    if (loading || polling) return;
+    setLoading(true);
+    try {
+      const { authorize_url, state } = await api.auth.openaiLoginStart();
+      window.open(authorize_url, "_blank");
+      setLoading(false);
+      setPolling(true);
+      let tries = 0;
+      pollTimerRef.current = setInterval(async () => {
+        tries++;
+        if (tries > 150) { stopPoll(); showToast("登录超时，请重试", "error"); return; }
+        try {
+          const r = await api.auth.openaiLoginStatus(state);
+          if (r.status === "success") {
+            stopPoll();
+            await fetchStatus();
+            showToast("ChatGPT 登录成功", "success");
+          } else if (r.status === "error") {
+            stopPoll();
+            showToast(r.error ?? "登录失败，请重试", "error");
+          }
+          // pending：继续轮询
+        } catch {
+          // 网络抖动，继续轮询
+        }
+      }, 2000);
+    } catch (e) {
+      setLoading(false);
+      showToast(e instanceof Error ? e.message : "启动登录失败", "error");
+    }
+  };
+
+  const handleLogout = async () => {
+    setLoading(true);
+    try {
+      await api.auth.openaiLogout();
+      await fetchStatus();
+      showToast("已退出 ChatGPT 登录", "success");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "退出失败", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatExpiry = (s?: string) => {
+    if (!s) return "—";
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : d.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
+  };
+
+  return (
+    <div className="space-y-3">
+      {status === null ? (
+        <p className="text-sm text-white/52">正在检查登录状态…</p>
+      ) : status.logged_in ? (
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3 space-y-2">
+          <p className="text-sm text-emerald-300 font-medium">已登录 ChatGPT</p>
+          <div className="grid grid-cols-[6rem_1fr] gap-y-1 text-sm">
+            <span className="text-white/52">邮箱</span><span className="text-white/92">{status.email ?? "—"}</span>
+            <span className="text-white/52">套餐</span><span className="text-white/92">{status.plan ?? "—"}</span>
+            <span className="text-white/52">到期时间</span><span className="text-white/92">{formatExpiry(status.expires_at)}</span>
+          </div>
+          <button onClick={handleLogout} disabled={loading}
+            className="mt-1 px-3 py-1.5 text-xs rounded-md bg-white/[0.06] text-white/78 border border-white/[0.08] hover:text-white/96 hover:bg-white/[0.1] transition disabled:opacity-50">
+            {loading ? "处理中…" : "退出登录"}
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <button onClick={handleLogin} disabled={loading || polling}
+            className="px-4 py-1.5 text-sm rounded-md bg-blue-500/15 text-blue-300 border border-blue-400/30 hover:bg-blue-500/25 transition disabled:opacity-50">
+            {loading ? "跳转中…" : polling ? "等待授权回调…" : "登录 ChatGPT"}
+          </button>
+          {polling && (
+            <span className="text-xs text-white/52">浏览器窗口完成授权后自动更新</span>
+          )}
+        </div>
+      )}
+      <p className="text-xs text-amber-300/60 leading-snug">
+        订阅模式仅支持 文案/生图/解析，不支持语音(TTS)；生图固定用 gpt-5.5。
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 用户管理 tab
 // ---------------------------------------------------------------------------
 
@@ -583,10 +704,37 @@ export function SettingsPage() {
         {sel === "edge-tts" ? (
           <p className="text-sm text-white/52">微软 Edge TTS 免费，无需接口/Key/模型；音色在「流水线配置」选择。</p>
         ) : (<>
-        <Field label="接口地址">
-          <input value={creds.base_url} onChange={(e) => patchProvider(sel, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
-        </Field>
-        <SecretField label="API Key" value={creds.api_key} onChange={(v) => patchProvider(sel, { api_key: v })} />
+        {/* OpenAI 鉴权模式切换 */}
+        {sel === "openai" && (
+          <Field label="鉴权方式" center>
+            <div className="flex gap-1.5">
+              {(["api_key", "subscription"] as const).map((mode) => {
+                const active = (creds.auth_mode ?? "api_key") === mode;
+                return (
+                  <button key={mode} type="button"
+                    onClick={() => patchProvider("openai", { auth_mode: mode })}
+                    className={`px-2.5 py-1 text-xs rounded-md transition border ${active ? "bg-blue-500/15 text-blue-300 border-blue-400/30" : "bg-white/[0.03] text-white/70 border-white/[0.06] hover:text-white/92"}`}>
+                    {mode === "api_key" ? "API Key" : "订阅登录"}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+        )}
+        {/* 接口地址：api_key 模式下显示；订阅模式不需要（走 OAuth token）*/}
+        {(sel !== "openai" || (creds.auth_mode ?? "api_key") === "api_key") && (
+          <Field label="接口地址">
+            <input value={creds.base_url} onChange={(e) => patchProvider(sel, { base_url: e.target.value })} placeholder="https://api.example.com/v1" className={monoInputCls} />
+          </Field>
+        )}
+        {/* API Key：api_key 模式下显示；订阅模式改为显示登录 UI */}
+        {sel === "openai" && (creds.auth_mode ?? "api_key") === "subscription" ? (
+          <Field label="ChatGPT 账号">
+            <OpenAILoginPanel />
+          </Field>
+        ) : (
+          <SecretField label="API Key" value={creds.api_key} onChange={(v) => patchProvider(sel, { api_key: v })} />
+        )}
         {(type === "text" || type === "vision") && (
           <Field label="输出 tokens" desc="单次生成 token 上限">
             <input type="number" value={creds.max_output_tokens} min={256} max={200000} step={1024}

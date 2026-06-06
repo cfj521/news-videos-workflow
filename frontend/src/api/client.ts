@@ -45,7 +45,14 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export interface ProviderModels { text: string[]; image: string[]; vision: string[]; tts: string[] }
-export interface ProviderCreds { base_url: string; api_key: string; max_output_tokens: number; models: ProviderModels }
+export interface ProviderCreds { base_url: string; api_key: string; max_output_tokens: number; models: ProviderModels; auth_mode?: string }
+
+export interface OpenAIAuthStatus {
+  logged_in: boolean;
+  email?: string;
+  plan?: string;
+  expires_at?: string;
+}
 
 export interface AppSettings {
   // 供应商参数库：各供应商的连接凭证；当前用哪个由 pipeline 选型决定
@@ -279,6 +286,14 @@ export const api = {
       }),
     deleteUser: (id: number) =>
       fetchJSON<{ status: string }>(`/auth/users/${id}`, { method: "DELETE" }),
+    openaiLoginStart: () =>
+      fetchJSON<{ authorize_url: string; state: string }>("/auth/openai/login/start", { method: "POST" }),
+    openaiLoginStatus: (state: string) =>
+      fetchJSON<{ status: "pending" | "success" | "error"; error?: string }>(`/auth/openai/login/status?state=${encodeURIComponent(state)}`),
+    openaiStatus: () =>
+      fetchJSON<OpenAIAuthStatus>("/auth/openai/status"),
+    openaiLogout: () =>
+      fetchJSON<{ status: string }>("/auth/openai/logout", { method: "POST" }),
   },
 };
 
