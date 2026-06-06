@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import secrets
+import socket
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -227,6 +228,21 @@ def handle_callback(db, query: dict) -> bool:
         return False
 
 
+class _DualStackHTTPServer(HTTPServer):
+    """同时监听 IPv4/IPv6。Windows 上 localhost 常优先解析为 ::1，单绑 127.0.0.1 会被拒。
+
+    用 AF_INET6 + IPV6_V6ONLY=0 让同一 socket 既收 ::1 也收 127.0.0.1（IPv4-mapped）。
+    """
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except (AttributeError, OSError):
+            pass
+        super().server_bind()
+
+
 def start_login_listener(state: str, timeout: int = 300) -> None:
     """后台线程起 1455 监听，处理一次回调后关闭。端口占用直接标记错误。"""
     import time as _time
@@ -257,10 +273,20 @@ def start_login_listener(state: str, timeout: int = 300) -> None:
             result_holder["done"] = True
 
     def serve():
-        try:
-            server = HTTPServer(("127.0.0.1", CALLBACK_PORT), Handler)
-        except OSError as e:
-            log.error("无法绑定 1455 端口（可能 codex 正在登录）：%s", e)
+        # 优先双栈（兼顾 localhost→::1 的 Windows），失败再退回 IPv4；都失败视为端口占用
+        server = None
+        last_err: OSError | None = None
+        for factory in (
+            lambda: _DualStackHTTPServer(("", CALLBACK_PORT), Handler),
+            lambda: HTTPServer(("127.0.0.1", CALLBACK_PORT), Handler),
+        ):
+            try:
+                server = factory()
+                break
+            except OSError as e:
+                last_err = e
+        if server is None:
+            log.error("无法绑定 1455 端口（可能 codex 正在登录）：%s", last_err)
             db = _open_session()
             try:
                 from app.models.oauth_credential import OAuthLoginSession
