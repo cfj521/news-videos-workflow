@@ -7,6 +7,7 @@ from app.oauth import openai_oauth as oo
 def test_gen_pkce_shapes():
     verifier, challenge = oo.gen_pkce()
     assert 43 <= len(verifier) <= 128
+    assert "=" not in verifier and "+" not in verifier and "/" not in verifier  # base64url 无填充
     assert "=" not in challenge and "+" not in challenge and "/" not in challenge  # base64url 无填充
 
 
