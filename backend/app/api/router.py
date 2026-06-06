@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.auth import router as auth_router
+from app.api.openai_oauth import router as openai_oauth_router
 from app.api.pipeline import public_router as pipeline_public_router
 from app.api.pipeline import router as pipeline_router
 from app.api.publishers import router as publishers_router
@@ -22,3 +23,4 @@ api_router.include_router(pipeline_router, dependencies=_guard)
 api_router.include_router(sources_router, dependencies=_guard)
 api_router.include_router(publishers_router, dependencies=_guard)
 api_router.include_router(settings_router, dependencies=_guard)
+api_router.include_router(openai_oauth_router, dependencies=_guard)
