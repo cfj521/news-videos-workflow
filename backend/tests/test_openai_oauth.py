@@ -39,3 +39,53 @@ def test_parse_claims_extracts_nested_fields():
     assert claims["account_id"] == "acc-9"
     assert claims["plan_type"] == "plus"
     assert claims["email"] == "x@y.com"
+
+
+def test_exchange_code_posts_expected_body(monkeypatch):
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return {"access_token": "at", "refresh_token": "rt"}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def post(self, url, data=None, **k):
+            captured["url"] = url
+            captured["data"] = data
+            return FakeResp()
+
+    monkeypatch.setattr(oo.httpx, "Client", FakeClient)
+    out = oo.exchange_code("CODE", "VERIFIER")
+    assert out["access_token"] == "at"
+    assert captured["url"] == oo.TOKEN_URL
+    assert captured["data"]["grant_type"] == "authorization_code"
+    assert captured["data"]["code"] == "CODE"
+    assert captured["data"]["code_verifier"] == "VERIFIER"
+    assert captured["data"]["client_id"] == oo.CLIENT_ID
+    assert captured["data"]["redirect_uri"] == oo.REDIRECT_URI
+
+
+def test_refresh_tokens_posts_refresh_grant(monkeypatch):
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return {"access_token": "new"}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def post(self, url, data=None, **k):
+            captured["data"] = data
+            return FakeResp()
+
+    monkeypatch.setattr(oo.httpx, "Client", FakeClient)
+    out = oo.refresh_tokens("RT")
+    assert out["access_token"] == "new"
+    assert captured["data"]["grant_type"] == "refresh_token"
+    assert captured["data"]["refresh_token"] == "RT"
+    assert captured["data"]["client_id"] == oo.CLIENT_ID

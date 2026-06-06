@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import httpx
 import json
 import secrets
 from urllib.parse import quote, urlencode
@@ -60,3 +61,32 @@ def parse_claims(jwt_str: str) -> dict:
         "plan_type": auth.get("chatgpt_plan_type", ""),
         "email": profile.get("email") or payload.get("email", ""),
     }
+
+
+def exchange_code(code: str, code_verifier: str) -> dict:
+    """用 authorization_code 换取 access_token / refresh_token。"""
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "code": code,
+        "redirect_uri": REDIRECT_URI,
+        "code_verifier": code_verifier,
+    }
+    with httpx.Client(timeout=30) as c:
+        resp = c.post(TOKEN_URL, data=data)
+        resp.raise_for_status()
+        return resp.json()
+
+
+def refresh_tokens(refresh_token: str) -> dict:
+    """用 refresh_token 换取新 access_token。"""
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": CLIENT_ID,
+        "refresh_token": refresh_token,
+        "scope": SCOPE,
+    }
+    with httpx.Client(timeout=30) as c:
+        resp = c.post(TOKEN_URL, data=data)
+        resp.raise_for_status()
+        return resp.json()
