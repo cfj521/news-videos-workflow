@@ -1048,15 +1048,25 @@ git commit -m "feat(frontend): openai 鉴权模式切换 + ChatGPT 登录 UI"
 
 ---
 
-# 阶段二：Provider 集成（每路先 spike）
+# 阶段二：Provider 集成
 
-> ⚠️ 阶段二依赖未公开端点的精确契约。每个 Task 第 0 步为 **spike**：用本机已登录的 codex 抓一次真实请求确认格式，再写代码。spike 命令示例（PowerShell，用户本机执行）：
-> 用 codex CLI 实际跑一次对应操作并开启 verbose / 抓包，或参考 `~/.codex/auth.json` 的 access_token 手测：
-> ```powershell
-> # 文本/流式确认（确认 stream=False 是否被接受、返回结构）
-> # 用 access_token 对 https://chatgpt.com/backend-api/codex/responses 发一个最小 responses 请求
-> ```
-> 由实现者在该步把确认结论写入对应 Task 的注释后再继续。
+> ✅ **spike 已完成（2026-06-06，对真实 codex/responses 端点验证）**，契约如下，Task 9/10/11 按此实现（无需再 spike）：
+>
+> **通用（所有订阅调用）**
+> - **必须 `stream=True`**：非流式返回 400 `"Stream must be set to true"`。
+> - **`input` 必须是 list**（不能是裸字符串）：`[{"role":"user","content":[{"type":"input_text","text": "..."}]}]`；否则 400 `"Input must be a list"`。
+> - **`instructions` 必填**：否则 400 `"Instructions are required"`。
+> - **`store=False`** 可用。
+> - **SDK 的 `get_final_response()` / 非流式聚合在此端点返回空**（`response.completed.output` 为 `[]`）。**必须用 `client.responses.stream(...)` 并手动遍历事件累积**：
+> - client 构造：`build_codex_client(token, account_id)`（Task 6 已实现）。
+>
+> **文本**：遍历事件，累积 `ev.type == "response.output_text.delta"` 的 `ev.delta`（最终文本；亦可用 `response.output_text.done` 的 `ev.text`）。
+>
+> **生图**：`tools=[{"type":"image_generation","size": <map>}]`，`size` 取值实测可用：竖屏 `"1024x1536"`、横屏 `"1536x1024"`、方 `"1024x1024"`、`"auto"`。遍历事件，从 `response.output_item.done` 的 `ev.item.result`（或 `response.image_generation_call.partial_image` 的 `ev.partial_image_b64`）取 base64 PNG，解码落盘（已验证为有效 PNG）。
+>
+> **解析（vision）**：`input` 项里图片用 `{"type":"input_image","image_url":"data:image/png;base64,<b64>"}`，`image_url` **必须是字符串**（传对象会 400 `"expected an image URL"`）。遍历累积 `response.output_text.delta`。
+>
+> 提醒：实测发现本机 codex 的 token 会被服务端置为 `token_invalidated` / 会话 `app_session_terminated`，需要时让用户重新 `codex login`；我们应用内的 OAuth 登录走自己的会话，不受影响。
 
 ## Task 9: 文本 provider 订阅分支
 
