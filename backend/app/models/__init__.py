@@ -10,3 +10,5 @@ from .script import Script as Script
 from .timeline import Timeline as Timeline
 from .user import User as User
 from .video import Video as Video
+from .oauth_credential import OAuthCredential as OAuthCredential
+from .oauth_credential import OAuthLoginSession as OAuthLoginSession
