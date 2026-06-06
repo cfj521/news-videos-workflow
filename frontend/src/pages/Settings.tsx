@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import useSWR from "swr";
 import { api, type AppSettings, type AuthUser, type ProviderCreds } from "../api/client";
 import { useToast } from "../components/Toast";
@@ -34,28 +34,28 @@ type ParamMeta = {
 };
 // ComfyUI 图片 workflow 的可调参数（均为单 KSampler）。
 const IMAGE_PARAM_META: Record<string, ParamMeta> = {
-  z_image: {
+  "z_image_turbo": {
     steps: { min: 4, max: 20, desc: "采样步数，z_image turbo 蒸馏，8–9 步即可（默认 9）" },
     cfg: { min: 1, max: 5, desc: "提示词遵循强度，turbo 建议 1.0（默认 1.0）" },
   },
-  qwen: {
+  "qwen_image": {
     steps: { min: 10, max: 40, desc: "采样步数，越大越精细越慢（默认 20）" },
     cfg: { min: 1, max: 6, desc: "提示词遵循强度（默认 2.5）" },
   },
 };
 const VIDEO_PARAM_META: Record<string, ParamMeta> = {
-  wan5b: {
+  "wan2.2_5b": {
     steps: { min: 10, max: 50, desc: "采样步数，越大越精细越慢（默认 30）" },
     cfg: { min: 1, max: 10, desc: "提示词遵循强度，越大越贴提示词（默认 5.0）" },
   },
-  wan14b: {
+  "wan2.2_14b": {
     steps: { min: 10, max: 40, desc: "采样步数（默认 20）；高/低噪切换点自动取步数一半" },
     cfg: { min: 1, max: 10, desc: "提示词遵循强度（默认 3.5）" },
   },
-  wan14b_lightx2v: {
-    note: "加速 LoRA 固定 4 步、cfg≈1.0，步数与 cfg 均不可调。追求质量请改用 Wan2.2 14B。",
+  "wan2.2_14b_lightx2v": {
+    note: "加速 LoRA 固定 4 步、cfg≈1.0，步数与 cfg 均不可调。追求质量请改用 wan2.2_14b。",
   },
-  ltx: {
+  "ltx_2.3": {
     cfg: { min: 1, max: 5, desc: "提示词遵循强度（默认 1.0）" },
     note: "蒸馏模型步数固定（约 4 步），无法调整。",
   },
@@ -212,6 +212,47 @@ function TabStrip({ tabs, active, onSelect, className }: {
   );
 }
 
+// 一条提示词（中文+英文两框）：高度自适应内容，并让两框取较大值保持等高；+6px 消除滚动条。
+function PromptRow({ label, desc, zhValue, enValue, onZh, onEn, onResetZh, onResetEn }: {
+  label: string; desc: string; zhValue: string; enValue: string;
+  onZh: (v: string) => void; onEn: (v: string) => void; onResetZh: () => void; onResetEn: () => void;
+}) {
+  const zhRef = useRef<HTMLTextAreaElement | null>(null);
+  const enRef = useRef<HTMLTextAreaElement | null>(null);
+  const maxPx = 600;
+  useLayoutEffect(() => {
+    const a = zhRef.current, b = enRef.current;
+    if (!a || !b) return;
+    a.style.height = "auto"; b.style.height = "auto";
+    const h = Math.min(Math.max(a.scrollHeight, b.scrollHeight) + 6, maxPx); // +6 抵消边框/亚像素，消滚动条
+    a.style.height = `${h}px`; b.style.height = `${h}px`;
+  }, [zhValue, enValue]);
+  const ta = "w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/96 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40";
+  const badge = "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium";
+  const resetBtn = "px-2 py-0.5 text-[11px] rounded-md border border-white/[0.08] bg-white/[0.04] text-white/55 hover:text-white/85 hover:bg-white/[0.08] transition";
+  return (
+    <div className="mb-5">
+      <label className="text-sm text-white/92">{label}<span className="text-white/60 text-xs ml-2">{desc}</span></label>
+      <div className="grid grid-cols-2 gap-3 mt-1.5">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className={`${badge} bg-blue-500/15 text-blue-300`}>中文</span>
+            <button onClick={onResetZh} className={resetBtn}>恢复默认</button>
+          </div>
+          <textarea ref={zhRef} value={zhValue} onChange={(e) => onZh(e.target.value)} className={ta} style={{ maxHeight: maxPx }} />
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className={`${badge} bg-violet-500/15 text-violet-300`}>English</span>
+            <button onClick={onResetEn} className={resetBtn}>恢复默认</button>
+          </div>
+          <textarea ref={enRef} value={enValue} onChange={(e) => onEn(e.target.value)} className={ta} style={{ maxHeight: maxPx }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 分组内「添加自定义供应商」一行：自带输入态，加后回调父级（小一号按钮）
 function AddProviderInline({ onAdd }: { onAdd: (name: string) => void }) {
   const [v, setV] = useState("");
@@ -261,15 +302,15 @@ function ModelListEditor({ label, models, onChange }: {
 
 // 流水线选型一行：供应商下拉 + 模型下拉（均不可编辑；模型候选来自该供应商对应类型的模型列表，
 // 在「模型配置」页维护。切换供应商时由父级把模型重置为新供应商的首个模型）
-function PurposeSelect({ label, desc, providerKeys, provider, model, modelOptions, onProvider, onModel }: {
+function PurposeSelect({ label, desc, providerKeys, provider, model, modelOptions, modelLabels, onProvider, onModel }: {
   label: string; desc?: string; providerKeys: string[];
-  provider: string; model: string; modelOptions: string[];
+  provider: string; model: string; modelOptions: string[]; modelLabels?: Record<string, string>;
   onProvider: (v: string) => void; onModel: (v: string) => void;
 }) {
   const provOptions = providerKeys.map((k) => ({ value: k, label: PROVIDER_LABELS[k] ?? k }));
   // 当前模型若不在候选列表也并入，避免下拉显示空白
   const names = model && !modelOptions.includes(model) ? [model, ...modelOptions] : modelOptions;
-  const modelOpts = names.length ? names.map((m) => ({ value: m, label: m })) : [{ value: "", label: "无可选模型，去「模型配置」添加" }];
+  const modelOpts = names.length ? names.map((m) => ({ value: m, label: modelLabels?.[m] ?? m })) : [{ value: "", label: "无可选模型，去「模型配置」添加" }];
   return (
     <Field label={label} desc={desc}>
       <div className="grid grid-cols-2 gap-2">
@@ -294,14 +335,14 @@ const EMPTY_SETTINGS: AppSettings = {
     default_language: "zh", dedup_lookback: "30d", resolution: "1080x1920", max_images: 10,
     summary_provider: "openai", summary_model: "gpt-5", summary_max_length: 150,
     script_provider: "claude", script_model: "claude-sonnet-4-6",
-    image_provider: "comfyui", image_model: "z_image",
+    image_provider: "comfyui", image_model: "z_image_turbo",
     vision_provider: "openai", vision_model: "gpt-4o",
     tts_provider: "edge-tts", tts_model: "", tts_voice: "zh-CN-XiaoxiaoNeural",
-    video_model: "wan5b", video_fps: 24,
+    video_model: "wan2.2_5b", video_fps: 24,
   },
   storage: { work_dir: "", output_dir: "" },
   video: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
-  comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_params: { z_image: { steps: 9, cfg: 1.0 }, qwen: { steps: 20, cfg: 2.5 } }, video_params: { wan5b: { steps: 30, cfg: 5.0 }, wan14b: { steps: 20, cfg: 3.5 }, wan14b_lightx2v: { steps: 4, cfg: 1.0 }, ltx: { steps: 4, cfg: 1.0 } } },
+  comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
   prompts: {},
 };
 
@@ -459,8 +500,8 @@ export function SettingsPage() {
   const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<"pipeline" | "models" | "comfyui" | "prompts" | "users">("pipeline");
   const [modelSel, setModelSel] = useState<Record<string, string>>({});  // 每个类型分组当前选中的供应商
-  const [imgWf, setImgWf] = useState<string>("z_image");
-  const [vidWf, setVidWf] = useState<string>("wan5b");
+  const [imgWf, setImgWf] = useState<string>("z_image_turbo");
+  const [vidWf, setVidWf] = useState<string>("wan2.2_5b");
   const [ttsState, setTtsState] = useState<"idle" | "loading" | "playing">("idle");
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsUrlRef = useRef<string>("");
@@ -592,11 +633,11 @@ export function SettingsPage() {
     <div className="space-y-4 pb-12">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tight">设置</h1>
-        {activeTab !== "users" && (
-          <button onClick={handleSave} disabled={!dirty} className={`${btnPrimary} ${dirty ? "" : "opacity-40 cursor-default"}`}>
-            保存
-          </button>
-        )}
+        {/* 用户管理无保存动作，但按钮始终占位（invisible）以保持头部高度一致，避免切 tab 上下抖动 */}
+        <button onClick={handleSave} disabled={!dirty}
+          className={`${btnPrimary} ${activeTab === "users" ? "invisible" : dirty ? "" : "opacity-40 cursor-default"}`}>
+          保存
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-2">
@@ -645,8 +686,8 @@ export function SettingsPage() {
           onProvider={(v) => patch("pipeline", { script_provider: v, script_model: modelsOf(v, "text")[0] ?? "" })} onModel={(v) => patch("pipeline", { script_model: v })} />
         <PurposeSelect label="图片生成模型" providerKeys={["comfyui", ...llmProviderKeys]} desc="comfyui 时为图片 workflow"
           provider={settings.pipeline.image_provider} model={settings.pipeline.image_model}
-          modelOptions={settings.pipeline.image_provider === "comfyui" ? ["z_image", "qwen"] : modelsOf(settings.pipeline.image_provider, "image")}
-          onProvider={(v) => patch("pipeline", { image_provider: v, image_model: (v === "comfyui" ? "z_image" : modelsOf(v, "image")[0]) ?? "" })} onModel={(v) => patch("pipeline", { image_model: v })} />
+          modelOptions={settings.pipeline.image_provider === "comfyui" ? ["z_image_turbo", "qwen_image"] : modelsOf(settings.pipeline.image_provider, "image")}
+          onProvider={(v) => patch("pipeline", { image_provider: v, image_model: (v === "comfyui" ? "z_image_turbo" : modelsOf(v, "image")[0]) ?? "" })} onModel={(v) => patch("pipeline", { image_model: v })} />
         <PurposeSelect label="文档解析模型" providerKeys={llmProviderKeys}
           provider={settings.pipeline.vision_provider} model={settings.pipeline.vision_model}
           modelOptions={modelsOf(settings.pipeline.vision_provider, "vision")}
@@ -699,8 +740,8 @@ export function SettingsPage() {
       <Section title="ComfyUI（视频）" desc="视频路线为 ComfyUI 时生效；workflow 的 steps/cfg 在「ComfyUI 参数」页调整">
         <Field label="视频模型">
           <Select value={settings.pipeline.video_model} onChange={(v) => patch("pipeline", { video_model: v })} options={[
-            { value: "wan5b", label: "Wan2.2 5B (默认/快)" }, { value: "wan14b", label: "Wan2.2 14B (质量)" },
-            { value: "wan14b_lightx2v", label: "Wan2.2 14B Lightx2v (4步快)" }, { value: "ltx", label: "LTX 2.3" },
+            { value: "wan2.2_5b", label: "wan2.2_5b" }, { value: "wan2.2_14b", label: "wan2.2_14b" },
+            { value: "wan2.2_14b_lightx2v", label: "wan2.2_14b_lightx2v" }, { value: "ltx_2.3", label: "ltx_2.3" },
           ]} />
         </Field>
         <Field label="帧率">
@@ -763,7 +804,7 @@ export function SettingsPage() {
         </Section>
 
         <Section title="图片 workflow 参数" desc="选「图片生成模型 = ComfyUI」时生效；横铺切换各 workflow 配置参数。">
-          <TabStrip tabs={[{ key: "z_image", label: "z_image turbo" }, { key: "qwen", label: "Qwen-Image" }]} active={imgWf} onSelect={setImgWf} />
+          <TabStrip tabs={[{ key: "z_image_turbo", label: "z_image_turbo" }, { key: "qwen_image", label: "qwen_image" }]} active={imgWf} onSelect={setImgWf} />
           {(() => {
             const meta = IMAGE_PARAM_META[imgWf];
             if (!meta) return null;
@@ -775,8 +816,8 @@ export function SettingsPage() {
 
         <Section title="视频 workflow 参数" desc="ComfyUI 图生视频（i2v）；横铺切换各 workflow 配置参数。当前用哪个在「流水线配置」选。">
           <TabStrip tabs={[
-            { key: "wan5b", label: "Wan2.2 5B" }, { key: "wan14b", label: "Wan2.2 14B" },
-            { key: "wan14b_lightx2v", label: "14B Lightx2v" }, { key: "ltx", label: "LTX 2.3" },
+            { key: "wan2.2_5b", label: "wan2.2_5b" }, { key: "wan2.2_14b", label: "wan2.2_14b" },
+            { key: "wan2.2_14b_lightx2v", label: "wan2.2_14b_lightx2v" }, { key: "ltx_2.3", label: "ltx_2.3" },
           ]} active={vidWf} onSelect={setVidWf} />
           {(() => {
             const meta = VIDEO_PARAM_META[vidWf];
@@ -790,31 +831,15 @@ export function SettingsPage() {
 
       {activeTab === "prompts" && (<>
       <Section title="提示词" desc="流水线各步骤的 AI 提示词；中文/英文各一套（任务语言决定用哪套），留空回退内置默认。改后点上方「保存」。">
-        {promptDefs && Object.entries(promptDefs).map(([key, def], idx) => {
-          const rows = [0, 1, 6].includes(idx) ? 14 : 7;
-          const ta = "w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/96 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40";
-          return (
-            <div key={key} className="mb-5">
-              <label className="text-sm text-white/92">{def.label}<span className="text-white/60 text-xs ml-2">{def.desc}</span></label>
-              <div className="grid grid-cols-2 gap-3 mt-1.5">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-white/66">中文</span>
-                    <button onClick={() => patch("prompts", { [key]: def.default })} className="text-xs text-white/60 hover:text-white/85">恢复默认</button>
-                  </div>
-                  <textarea value={settings.prompts?.[key] || def.default} onChange={(e) => patch("prompts", { [key]: e.target.value })} rows={rows} className={ta} />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-white/66">English</span>
-                    <button onClick={() => patch("prompts", { [`${key}_en`]: def.default_en })} className="text-xs text-white/60 hover:text-white/85">恢复默认</button>
-                  </div>
-                  <textarea value={settings.prompts?.[`${key}_en`] || def.default_en} onChange={(e) => patch("prompts", { [`${key}_en`]: e.target.value })} rows={rows} className={ta} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {promptDefs && Object.entries(promptDefs).map(([key, def]) => (
+          <PromptRow key={key} label={def.label} desc={def.desc}
+            zhValue={settings.prompts?.[key] || def.default}
+            enValue={settings.prompts?.[`${key}_en`] || def.default_en}
+            onZh={(v) => patch("prompts", { [key]: v })}
+            onEn={(v) => patch("prompts", { [`${key}_en`]: v })}
+            onResetZh={() => patch("prompts", { [key]: def.default })}
+            onResetEn={() => patch("prompts", { [`${key}_en`]: def.default_en })} />
+        ))}
       </Section>
       </>)}
 

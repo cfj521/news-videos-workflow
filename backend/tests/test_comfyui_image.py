@@ -25,7 +25,7 @@ def test_image_workflows_fill_steps_cfg(name):
 def test_build_image_provider_uses_comfyui_group():
     s = Settings()
     s.pipeline.image_provider = "comfyui"
-    s.pipeline.image_model = "qwen"            # 当前图片 workflow 由 pipeline 选型决定
+    s.pipeline.image_model = "qwen_image"      # 当前图片 workflow 由 pipeline 选型决定
     s.comfyui.server_url = "http://test:8188"
     prov = build_image_provider(s)
     assert isinstance(prov, ComfyUIImageProvider)
@@ -37,7 +37,7 @@ def test_build_image_provider_uses_comfyui_group():
 @pytest.mark.asyncio
 async def test_generate_fills_and_writes(tmp_path):
     out = str(tmp_path / "img.png")
-    prov = ComfyUIImageProvider(server_url="http://x:8188", workflow="z_image", negative="neg")
+    prov = ComfyUIImageProvider(server_url="http://x:8188", workflow="z_image_turbo", negative="neg")
     captured = {}
 
     async def fake_run(graph):
@@ -59,7 +59,7 @@ async def test_generate_fills_and_writes(tmp_path):
 
 @pytest.mark.asyncio
 async def test_generate_bad_size_falls_back(tmp_path):
-    prov = ComfyUIImageProvider(server_url="http://x:8188", workflow="qwen")
+    prov = ComfyUIImageProvider(server_url="http://x:8188", workflow="qwen_image")
     captured = {}
 
     async def fake_run(graph):

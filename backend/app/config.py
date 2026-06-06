@@ -125,13 +125,13 @@ class PipelineCfg(BaseModel):
     script_provider: str = "claude"        # 文案/脚本生成（原 text）
     script_model: str = "claude-sonnet-4-6"
     image_provider: str = "comfyui"
-    image_model: str = "z_image"           # comfyui 时为图片 workflow
+    image_model: str = "z_image_turbo"     # comfyui 时为图片 workflow
     vision_provider: str = "openai"        # 文档解析（导入 PDF）
     vision_model: str = "gpt-4o"
     tts_provider: str = "edge-tts"     # edge-tts | openai | dashscope（与文本/图片共用 key）
     tts_model: str = ""                # 语音模型（edge-tts 无模型留空；openai/dashscope 选具体模型）
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
-    video_model: str = "wan5b"             # comfyui 视频 workflow
+    video_model: str = "wan2.2_5b"         # comfyui 视频 workflow
     video_fps: int = 24                    # comfyui 视频帧率（原 comfyui.video_fps）
 
 
@@ -188,17 +188,17 @@ class ComfyuiCfg(BaseModel):
     server_url: str = "http://127.0.0.1:8188"  # 图片与视频生成共用一个 ComfyUI 地址
     # ---- 图片 workflow 参数（图片 provider 选 comfyui 时生效）----
     image_params: dict[str, WorkflowParams] = {
-        "z_image": WorkflowParams(steps=9, cfg=1.0),   # turbo 蒸馏，低步数
-        "qwen": WorkflowParams(steps=20, cfg=2.5),
+        "z_image_turbo": WorkflowParams(steps=9, cfg=1.0),   # turbo 蒸馏，低步数
+        "qwen_image": WorkflowParams(steps=20, cfg=2.5),
     }
     # ---- 视频 workflow 参数 ----
-    # 每种视频 workflow 一组生成参数。wan5b/wan14b 的 steps、cfg 均可调；
-    # wan14b_lightx2v 锁死（加速 LoRA 固定 4 步）、ltx 仅 cfg 生效（蒸馏固定 sigmas）。
+    # 每种视频 workflow 一组生成参数。wan2.2_5b/wan2.2_14b 的 steps、cfg 均可调；
+    # wan2.2_14b_lightx2v 锁死（加速 LoRA 固定 4 步）、ltx_2.3 仅 cfg 生效（蒸馏固定 sigmas）。
     video_params: dict[str, WorkflowParams] = {
-        "wan5b": WorkflowParams(steps=30, cfg=5.0),
-        "wan14b": WorkflowParams(steps=20, cfg=3.5),
-        "wan14b_lightx2v": WorkflowParams(steps=4, cfg=1.0),
-        "ltx": WorkflowParams(steps=4, cfg=1.0),
+        "wan2.2_5b": WorkflowParams(steps=30, cfg=5.0),
+        "wan2.2_14b": WorkflowParams(steps=20, cfg=3.5),
+        "wan2.2_14b_lightx2v": WorkflowParams(steps=4, cfg=1.0),
+        "ltx_2.3": WorkflowParams(steps=4, cfg=1.0),
     }
 
 
@@ -353,12 +353,30 @@ def _ensure_default_models(s: Settings) -> None:
             creds.models = _default_provider_models(name)
 
 
+# 旧 comfyui workflow 键 → 补全后的新键（加载时迁移已有 config，保存时写回新键）
+_COMFY_KEY_MAP = {
+    "z_image": "z_image_turbo", "qwen": "qwen_image",
+    "wan5b": "wan2.2_5b", "wan14b": "wan2.2_14b",
+    "wan14b_lightx2v": "wan2.2_14b_lightx2v", "ltx": "ltx_2.3",
+}
+
+
+def _migrate_comfyui_keys(s: Settings) -> None:
+    pipe = s.pipeline
+    pipe.image_model = _COMFY_KEY_MAP.get(pipe.image_model, pipe.image_model)
+    pipe.video_model = _COMFY_KEY_MAP.get(pipe.video_model, pipe.video_model)
+    c = s.comfyui
+    c.image_params = {_COMFY_KEY_MAP.get(k, k): v for k, v in c.image_params.items()}
+    c.video_params = {_COMFY_KEY_MAP.get(k, k): v for k, v in c.video_params.items()}
+
+
 def get_settings() -> Settings:
     global _settings
     if _settings is None:
         raw = _migrate_legacy(_load_yaml(CONFIG_PATH))
         _settings = Settings(**raw)
         _ensure_default_models(_settings)
+        _migrate_comfyui_keys(_settings)
         import logging
         logging.getLogger("nv.config").info("Loaded config from %s", CONFIG_PATH)
     return _settings

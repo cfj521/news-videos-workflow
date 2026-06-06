@@ -8,7 +8,7 @@ from app.providers.comfyui.workflow import fill_placeholders, load_api_workflow
 
 log = get_logger("provider.image.comfyui")
 
-_WORKFLOW_MAP = {"z_image": "z_image_t2i", "qwen": "qwen_image_t2i"}
+_WORKFLOW_MAP = {"z_image_turbo": "z_image_t2i", "qwen_image": "qwen_image_t2i"}
 
 
 def _snap16(v: int) -> int:
@@ -16,7 +16,7 @@ def _snap16(v: int) -> int:
 
 
 class ComfyUIImageProvider(ImageProvider):
-    def __init__(self, server_url: str, workflow: str = "z_image",
+    def __init__(self, server_url: str, workflow: str = "z_image_turbo",
                  workflows_dir: str = "comfyui/workflows/api", negative: str = "",
                  steps: int = 9, cfg: float = 1.0):
         self._client = ComfyUIClient(server_url=server_url)

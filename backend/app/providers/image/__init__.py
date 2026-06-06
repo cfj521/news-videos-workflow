@@ -5,7 +5,7 @@ def build_image_provider(cfg):
     if provider == "comfyui":
         from app.providers.image.comfyui_image import ComfyUIImageProvider
         c = cfg.comfyui
-        workflow = model or "z_image"     # comfyui 时 image_model 即图片 workflow key
+        workflow = model or "z_image_turbo"     # comfyui 时 image_model 即图片 workflow key
         params = c.image_params.get(workflow)
         return ComfyUIImageProvider(
             server_url=c.server_url,          # 图片与视频共用 comfyui.server_url

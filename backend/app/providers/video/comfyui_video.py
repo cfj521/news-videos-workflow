@@ -10,11 +10,11 @@ from app.providers.comfyui.workflow import fill_placeholders, load_api_workflow
 
 log = get_logger("provider.video.comfyui")
 
-_WORKFLOW_MAP = {"wan5b": "wan22_5b_i2v", "wan14b": "wan22_14b_i2v",
-                 "wan14b_lightx2v": "wan22_14b_i2v_lightx2v", "ltx": "ltx23_i2v"}
+_WORKFLOW_MAP = {"wan2.2_5b": "wan22_5b_i2v", "wan2.2_14b": "wan22_14b_i2v",
+                 "wan2.2_14b_lightx2v": "wan22_14b_i2v_lightx2v", "ltx_2.3": "ltx23_i2v"}
 # 文生视频（t2v）工作流：无 INPUT_IMAGE / STEPS / CFG 占位符，步数 cfg 写死在 json。
-_T2V_WORKFLOW_MAP = {"wan5b": "wan22_5b_t2v", "wan14b": "wan22_14b_t2v",
-                     "wan14b_lightx2v": "wan22_14b_t2v_lightx2v", "ltx": "ltx23_t2v"}
+_T2V_WORKFLOW_MAP = {"wan2.2_5b": "wan22_5b_t2v", "wan2.2_14b": "wan22_14b_t2v",
+                     "wan2.2_14b_lightx2v": "wan22_14b_t2v_lightx2v", "ltx_2.3": "ltx23_t2v"}
 
 
 def _snap16(v: int) -> int:
@@ -27,7 +27,7 @@ def _snap_frames(n: int, step: int = 4) -> int:
 
 
 class ComfyUIVideoProvider(VideoClipProvider):
-    def __init__(self, server_url: str, workflow: str = "wan5b",
+    def __init__(self, server_url: str, workflow: str = "wan2.2_5b",
                  workflows_dir: str = "comfyui/workflows/api", fps: int = 24, negative: str = "",
                  steps: int = 20, cfg: float = 5.0, mode: str = "i2v"):
         # 视频生成远慢于图片：14B 满帧单段可达 10+ 分钟。默认 600s 会让 ComfyUI 已成功的

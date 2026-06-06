@@ -6,7 +6,7 @@ from app.providers.image.openai_image import OpenAIImageProvider
 
 def test_factory_picks_comfyui(monkeypatch):
     monkeypatch.setattr(config, "_settings", config.Settings(
-        pipeline={"image_provider": "comfyui", "image_model": "qwen"}))
+        pipeline={"image_provider": "comfyui", "image_model": "qwen_image"}))
     p = build_image_provider(config.get_settings())
     assert isinstance(p, ComfyUIImageProvider)
 

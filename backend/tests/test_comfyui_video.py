@@ -40,10 +40,10 @@ def test_ltx_fills_cfg_only():
 
 def test_build_video_provider_resolves_params_for_selected_workflow():
     s = Settings()
-    s.pipeline.video_model = "wan14b"          # 视频 workflow 由 pipeline 选型决定
+    s.pipeline.video_model = "wan2.2_14b"      # 视频 workflow 由 pipeline 选型决定
     prov = build_video_provider(s)
-    assert prov._steps == s.comfyui.video_params["wan14b"].steps == 20
-    assert prov._cfg == s.comfyui.video_params["wan14b"].cfg == 3.5
+    assert prov._steps == s.comfyui.video_params["wan2.2_14b"].steps == 20
+    assert prov._cfg == s.comfyui.video_params["wan2.2_14b"].cfg == 3.5
 
 
 def test_snap_frames():
@@ -57,7 +57,7 @@ def test_snap_frames():
 @pytest.mark.asyncio
 async def test_generate_uploads_fills_transcodes(tmp_path, monkeypatch):
     out = str(tmp_path / "clip.mp4")
-    prov = ComfyUIVideoProvider(server_url="http://x:8188", workflow="wan5b", fps=24, negative="neg")
+    prov = ComfyUIVideoProvider(server_url="http://x:8188", workflow="wan2.2_5b", fps=24, negative="neg")
     captured = {}
 
     async def up(image_path): return "scene.png"
@@ -82,7 +82,7 @@ async def test_generate_uploads_fills_transcodes(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_generate_no_output_raises(tmp_path, monkeypatch):
-    prov = ComfyUIVideoProvider(server_url="http://x:8188", workflow="ltx")
+    prov = ComfyUIVideoProvider(server_url="http://x:8188", workflow="ltx_2.3")
     monkeypatch.setattr(prov._client, "upload_image", AsyncMock(return_value="s.png"))
     monkeypatch.setattr(prov._client, "run", AsyncMock(return_value=[]))
     with pytest.raises(ProviderError):
@@ -92,8 +92,8 @@ async def test_generate_no_output_raises(tmp_path, monkeypatch):
 # ─── t2v（文生视频）支持 ───────────────────────────────────────
 
 def test_t2v_workflow_map_all_models():
-    for m, wf in [("wan5b", "wan22_5b_t2v"), ("wan14b", "wan22_14b_t2v"),
-                  ("wan14b_lightx2v", "wan22_14b_t2v_lightx2v"), ("ltx", "ltx23_t2v")]:
+    for m, wf in [("wan2.2_5b", "wan22_5b_t2v"), ("wan2.2_14b", "wan22_14b_t2v"),
+                  ("wan2.2_14b_lightx2v", "wan22_14b_t2v_lightx2v"), ("ltx_2.3", "ltx23_t2v")]:
         prov = ComfyUIVideoProvider(server_url="http://x", workflow=m, mode="t2v")
         assert prov._wf == wf
 
@@ -144,14 +144,14 @@ async def test_t2v_skips_upload_and_no_input_image(tmp_path, monkeypatch):
 
 def test_build_video_provider_t2v_mode():
     s = Settings()
-    s.pipeline.video_model = "ltx"
+    s.pipeline.video_model = "ltx_2.3"
     prov = build_video_provider(s, mode="t2v")
     assert prov._mode == "t2v" and prov._wf == "ltx23_t2v"
 
 
 def test_video_provider_uses_long_timeout():
     # 视频生成慢，14B 满帧单段 >600s；client 超时须显著大于图片默认 600s
-    prov = ComfyUIVideoProvider(server_url="http://x", workflow="wan14b")
+    prov = ComfyUIVideoProvider(server_url="http://x", workflow="wan2.2_14b")
     assert prov._client._timeout >= 1800
 
 
@@ -181,5 +181,5 @@ async def test_native_fps_frame_count(tmp_path, monkeypatch):
         return [n["inputs"]["length"] for n in cap["g"].values()
                 if isinstance(n.get("inputs"), dict) and "length" in n["inputs"]]
 
-    assert 161 in await _len_for("wan14b")
-    assert 241 in await _len_for("wan5b")
+    assert 161 in await _len_for("wan2.2_14b")
+    assert 241 in await _len_for("wan2.2_5b")

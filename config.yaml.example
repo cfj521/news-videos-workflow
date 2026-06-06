@@ -72,13 +72,13 @@ pipeline:
   script_provider: claude               # 文案/脚本生成
   script_model: claude-sonnet-4-6
   image_provider: comfyui               # comfyui | openai | dashscope
-  image_model: z_image                  # comfyui 时为图片 workflow：z_image | qwen
+  image_model: z_image_turbo            # comfyui 时为图片 workflow：z_image_turbo | qwen_image
   vision_provider: openai               # 文档解析（导入 PDF）
   vision_model: gpt-4o
   tts_provider: edge-tts                # edge-tts(微软免费) | openai | dashscope（共用对应 key）
   tts_model: ""                         # edge-tts 无模型留空；openai/dashscope 选具体模型
   tts_voice: zh-CN-XiaoxiaoNeural
-  video_model: wan5b                    # comfyui 视频 workflow：wan5b | wan14b | wan14b_lightx2v | ltx
+  video_model: wan2.2_5b                # comfyui 视频 workflow：wan2.2_5b | wan2.2_14b | wan2.2_14b_lightx2v | ltx_2.3
   video_fps: 24                         # comfyui 视频帧率
 
 # ---- 视频输出 ----
