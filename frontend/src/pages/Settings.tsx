@@ -462,17 +462,17 @@ function OpenAILoginPanel() {
       ) : (
         <div className="flex items-center gap-3">
           <button onClick={handleLogin} disabled={loading || polling}
-            className="px-4 py-1.5 text-sm rounded-md bg-blue-500/15 text-blue-300 border border-blue-400/30 hover:bg-blue-500/25 transition disabled:opacity-50">
+            className="shrink-0 px-4 py-1.5 text-sm rounded-md bg-blue-500/15 text-blue-300 border border-blue-400/30 hover:bg-blue-500/25 transition disabled:opacity-50">
             {loading ? "跳转中…" : polling ? "等待授权回调…" : "登录 ChatGPT"}
           </button>
           {polling && (
-            <span className="text-xs text-white/52">浏览器窗口完成授权后自动更新</span>
+            <span className="shrink-0 text-xs text-white/52">浏览器窗口完成授权后自动更新</span>
           )}
+          <p className="text-xs text-amber-300/60 leading-snug">
+            订阅模式仅支持 文案/生图/解析，不支持语音(TTS)；生图固定用 gpt-5.5。
+          </p>
         </div>
       )}
-      <p className="text-xs text-amber-300/60 leading-snug">
-        订阅模式仅支持 文案/生图/解析，不支持语音(TTS)；生图固定用 gpt-5.5。
-      </p>
     </div>
   );
 }
@@ -623,12 +623,15 @@ export function SettingsPage() {
   const [modelSel, setModelSel] = useState<Record<string, string>>({});  // 每个类型分组当前选中的供应商
   const [imgWf, setImgWf] = useState<string>("z_image_turbo");
   const [vidWf, setVidWf] = useState<string>("wan2.2_5b");
-  const [ttsState, setTtsState] = useState<"idle" | "loading" | "playing">("idle");
+  // 仅两态：idle / playing；合成中并入 playing（统一显示停止图标）
+  const [ttsState, setTtsState] = useState<"idle" | "playing">("idle");
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsUrlRef = useRef<string>("");
+  const ttsGenRef = useRef(0);  // 合成代次：停止时自增，丢弃在途的合成结果
   const { showToast } = useToast();
 
   const stopTtsPreview = () => {
+    ttsGenRef.current++;  // 作废在途合成
     const a = ttsAudioRef.current;
     if (a) { a.pause(); a.currentTime = 0; }
     if (ttsUrlRef.current) { URL.revokeObjectURL(ttsUrlRef.current); ttsUrlRef.current = ""; }
@@ -636,14 +639,15 @@ export function SettingsPage() {
     setTtsState("idle");
   };
 
-  // 试听：用当前选型合成示例并播放；合成中不重复发送，播放中再点即停止
+  // 试听：用当前选型合成示例并播放。idle 点击开始；playing（含合成中）再点即停止
   const playTtsPreview = async () => {
-    if (ttsState === "loading") return;            // 合成中：防重复发送
-    if (ttsState === "playing") { stopTtsPreview(); return; }  // 播放中：停止
+    if (ttsState === "playing") { stopTtsPreview(); return; }  // 进行中：停止
     const p = settings.pipeline;
-    setTtsState("loading");
+    const gen = ++ttsGenRef.current;
+    setTtsState("playing");  // 合成中并入播放态：立即切到停止图标
     try {
       const blob = await api.runs.ttsPreview({ provider: p.tts_provider, model: p.tts_model, voice: p.tts_voice });
+      if (gen !== ttsGenRef.current) return;  // 已被停止：丢弃结果
       const url = URL.createObjectURL(blob);
       ttsUrlRef.current = url;
       const audio = new Audio(url);
@@ -651,8 +655,8 @@ export function SettingsPage() {
       audio.onended = stopTtsPreview;
       audio.onerror = stopTtsPreview;
       await audio.play();
-      setTtsState("playing");
     } catch (e) {
+      if (gen !== ttsGenRef.current) return;  // 已停止：不报错
       showToast(e instanceof Error ? e.message : "试听失败", "error");
       stopTtsPreview();
     }
@@ -758,6 +762,19 @@ export function SettingsPage() {
   };
 
   const handleSave = async () => {
+    // openai 选了订阅登录但未登录成功时拦截，避免存下「订阅却无凭证」的坏配置
+    if ((settings.providers.openai?.auth_mode ?? "api_key") === "subscription") {
+      try {
+        const st = await api.auth.openaiStatus();
+        if (!st.logged_in) {
+          showToast("OpenAI 选择了订阅登录但尚未登录，请先登录 ChatGPT 再保存", "error");
+          return;
+        }
+      } catch {
+        showToast("无法确认 ChatGPT 登录状态，请先完成登录再保存", "error");
+        return;
+      }
+    }
     try {
       const updated = await api.settings.save(settings);
       mutate(updated, false);
@@ -867,9 +884,13 @@ export function SettingsPage() {
                 <input value={settings.pipeline.tts_voice} onChange={(e) => patch("pipeline", { tts_voice: e.target.value })} placeholder="音色 ID" className={inputCls} />
               );
             })()}
-            <button onClick={playTtsPreview} disabled={ttsState === "loading"}
-              className="shrink-0 px-3 py-2 text-xs rounded-md bg-white/[0.06] text-white/70 border border-white/[0.08] hover:bg-white/[0.1] transition disabled:opacity-50 whitespace-nowrap">
-              {ttsState === "loading" ? "合成中..." : ttsState === "playing" ? "■ 停止" : "▶ 试听"}
+            <button onClick={playTtsPreview} title={ttsState === "playing" ? "停止" : "试听"} aria-label={ttsState === "playing" ? "停止" : "试听"}
+              className="shrink-0 inline-flex items-center justify-center px-3 py-2 rounded-md bg-white/[0.06] text-white/70 border border-white/[0.08] hover:bg-white/[0.1] transition">
+              {ttsState === "playing" ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="1.5" /></svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M6 4l15 8-15 8V4z" /></svg>
+              )}
             </button>
           </div>
         </Field>
