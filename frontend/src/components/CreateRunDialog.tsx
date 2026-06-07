@@ -176,7 +176,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         <h2 className="text-lg font-semibold mb-4">新建任务</h2>
 
         <div className="flex gap-5">
-          {/* 左列：信息源 → 执行阶段 → 发布账号 */}
+          {/* 左列：信息源 → 发布账号 → 执行阶段 */}
           <div className="flex-1 min-w-0">
             <label className={labelCls}>信息源</label>
             <div className="flex gap-2 mb-3">
@@ -227,6 +227,19 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
               </div>
             )}
 
+            {effectiveVisual.has(6) && (
+              <div className="mb-4">
+                <label className={labelCls}>发布账号</label>
+                <MultiSelect
+                  values={[...effectiveTargetIds]}
+                  onToggle={toggleTarget}
+                  options={targetOptions}
+                  placeholder="选择发布账号..."
+                  emptyHint="暂无可用发布账号，请先到「发布管理」添加"
+                />
+              </div>
+            )}
+
             <label className={labelCls}>执行阶段</label>
             <div className="rounded-lg border border-white/[0.06] mb-4 overflow-hidden">
               {dialogStages.map((s) => (
@@ -246,21 +259,9 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
               ))}
             </div>
 
-            {effectiveVisual.has(6) && (
-              <div className="mb-4">
-                <label className={labelCls}>发布账号</label>
-                <MultiSelect
-                  values={[...effectiveTargetIds]}
-                  onToggle={toggleTarget}
-                  options={targetOptions}
-                  placeholder="选择发布账号..."
-                  emptyHint="暂无可用发布账号，请先到「发布管理」添加"
-                />
-              </div>
-            )}
           </div>
 
-          {/* 右列：运行模式·路线 → 分辨率·语言 → 最多图片数 → 采集方式 → 时间·文章数 */}
+          {/* 右列：运行模式·路线 → 图片数·语言 → 分辨率 → 采集方式 → 时间·文章数 */}
           <div className="flex-1 min-w-0">
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
@@ -282,26 +283,27 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label className={labelCls}>分辨率（图片与视频共用）</label>
-                <Select value={effRes} onChange={setResolution} options={resOptions} />
+                <label className={labelCls}>最多图片数（0=不限制）</label>
+                <input type="number" value={effMaxImages} onChange={(e) => setMaxImages(Number(e.target.value))} min={0} max={100} className={inputCls} />
+                <p className="text-[11px] text-white/40 mt-1">超过则生图前 AI 重规划，合并零碎/短文章到同一张图</p>
               </div>
               <div>
                 <label className={labelCls}>语言</label>
                 <Select value={effLang} onChange={setLanguage} options={[
                   { value: "zh", label: "中文" }, { value: "en", label: "English" },
                 ]} />
+                <p className="text-[11px] text-white/40 mt-1 leading-snug">
+                  {effLang === "en"
+                    ? "英文和西方面孔、场景，TTS 尽量选择英文音色"
+                    : "中文和东方面孔、场景，TTS 必须选择中文音色"}
+                </p>
               </div>
             </div>
 
             <div className="mb-4">
-              <label className={labelCls}>最多图片数（0=不限制）</label>
-              <input type="number" value={effMaxImages} onChange={(e) => setMaxImages(Number(e.target.value))} min={0} max={100} className={inputCls} />
-              <p className="text-[11px] text-white/40 mt-1">超过则生图前 AI 重规划，合并零碎/短文章到同一张图</p>
+              <label className={labelCls}>分辨率（图片与视频共用）</label>
+              <Select value={effRes} onChange={setResolution} options={resOptions} />
             </div>
-
-            {effLang === "en" && (
-              <p className="text-xs text-amber-300/70 -mt-2 mb-4">英文模式：脚本/字幕用英文、图片倾向西方面孔与场景；TTS 音色请在「设置 → 流水线配置」选英文音色（en-US-*）。</p>
-            )}
 
             <div className="mb-4">
               <label className={labelCls}>采集方式</label>
