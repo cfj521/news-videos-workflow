@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
-![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+![Deploy](https://img.shields.io/badge/deploy-systemd-FCC624?logo=linux&logoColor=black)
 
 从新闻采集到视频发布的全链路自动化平台：抓取新闻 → 生成脚本 → 生成图片/视频素材 → 合成配音视频 → 多平台发布。
 
@@ -20,7 +20,7 @@
    S1            S2/S3          S3/S5           S4/S5             S6
 ```
 
-每个 stage 在后端进程内顺序执行（FastAPI 后台任务），状态存 DB，支持从任意 stage 重试。
+每个 stage 在后端进程内顺序执行；整条任务通过进程内**全局串行队列**（单 worker 线程）**逐个执行**，同一时刻最多一个，无需额外 worker/broker。状态存 DB，支持从任意 stage 重试。
 
 ## 环境准备
 
@@ -49,30 +49,21 @@ pnpm install
 ## 运行
 
 ```bash
-# 后端 API（流水线跑在进程内的后台任务里，无需额外的 worker/broker）
-cd backend && uvicorn app.main:app --reload --port 8189   # http://127.0.0.1:8189
+# 后端 API（流水线跑在进程内，任务串行执行、同一时刻一个，无需额外 worker/broker）
+cd backend && uvicorn app.main:app --reload --port 8000   # http://127.0.0.1:8000
 # 前端
 cd frontend && pnpm dev                              # http://127.0.0.1:5173
 ```
 
 首次启动会播种默认管理员账号 **admin / admin**，登录后请在「设置 → 用户」修改密码。
 
-## Docker 一键部署
+## 部署
 
-**单容器一体化**：一个镜像同时托管前端（静态）与后端（API + 进程内流水线），**单端口**访问——不再有独立的前端/Nginx 容器，也无需 worker/broker。
+推荐 **Ubuntu + systemd**，见 [`deploy/README.md`](deploy/README.md)。一个进程单端口托管前端（静态）+ 后端（API + 进程内流水线），无需 worker/broker。
 
-```bash
-cp config.yaml.example config.yaml   # 填入密钥
-cp .env.example .env                  # Docker 端口 + ComfyUI 地址（可选，已有合理默认）
-docker compose up -d --build
-# 浏览器打开 http://localhost:8190 （默认登录 admin / admin）
-```
+> 原先的**单容器 Docker** 方案已**归档**（暂不维护），移至 [`deploy/docker-archive/`](deploy/docker-archive/README.md)，需要时按该目录说明恢复。
 
-- 镜像多阶段构建：先构建前端（`frontend/dist`），再由后端托管——FastAPI 把静态 SPA 与 `/api` 挂在同一端口。
-- 端口与 ComfyUI 地址在 `.env` 配置（`APP_PORT`、`COMFYUI_URL`）。`COMFYUI_URL` 会注入后端并**覆盖** `comfyui.server_url`——无需手改 `config.yaml`。
-- `config.yaml` 与 `data/` 以挂载方式注入——密钥不进镜像；SQLite 库与运行产物持久化在宿主机。
-- ComfyUI 建议留在宿主机（需 GPU + 模型），后端经 `host.docker.internal` 访问。
-- 本地开发仍是两端口：`pnpm dev`（vite :5173，热更新）把 `/api` 代理到后端（:8000）；单端口合并只针对 Docker/生产镜像。
+> 本地开发仍是两端口：`pnpm dev`（vite :5173，热更新）把 `/api` 代理到后端（:8000）。
 
 ## 测试
 

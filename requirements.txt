@@ -1,18 +1,16 @@
-# 由 backend/pyproject.toml 转换而来（Python >=3.12）
+# 运行时 + 开发依赖（Python >=3.12）
 # conda 用法：
-#   conda create -n news-videos python=3.12 && conda activate news-videos
+#   conda create -n env_news_videos_wf python=3.12 && conda activate env_news_videos_wf
 #   pip install -r requirements.txt
 
 # ---- 运行时依赖 ----
 fastapi>=0.115
 uvicorn[standard]>=0.30
 sqlalchemy>=2.0
-alembic>=1.13
-pydantic-settings>=2.4
 httpx>=0.27
 feedparser>=6.0
 edge-tts>=6.1
-openai>=1.50
+openai>=2.0            # 订阅模式用 Responses API（client.responses.stream）
 dashscope>=1.23.1
 python-multipart>=0.0.9
 jinja2>=3.1

@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
-![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+![Deploy](https://img.shields.io/badge/deploy-systemd-FCC624?logo=linux&logoColor=black)
 
 An end-to-end platform that turns news into published videos: scrape news → generate script → generate image/video assets → compose narrated video → publish to multiple platforms.
 
@@ -21,7 +21,7 @@ An end-to-end platform that turns news into published videos: scrape news → ge
    S1           S2/S3         S3/S5          S4/S5           S6
 ```
 
-Each stage runs sequentially inside the backend process (FastAPI background tasks), persists its state to the DB, and can be retried from any stage.
+Each stage runs sequentially inside the backend process. Whole runs execute **one at a time** via a global in-process serial queue (a single worker thread) — no extra worker/broker. State is persisted to the DB, and a run can be retried from any stage.
 
 ## Setup
 
@@ -50,30 +50,21 @@ pnpm install
 ## Run
 
 ```bash
-# Backend API (the pipeline runs as in-process background tasks — no extra worker/broker needed)
-cd backend && uvicorn app.main:app --reload --port 8189   # http://127.0.0.1:8189
+# Backend API (the pipeline runs in-process; tasks execute serially, one at a time — no extra worker/broker)
+cd backend && uvicorn app.main:app --reload --port 8000   # http://127.0.0.1:8000
 # Frontend
 cd frontend && pnpm dev                              # http://127.0.0.1:5173
 ```
 
 First launch seeds a default admin account **admin / admin** — change it under **Settings → Users** after logging in.
 
-## Docker
+## Deployment
 
-Single-container deployment: one image serves both the frontend (static) and the backend (API + in-process pipeline) on **one port** — no separate frontend/Nginx container, no worker/broker.
+Recommended: **systemd on Ubuntu** — see [`deploy/README.md`](deploy/README.md). One process serves the frontend (static) and the backend (API + in-process pipeline) on **one port** — no worker/broker.
 
-```bash
-cp config.yaml.example config.yaml   # fill in your API keys
-cp .env.example .env                  # Docker port + ComfyUI URL (optional; sane defaults)
-docker compose up -d --build
-# open http://localhost:8190  (default login: admin / admin)
-```
+> The previous single-container **Docker** setup is **archived** (not maintained for now) under [`deploy/docker-archive/`](deploy/docker-archive/README.md); see that folder to restore it.
 
-- Multi-stage image: it builds the frontend (`frontend/dist`) and the backend serves it — FastAPI mounts the static SPA and `/api` on the same port.
-- Port and ComfyUI URL live in `.env` (`APP_PORT`, `COMFYUI_URL`). `COMFYUI_URL` is injected into the backend and **overrides** `comfyui.server_url` — no need to edit `config.yaml`.
-- `config.yaml` and `data/` are bind-mounted — secrets stay out of the image; the SQLite DB and run artifacts persist on the host.
-- ComfyUI is expected on the host (needs GPU + models); the backend reaches it via `host.docker.internal`.
-- Local dev still uses two ports: `pnpm dev` (vite :5173, HMR) proxies `/api` to the backend (:8000). The single-port merge is for the Docker/production image.
+> Local dev still uses two ports: `pnpm dev` (vite :5173, HMR) proxies `/api` to the backend (:8000).
 
 ## Test
 
