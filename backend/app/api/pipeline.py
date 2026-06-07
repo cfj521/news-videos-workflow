@@ -605,8 +605,8 @@ async def _reroll_articles_async(run_id: int, session_factory):
         if not run:
             return
         cfg = get_settings()
-        from app.models.news_source import NewsSource
-        db_sources = db.query(NewsSource).filter(NewsSource.enabled == True).all()
+        from app.pipeline.runner import _sources_for_run
+        db_sources = _sources_for_run(db, run)
         if db_sources:
             source_configs, collectors = build_collectors_from_db(db_sources)
         else:

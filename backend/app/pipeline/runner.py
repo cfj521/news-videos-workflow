@@ -106,6 +106,21 @@ def _resolve_collector_type(src) -> str:
     return type_map.get(src_type, "")
 
 
+def _sources_for_run(db, run) -> list:
+    """按 run.source_ids 取 NewsSource；为空/无则回退所有 enabled。"""
+    from app.models.news_source import NewsSource
+    ids: list = []
+    raw = getattr(run, "source_ids", None)
+    if raw:
+        try:
+            ids = json.loads(raw) or []
+        except Exception:
+            ids = []
+    if ids:
+        return db.query(NewsSource).filter(NewsSource.id.in_(ids)).all()
+    return db.query(NewsSource).filter(NewsSource.enabled.is_(True)).all()
+
+
 def build_collectors_from_db(db_sources: list) -> tuple[list[dict], dict]:
     _ensure_collector_registry()
 
@@ -478,7 +493,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
             _update(db, run, current_stage=1, progress_detail="S1 采集新闻中...")
             log.info("[S1] Collecting news — time_range=%s max=%d",
                      run.time_range, run.max_articles)
-            db_sources = db.query(NewsSource).filter(NewsSource.enabled.is_(True)).all()
+            db_sources = _sources_for_run(db, run)
             if db_sources:
                 source_configs, collectors = build_collectors_from_db(db_sources)
                 log.info("[S1] Using %d DB sources: %s", len(source_configs),
