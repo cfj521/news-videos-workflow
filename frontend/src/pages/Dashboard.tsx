@@ -219,7 +219,7 @@ function ImportArticleDialog({ runId, onDone, onClose }: { runId: number; onDone
   );
 }
 
-function S1Panel({ runId }: { runId: number }) {
+function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const { data: articles, mutate } = useSWR<ArticleRec[]>(`articles-${runId}`, () => api.runs.articles(runId) as Promise<ArticleRec[]>);
   const [rerolling, setRerolling] = useState(false);
   const [confirmReroll, setConfirmReroll] = useState(false);
@@ -227,6 +227,13 @@ function S1Panel({ runId }: { runId: number }) {
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   const { showToast } = useToast();
+
+  // AI HOT 采集模式从 run.aihot_config 判断（权威来源）：
+  // daily 禁用重新采集；weekly 语义是「重新总结」；items/普通源是「重新采集/reroll」
+  const aihotMethod = (() => { try { return run.aihot_config ? (JSON.parse(run.aihot_config) as { method?: string }).method ?? "" : ""; } catch { return ""; } })();
+  const isDaily = aihotMethod === "daily";
+  const isWeekly = aihotMethod === "weekly";
+  const rerollLabel = isWeekly ? "重新总结" : "重新采集";
 
   const save = async (list: ArticleRec[]): Promise<boolean> => {
     try { await api.runs.saveArticles(runId, list); mutate(); return true; }
@@ -244,11 +251,6 @@ function S1Panel({ runId }: { runId: number }) {
   };
 
   const list = articles ?? [];
-  // AI HOT 采集模式（取首篇标记）：daily 禁用重新采集；weekly 语义是「重新总结」；items/普通源是「重新采集/reroll」
-  const aihotMethod = String((list[0] as ArticleRec | undefined)?.aihot_method ?? "");
-  const isDaily = aihotMethod === "daily";
-  const isWeekly = aihotMethod === "weekly";
-  const rerollLabel = isWeekly ? "重新总结" : "重新采集";
 
   const onSaveArticle = async (rec: ArticleRec) => {
     const next = [...list];
@@ -307,7 +309,7 @@ function S1Panel({ runId }: { runId: number }) {
             <p className="text-sm text-white/76 mb-3 leading-relaxed">{isWeekly
               ? <>将重新 AI 总结上周日报，<span className="text-amber-300/80">覆盖现有周报结果</span>。</>
               : <>将按当前信息源重新采集，<span className="text-amber-300/80">覆盖现有文章列表</span>。</>}</p>
-            <SourceSummary />
+            <SourceSummary run={run} />
             <div className="flex gap-3 justify-end mt-5">
               <button onClick={() => setConfirmReroll(false)} disabled={rerolling} className={btnSecondary}>取消</button>
               <button onClick={handleReroll} disabled={rerolling} className={btnPrimary}>{rerolling ? (isWeekly ? "总结中..." : "采集中...") : `确认${rerollLabel}`}</button>
@@ -1146,7 +1148,7 @@ function S6Panel({ runId, run }: { runId: number; run: PipelineRun }) {
 
 function StagePanel({ stage, runId, run }: { stage: number; runId: number; run: PipelineRun }) {
   switch (stage) {
-    case 1: return <S1Panel runId={runId} />;
+    case 1: return <S1Panel runId={runId} run={run} />;
     case 2: return <S2Panel runId={runId} run={run} audioOnly={run.video_route === "audio"} />;
     case 4: return <S4Panel runId={runId} run={run} />;
     case 5: return <S5Panel runId={runId} run={run} />;
