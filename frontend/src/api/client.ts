@@ -121,6 +121,7 @@ export const api = {
       language?: string;
       max_images?: number;
       source_ids?: number[];
+      aihot_config?: { method: string; category?: string; report_date?: string; week_start?: string };
     }) =>
       fetchJSON<PipelineRun>("/pipeline/runs", {
         method: "POST",
