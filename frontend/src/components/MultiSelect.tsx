@@ -131,10 +131,10 @@ export function MultiSelect({
                       key={o.value}
                       type="button"
                       onClick={() => onToggle(o.value)}
-                      className={`px-2.5 py-1 text-xs rounded-md border transition ${
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border transition ${
                         checked
-                          ? "bg-blue-500/15 text-blue-200 border-blue-400/30"
-                          : "bg-white/[0.03] text-white/70 border-white/[0.06] hover:text-white/92"
+                          ? "bg-blue-500/35 text-white border-blue-400/60 font-medium"
+                          : "bg-white/[0.03] text-white/70 border-white/[0.08] hover:text-white/92 hover:border-white/20"
                       }`}
                     >
                       {o.label}

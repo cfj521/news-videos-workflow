@@ -179,10 +179,10 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           {/* 左列：信息源 → 执行阶段 → 发布账号 */}
           <div className="flex-1 min-w-0">
             <label className={labelCls}>信息源</label>
-            <div className="flex gap-1.5 mb-3">
+            <div className="flex gap-2 mb-3">
               {(["aihot", "custom"] as const).map((m) => (
                 <button key={m} type="button" onClick={() => setSourceMode(m)}
-                  className={`px-2.5 py-1 text-xs rounded-md border transition ${sourceMode === m ? "bg-blue-500/15 text-blue-300 border-blue-400/30" : "bg-white/[0.03] text-white/70 border-white/[0.06] hover:text-white/92"}`}>
+                  className={`px-4 py-1.5 text-sm rounded-md border transition ${sourceMode === m ? "bg-blue-500/15 text-blue-300 border-blue-400/30" : "bg-white/[0.03] text-white/70 border-white/[0.06] hover:text-white/92"}`}>
                   {m === "aihot" ? "AI HOT" : "其他源"}
                 </button>
               ))}
