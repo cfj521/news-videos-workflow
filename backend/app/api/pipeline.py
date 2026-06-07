@@ -16,7 +16,7 @@ from app.config import get_settings, reload_settings
 from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
-from app.pipeline.runner import execute_pipeline, build_collectors, build_collectors_from_db, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final
+from app.pipeline.runner import execute_pipeline, _collectors_for_run, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final
 from app.pipeline.serial_executor import submit as serial_submit
 from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
 
@@ -604,7 +604,6 @@ async def _reroll_articles_async(run_id: int, session_factory):
         if not run:
             return
         cfg = get_settings()
-        from app.pipeline.runner import _collectors_for_run
         source_configs, collectors = _collectors_for_run(db, run, get_settings())
         articles = await run_stage1(
             sources=source_configs, collectors=collectors,
