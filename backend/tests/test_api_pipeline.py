@@ -118,3 +118,9 @@ def test_create_run_auto_collect_false(client):
     r = client.post("/api/pipeline/runs", json={"time_range": "7d", "auto_collect": False})
     assert r.status_code == 201
     assert r.json()["auto_collect"] is False
+
+
+def test_create_run_stores_source_ids(client):
+    r = client.post("/api/pipeline/runs", json={"time_range": "7d", "source_ids": [2, 5]})
+    assert r.status_code == 201
+    assert r.json()["source_ids"] == "[2, 5]"

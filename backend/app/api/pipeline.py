@@ -64,6 +64,7 @@ def create_run(body: PipelineRunCreate, db: Session = Depends(get_db)):
         resolution=body.resolution or cfg.pipeline.resolution,
         language=body.language or cfg.pipeline.default_language,
         max_images=body.max_images if body.max_images is not None else cfg.pipeline.max_images,
+        source_ids=body.source_ids,
     )
     session_factory = get_session_factory()
     serial_submit(_run_pipeline_bg, run.id, session_factory, label=f"run#{run.id}")

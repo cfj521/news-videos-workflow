@@ -25,6 +25,7 @@ class PipelineEngine:
         resolution: str = "",
         language: str = "",
         max_images: int | None = None,
+        source_ids: list[int] | None = None,
     ) -> PipelineRun:
         stages = selected_stages or [1, 2, 3, 4, 5]
         platforms = publish_platforms or []
@@ -37,6 +38,7 @@ class PipelineEngine:
             resolution=resolution or None,
             language=language or None,
             max_images=max_images,
+            source_ids=json.dumps(source_ids) if source_ids else None,
         )
         self.db.add(run)
         self.db.commit()
