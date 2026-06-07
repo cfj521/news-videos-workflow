@@ -1,10 +1,9 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import useSWR, { type KeyedMutator } from "swr";
+import { useState, useRef, useCallback } from "react";
+import useSWR from "swr";
 import { api } from "../api/client";
-import { btnPrimary, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls, segItem } from "../styles";
+import { btnPrimary, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls } from "../styles";
 import { AddSourceDialog } from "../components/AddSourceDialog";
 import { EditSourceDialog } from "../components/EditSourceDialog";
-import { Select } from "../components/Select";
 import { DeleteIconButton } from "../components/DeleteIconButton";
 import { type NewsSource, isAihotSource } from "../types";
 
@@ -12,22 +11,6 @@ import { type NewsSource, isAihotSource } from "../types";
 
 type SortKey = "name" | "type" | "category" | "language" | "priority";
 type SortDir = "asc" | "desc";
-
-// ── AI HOT helpers ──────────────────────────────────────
-
-function parseConfig(json: string | null): Record<string, unknown> {
-  if (!json) return {};
-  try { return JSON.parse(json) as Record<string, unknown>; } catch { return {}; }
-}
-
-const AIHOT_CATEGORIES = [
-  { value: "", label: "全部分类" },
-  { value: "ai-models", label: "模型" },
-  { value: "ai-products", label: "产品" },
-  { value: "industry", label: "行业" },
-  { value: "paper", label: "论文" },
-  { value: "tip", label: "技巧" },
-];
 
 function sortSources(sources: NewsSource[], key: SortKey, dir: SortDir): NewsSource[] {
   const sorted = [...sources];
@@ -127,105 +110,6 @@ function SortTh({ label, sortKey, currentKey, currentDir, onSort }: {
   );
 }
 
-// ── AI HOT Group Card ────────────────────────────────────
-
-function AIHotGroupCard({ source, customIds, mutate }: {
-  source: NewsSource;
-  customIds: number[];
-  mutate: KeyedMutator<NewsSource[]>;
-}) {
-  // 配置（method/category/week）本地乐观：只写自己，不影响其它行，不必动列表缓存
-  const [cfg, setCfgState] = useState<Record<string, unknown>>(() => parseConfig(source.config_json));
-  useEffect(() => { setCfgState(parseConfig(source.config_json)); }, [source.config_json]);
-  const method = (cfg.method as string) ?? "items";
-  const category = (cfg.category as string) ?? "";
-  const weekStart = (cfg.week_start as string) ?? "";
-  const reportDate = (cfg.report_date as string) ?? "";
-  const { data: weeks } = useSWR(method === "weekly" ? "aihot-weeks" : null, api.sources.aihotWeeks);
-  const { data: days } = useSWR(method === "daily" ? "aihot-days" : null, api.sources.aihotDays);
-
-  const setConfig = async (patch: Record<string, unknown>) => {
-    const next = { ...cfg, ...patch };
-    setCfgState(next); // 立即反馈；只写这一个配置，不重新拉取整张列表
-    try {
-      await api.sources.update(source.id, { config_json: JSON.stringify(next) });
-    } catch {
-      setCfgState(parseConfig(source.config_json)); // 失败回滚
-    }
-  };
-
-  // AI HOT 与自定义组互斥：开 AI HOT → 关全部自定义；关 AI HOT → 开全部自定义（始终二选一）
-  const toggleGroup = async () => {
-    const next = !source.enabled;
-    mutate((prev) => prev?.map((s) =>
-      isAihotSource(s) ? { ...s, enabled: next } : { ...s, enabled: !next }
-    ), { revalidate: false });
-    try {
-      if (customIds.length) await api.sources.batch({ ids: customIds, enabled: !next });
-      await api.sources.update(source.id, { enabled: next });
-    } catch {
-      mutate(); // 失败重拉纠正
-    }
-  };
-
-  return (
-    <div className={`${cardCls} p-5 mb-4`}>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold">AI HOT 聚合</h2>
-          <p className="text-xs text-white/60 mt-0.5">聚合精选 AI 资讯 · 启用后与自定义源互斥</p>
-        </div>
-        <button onClick={toggleGroup} className={toggleCls(source.enabled)}>
-          <span className={toggleThumbCls(source.enabled)} />
-        </button>
-      </div>
-      <div className="flex items-center gap-2 mb-3">
-        {(["items", "daily", "weekly"] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => setConfig({ method: m })}
-            className={`${segItem(method === m)} !px-5 !py-2.5 !text-sm`}
-          >
-            {m === "items" ? "动态" : m === "daily" ? "日报" : "周报"}
-          </button>
-        ))}
-        {method === "items" && (
-          <div className="w-48 ml-3">
-            <Select value={category} onChange={(v) => setConfig({ category: v })} options={AIHOT_CATEGORIES} />
-          </div>
-        )}
-        {method === "daily" && (
-          <div className="w-56 ml-3">
-            <Select
-              value={reportDate}
-              onChange={(v) => setConfig({ report_date: v })}
-              options={[
-                { value: "", label: "自动（最新一期）" },
-                ...(days ?? []).map((d) => ({ value: d.date, label: d.date })),
-              ]}
-            />
-          </div>
-        )}
-        {method === "weekly" && (
-          <div className="w-72 ml-3">
-            <Select
-              value={weekStart}
-              onChange={(v) => setConfig({ week_start: v })}
-              options={[
-                { value: "", label: "自动（最近有数据的周）" },
-                ...(weeks ?? []).map((w) => ({
-                  value: w.week_start,
-                  label: `${w.week_start.slice(5).replace("-", "/")}~${w.week_end.slice(5).replace("-", "/")}（${w.days}天）`,
-                })),
-              ]}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Page ────────────────────────────────────────────────
 
 export function SourcesPage() {
@@ -242,23 +126,18 @@ export function SourcesPage() {
 
   const sorted = sources ? sortSources(sources, sortKey, sortDir) : [];
 
-  const aihotSource = sources?.find(isAihotSource);
   const customSources = sorted.filter((s) => !isAihotSource(s));
   const customIds = (sources ?? []).filter((s) => !isAihotSource(s)).map((s) => s.id);
 
   const toggleSource = async (e: React.MouseEvent, source: NewsSource) => {
     e.stopPropagation();
     const enabling = !source.enabled;
-    // 乐观更新缓存：立即翻转该行（启用自定义源时联动关 AI HOT），不等接口
+    // 乐观更新缓存：立即翻转该行，不等接口
     mutate((prev) => prev?.map((s) =>
-      s.id === source.id ? { ...s, enabled: enabling }
-      : (enabling && aihotSource && s.id === aihotSource.id) ? { ...s, enabled: false }
-      : s), { revalidate: false });
+      s.id === source.id ? { ...s, enabled: enabling } : s
+    ), { revalidate: false });
     try {
       await api.sources.update(source.id, { enabled: enabling });
-      if (enabling && aihotSource?.enabled) {
-        await api.sources.update(aihotSource.id, { enabled: false });
-      }
     } catch {
       mutate(); // 失败重新拉取纠正
     }
@@ -289,18 +168,16 @@ export function SourcesPage() {
     }
   };
 
-  // 批量开关仅控制其他组（自定义源）；全部启用时关闭 AI HOT（互斥），关闭则不自动开启 AI HOT
+  // 批量开关所有自定义源
   const allCustomEnabled = customSources.length > 0 && customSources.every((s) => s.enabled);
   const toggleAllCustom = async () => {
     if (!customIds.length) return;
     const enabling = !allCustomEnabled;
-    // 互斥：自定义组整体翻转，AI HOT 取反（开自定义→关 AI HOT；关自定义→开 AI HOT）
     mutate((prev) => prev?.map((s) =>
-      isAihotSource(s) ? { ...s, enabled: !enabling } : { ...s, enabled: enabling }
+      isAihotSource(s) ? s : { ...s, enabled: enabling }
     ), { revalidate: false });
     try {
       await api.sources.batch({ ids: customIds, enabled: enabling });
-      if (aihotSource) await api.sources.update(aihotSource.id, { enabled: !enabling });
     } catch {
       mutate(); // 失败重新拉取纠正
     }
@@ -325,10 +202,6 @@ export function SourcesPage() {
       </div>
       <p className="text-xs text-white/46 mb-5">启用 = 作为新建任务的可选信息源；具体某次任务使用哪些，在「新建任务」窗口里选择。</p>
 
-      {aihotSource && (
-        <AIHotGroupCard source={aihotSource} customIds={customIds} mutate={mutate} />
-      )}
-
       <div className={`${cardCls} overflow-hidden`}>
         <table className="w-full text-sm">
           <thead>
@@ -342,7 +215,7 @@ export function SourcesPage() {
               <th className={`text-left px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>配置</th>
               <th className={`px-4 py-3 ${sectionTitleCls} whitespace-nowrap`}>
                 <div className="flex items-center justify-end gap-1.5">
-                  <button onClick={toggleAllCustom} className={toggleCls(allCustomEnabled)} title="全部启用/禁用（启用将关闭 AI HOT，与之互斥）">
+                  <button onClick={toggleAllCustom} className={toggleCls(allCustomEnabled)} title="全部启用/禁用">
                     <span className={toggleThumbCls(allCustomEnabled)} />
                   </button>
                 </div>
