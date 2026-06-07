@@ -30,6 +30,15 @@ const RES_PRESETS_DLG = [
   { value: "720x1280", ar: "9:16", label: "720×1280 · 9:16 竖屏" },
 ];
 
+const AIHOT_CATEGORIES = [
+  { value: "", label: "全部分类" },
+  { value: "ai-models", label: "模型" },
+  { value: "ai-products", label: "产品" },
+  { value: "industry", label: "行业" },
+  { value: "paper", label: "论文" },
+  { value: "tip", label: "技巧" },
+];
+
 export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [mode, setMode] = useState("auto");
   const [timeRange, setTimeRange] = useState("7d");
@@ -46,6 +55,10 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [language, setLanguage] = useState("");
   const [maxImages, setMaxImages] = useState<number | null>(null);  // null = 用流水线配置默认
 
+  // 信息源模式：AI HOT 或 其他源
+  const [sourceMode, setSourceMode] = useState<"aihot" | "custom">("aihot");
+  const [aihotCfg, setAihotCfg] = useState<{ method: string; category?: string; report_date?: string; week_start?: string }>({ method: "items" });
+
   const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
   // 默认值取自流水线配置；用户可在此覆盖
   const effRes = resolution || settings?.pipeline?.resolution || "1080x1920";
@@ -60,25 +73,19 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
   const { data: sources } = useSWR("sources", api.sources.list);
   const { data: publishTargets } = useSWR("publishers", api.publishers.list);
+  // AI HOT 周报/日报数据（仅在对应模式时获取）
+  const { data: weeks } = useSWR(sourceMode === "aihot" && aihotCfg.method === "weekly" ? "aihot-weeks" : null, api.sources.aihotWeeks);
+  const { data: days } = useSWR(sourceMode === "aihot" && aihotCfg.method === "daily" ? "aihot-days" : null, api.sources.aihotDays);
 
-  const availableSources = (sources ?? []).filter((s) => s.enabled);
-  const aihotAvail = availableSources.filter(isAihotSource);
-  // 默认：有 AI HOT 则默认仅选 AI HOT；否则全选可用
-  const defaultSourceIds = (aihotAvail.length ? aihotAvail : availableSources).map((s) => s.id);
+  // 其他源：排除 aihot 源
+  const availableSources = (sources ?? []).filter((s) => s.enabled && !isAihotSource(s));
   const availableSourceIdSet = new Set(availableSources.map((s) => s.id));
   const effectiveSourceIds = sourceIds === null
-    ? new Set(defaultSourceIds)
+    ? new Set(availableSources.map((s) => s.id))
     : new Set([...sourceIds].filter((id) => availableSourceIdSet.has(id)));
 
-  // 后端互斥：只要有启用的 AI HOT 源且被选中，就走 AI HOT 组
-  const aihotSource = availableSources.find((s) => isAihotSource(s) && effectiveSourceIds.has(s.id));
-  const aihotMethod = (() => {
-    if (!aihotSource) return "";
-    try { return (JSON.parse(aihotSource.config_json ?? "{}") as { method?: string }).method ?? "items"; }
-    catch { return "items"; }
-  })();
-  // 日报/周报模式忽略时间范围与文章数；动态(items)模式两者仍生效
-  const isAihotDigest = aihotMethod === "daily" || aihotMethod === "weekly";
+  // 日报/周报模式忽略时间范围与文章数
+  const isAihotDigest = sourceMode === "aihot" && (aihotCfg.method === "daily" || aihotCfg.method === "weekly");
 
   const audioOnly = effVideoRoute === "audio";
   const excludedMedia = audioOnly ? "video" : "audio";
@@ -131,23 +138,15 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
   const toggleSource = (id: number) => {
     setSourceIds((prev) => {
-      const base = prev ?? new Set(defaultSourceIds);
+      const base = prev ?? new Set(availableSources.map((s) => s.id));
       const next = new Set(base);
-      const turningOn = !next.has(id);
       if (next.has(id)) next.delete(id); else next.add(id);
-      if (turningOn) {
-        const src = availableSources.find((s) => s.id === id);
-        const onIsAihot = src ? isAihotSource(src) : false;
-        // 选中 AI HOT → 只留 AI HOT；选中常规 → 去掉所有 AI HOT
-        for (const x of [...next]) {
-          const s = availableSources.find((a) => a.id === x);
-          if (!s) continue;
-          if (onIsAihot ? !isAihotSource(s) : isAihotSource(s)) next.delete(x);
-        }
-      }
       return next;
     });
   };
+
+  const allSourcesSelected = availableSources.length > 0 && availableSources.every((s) => effectiveSourceIds.has(s.id));
+  const onSelectAllSources = (nextAll: boolean) => setSourceIds(nextAll ? null : new Set());
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -163,7 +162,9 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         language: effLang,
         max_images: effMaxImages,
         auto_collect: autoCollect,
-        source_ids: Array.from(effectiveSourceIds),
+        ...(sourceMode === "aihot"
+          ? { aihot_config: aihotCfg }
+          : { source_ids: Array.from(effectiveSourceIds) }),
       });
       onCreated();
     } finally { setLoading(false); }
@@ -178,19 +179,51 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
           {/* 左列：信息源 → 执行阶段 → 发布账号 */}
           <div className="flex-1 min-w-0">
             <label className={labelCls}>信息源</label>
-            {availableSources.length === 0 ? (
-              <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5 text-xs text-amber-300/80 mb-4">
-                暂无可用信息源，请先到「信息源管理」启用（将回退默认 Hacker News）
+            <div className="flex gap-1.5 mb-3">
+              {(["aihot", "custom"] as const).map((m) => (
+                <button key={m} type="button" onClick={() => setSourceMode(m)}
+                  className={`px-2.5 py-1 text-xs rounded-md border transition ${sourceMode === m ? "bg-blue-500/15 text-blue-300 border-blue-400/30" : "bg-white/[0.03] text-white/70 border-white/[0.06] hover:text-white/92"}`}>
+                  {m === "aihot" ? "AI HOT" : "其他源"}
+                </button>
+              ))}
+            </div>
+            {sourceMode === "aihot" ? (
+              <div className="mb-4">
+                <div className="flex gap-1.5 mb-2">
+                  {(["items", "daily", "weekly"] as const).map((m) => (
+                    <button key={m} type="button" onClick={() => setAihotCfg((c) => ({ ...c, method: m }))}
+                      className={`px-2.5 py-1 text-xs rounded-md border transition ${aihotCfg.method === m ? "bg-blue-500/15 text-blue-300 border-blue-400/30" : "bg-white/[0.03] text-white/70 border-white/[0.06]"}`}>
+                      {m === "items" ? "动态" : m === "daily" ? "日报" : "周报"}
+                    </button>
+                  ))}
+                </div>
+                {aihotCfg.method === "items" && (
+                  <Select value={aihotCfg.category ?? ""} onChange={(v) => setAihotCfg((c) => ({ ...c, category: v }))} options={AIHOT_CATEGORIES} />
+                )}
+                {aihotCfg.method === "daily" && (
+                  <Select value={aihotCfg.report_date ?? ""} onChange={(v) => setAihotCfg((c) => ({ ...c, report_date: v }))}
+                    options={[{ value: "", label: "自动（最新一期）" }, ...(days ?? []).map((d) => ({ value: d.date, label: d.date }))]} />
+                )}
+                {aihotCfg.method === "weekly" && (
+                  <Select value={aihotCfg.week_start ?? ""} onChange={(v) => setAihotCfg((c) => ({ ...c, week_start: v }))}
+                    options={[{ value: "", label: "自动（最近有数据的周）" }, ...(weeks ?? []).map((w) => ({ value: w.week_start, label: `${w.week_start.slice(5)}~${w.week_end.slice(5)}（${w.days}天）` }))]} />
+                )}
               </div>
             ) : (
-              <div className="rounded-lg border border-white/[0.06] mb-4 overflow-hidden">
-                {availableSources.map((s) => (
-                  <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] cursor-pointer border-b border-white/[0.04] last:border-0 transition">
-                    <input type="checkbox" checked={effectiveSourceIds.has(s.id)} onChange={() => toggleSource(s.id)} className="w-3.5 h-3.5 rounded accent-blue-500" />
-                    <span className="text-sm text-white/92 flex-1">{s.name}</span>
-                    {isAihotSource(s) && <span className="text-[10px] text-blue-300/80">AI HOT</span>}
-                  </label>
-                ))}
+              <div className="mb-4">
+                {availableSources.length === 0 ? (
+                  <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5 text-xs text-amber-300/80">暂无可用信息源，请到「信息源管理」启用（将回退默认 Hacker News）</div>
+                ) : (
+                  <MultiSelect
+                    variant="chips" searchable selectAll
+                    allSelected={allSourcesSelected}
+                    onSelectAll={onSelectAllSources}
+                    values={[...effectiveSourceIds].map(String)}
+                    onToggle={(v) => toggleSource(Number(v))}
+                    options={availableSources.map((s) => ({ value: String(s.id), label: s.name }))}
+                    placeholder="选择信息源..."
+                  />
+                )}
               </div>
             )}
 
