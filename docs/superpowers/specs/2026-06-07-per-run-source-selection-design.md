@@ -13,11 +13,18 @@
 ## 已确认决策
 
 1. `enabled` 语义保留为「**是否作为可选项**」——只有 enabled 的源出现在任务窗口的可选列表里。
-2. 任务窗口里信息源**默认全选**（沿用发布账号 `targetIds` 的 `null = 全选可用` 模式）。
+2. 任务窗口里信息源**默认选中**：因 AI HOT 与其他组互斥（见 6），默认规则为——
+   **可用源含 AI HOT → 默认仅选 AI HOT**（贴合旧行为「有 AI HOT 即只用 AI HOT」）；
+   **否则默认全选**所有可用（常规）源。
 3. 所选信息源**存到该任务**（`PipelineRun.source_ids`），供重采集/复现一致。
 4. 双列分区：**左** = 信息源 / 执行阶段 / 发布账号；**右** = 运行模式·路线 / 分辨率·语言 /
    最多图片数 / 采集方式 / 时间·文章数。
 5. 信息源 tab 改名「**信息源管理**」。
+6. 任务窗口的信息源选择做 **AI HOT ↔ 其他组互斥**（交互式）：选中 AI HOT 即清空其他源；
+   选中任一常规源即清空 AI HOT。与后端 `build_collectors_from_db` 的互斥兜底一致。
+7. 信息源页：**CRUD（增删改）保持不变**；该页不再承担「设定当前生效源」的职责（移到任务窗口），
+   `enabled` 仅表示「是否作为可选项」。移除代表旧「当前生效源」的只读组件 `SourceSummary`。
+   采集只依据 `run.source_ids`，不再读全局 enabled（除回退）。
 
 ## 后端
 
@@ -76,11 +83,16 @@ build_collectors 默认 HN）不变。
 - `PipelineRun` 类型加 `source_ids?: string | null`（如其它字段需要）。
 
 ### 2. `frontend/src/components/CreateRunDialog.tsx`
-- **信息源选择**：用可勾选列表（复用现有 checkbox 列表样式，或 `MultiSelect`）列出**可用源**
-  （`sources.filter(s => s.enabled)`）。状态 `sourceIds: Set<number> | null`，`null = 全选可用`
-  （镜像 `targetIds` 的实现：`effectiveSourceIds`、`toggleSource`）。
-- AI HOT 相关推导（`aihotSource` / `aihotMethod` / `isAihotDigest`）改为基于**所选源**
-  （`effectiveSourceIds` 对应的源），而非全部 enabled。
+- **信息源选择**：可勾选列表（复用现有 checkbox 列表样式）列出**可用源**
+  （`sources.filter(s => s.enabled)`），每项显示名称 + 类型/AI HOT method 提示。
+- 状态 `sourceIds: Set<number> | null`，`null = 用默认规则`。`effectiveSourceIds` 解析：
+  - `null` 时：可用源含 AI HOT → 仅 AI HOT 的 id；否则全部可用 id（决策 2）。
+  - 非 null 时：用户的显式选择（与可用集求交，过滤已失效 id）。
+- **AI HOT ↔ 其他组互斥**（决策 6）`toggleSource(id)`：以 `effectiveSourceIds` 为基准 toggle 后，
+  若新选中的是 AI HOT → 结果只保留 AI HOT；若新选中的是常规源 → 结果剔除所有 AI HOT。
+  （即任一时刻 selected 要么全是 AI HOT、要么全是常规。）
+- AI HOT 相关推导（`aihotSource` / `aihotMethod` / `isAihotDigest`，决定是否隐藏时间/文章数）
+  改为基于 `effectiveSourceIds` 对应的源，而非全部 enabled。
 - 移除只读 `SourceSummary` 的使用（组件文件可留作他用或删除——本任务仅从弹窗移除引用）。
 - 提交 `handleSubmit` 带 `source_ids: Array.from(effectiveSourceIds)`。
 - **双列 flex 布局**：弹窗宽度约 `720px`；外层 `flex gap-5`，左右两 `flex-1` 列：
@@ -107,6 +119,5 @@ build_collectors 默认 HN）不变。
 - 前端：`pnpm build` 通过（无强制单测）。
 
 ## 不做（YAGNI）
-- 不做「记住上次所选源」（默认全选即可）。
-- 不在前端做 AI HOT 互斥的禁用联动（后端兜底；可后续加提示）。
-- 不改信息源的增删改逻辑（仅语义/文案）。
+- 不做「记住上次所选源」（默认按决策 2 规则即可）。
+- 不改信息源的增删改（CRUD）逻辑（仅语义/文案 + 移除只读 SourceSummary）。
