@@ -35,5 +35,7 @@ class PipelineRun(Base, TimestampMixin):
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # 任务最多生成图片数（0=不限制）；超过则在生图前 AI 重规划分镜合并短文章
     max_images: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 该任务选用的信息源 id 列表（JSON 数组）；None/空 = 未指定（采集回退到 enabled 源）
+    source_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     articles: Mapped[list["RawArticle"]] = relationship(back_populates="run")

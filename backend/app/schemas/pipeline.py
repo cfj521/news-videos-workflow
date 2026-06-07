@@ -14,6 +14,7 @@ class PipelineRunCreate(BaseModel):
     resolution: str = ""
     language: str = ""
     max_images: int | None = None
+    source_ids: list[int] | None = None
 
 
 class PipelineRunRead(BaseModel):
@@ -36,6 +37,7 @@ class PipelineRunRead(BaseModel):
     resolution: str | None
     language: str | None
     max_images: int | None
+    source_ids: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -77,3 +77,20 @@ def test_raw_article_relationship(db_session):
     loaded_run = db_session.get(PipelineRun, run.id)
     assert len(loaded_run.articles) == 1
     assert loaded_run.articles[0].title == "Test"
+
+
+def test_pipeline_run_source_ids_roundtrip():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.models.base import Base
+    from app.models.pipeline_run import PipelineRun
+
+    eng = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+    run = PipelineRun(mode="auto", video_route="hyperframes", source_ids="[1, 3]")
+    s.add(run); s.commit(); s.refresh(run)
+    assert run.source_ids == "[1, 3]"
+    run2 = PipelineRun(mode="auto", video_route="hyperframes")
+    s.add(run2); s.commit(); s.refresh(run2)
+    assert run2.source_ids is None
