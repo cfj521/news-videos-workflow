@@ -124,3 +124,9 @@ def test_create_run_stores_source_ids(client):
     r = client.post("/api/pipeline/runs", json={"time_range": "7d", "source_ids": [2, 5]})
     assert r.status_code == 201
     assert r.json()["source_ids"] == "[2, 5]"
+
+
+def test_create_run_stores_aihot_config(client):
+    r = client.post("/api/pipeline/runs", json={"aihot_config": {"method": "weekly"}})
+    assert r.status_code == 201
+    assert r.json()["aihot_config"] == '{"method": "weekly"}'

@@ -26,6 +26,7 @@ class PipelineEngine:
         language: str = "",
         max_images: int | None = None,
         source_ids: list[int] | None = None,
+        aihot_config: dict | None = None,
     ) -> PipelineRun:
         stages = selected_stages or [1, 2, 3, 4, 5]
         platforms = publish_platforms or []
@@ -39,6 +40,7 @@ class PipelineEngine:
             language=language or None,
             max_images=max_images,
             source_ids=json.dumps(source_ids) if source_ids else None,
+            aihot_config=json.dumps(aihot_config) if aihot_config else None,
         )
         self.db.add(run)
         self.db.commit()
