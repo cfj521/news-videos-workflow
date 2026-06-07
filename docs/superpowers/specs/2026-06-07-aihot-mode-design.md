@@ -117,7 +117,7 @@ def _collectors_for_run(db, run, settings) -> tuple[list[dict], dict]:
   无 AI HOT 互斥（模式单选已隔离）。移除原 `toggleSource` 的 AI HOT 互斥分支。
 - 提交：`sourceMode==="aihot"` → `aihot_config: aihotCfg`（不带 source_ids）；
   `"custom"` → `source_ids: Array.from(effectiveSourceIds)`（不带 aihot_config）。
-- 移除只读 `SourceSummary` 残留（若仍在）。
+- 注：`SourceSummary` 不在本弹窗（在 Dashboard 的重采集确认框），见「评审补充」。
 
 ### 4. `frontend/src/pages/Sources.tsx`
 - 移除 `AIHotGroupCard` 组件定义与渲染；移除 `AIHOT_CATEGORIES`（迁到 dialog）。
@@ -140,3 +140,57 @@ def _collectors_for_run(db, run, settings) -> tuple[list[dict], dict]:
 - 不主动删除残留 aihot DB 行（过滤即可）。
 - 不给发布账号启用 chips/search/全选（保持现状，opt-in 不影响它）。
 - 其他源组内不做互斥（仅 AI HOT↔其他源在窗口层面二选一）。
+
+## 评审补充（必须随实现处理）
+
+> 经 subagent 对照真实代码评审后补齐的遗漏/修正。模式真值统一为 **`run.aihot_config` 有无**，
+> create / 采集 / reroll / 展示四处口径必须一致。
+
+### 后端
+1. **保留 `digest_method` 推导**：runner.py 采集块约 line 503-504 的
+   `digest_method = next((sc.get("method") ... in ("daily","weekly")), None)` **必须保留**（只替换
+   481-501 的采集来源为 `_collectors_for_run`）。`_collectors_for_run` 返回的 source_configs 含
+   `method`，该推导继续可用；删了会使周报/日报无数据时的中文引导文案失效。
+2. **reroll 路由口径改用 `run.aihot_config`**：`api/pipeline.py::reroll_articles`（约 line 568-590）
+   现在读 `articles.json` 首篇 `aihot_method` 判 daily 拒绝 / weekly 重总结 / 否则重采。改为读
+   `run.aihot_config`：
+   ```python
+   method = ""
+   if run.aihot_config:
+       try: method = (json.loads(run.aihot_config) or {}).get("method", "")
+       except Exception: method = ""
+   if method == "daily":
+       raise HTTPException(400, "日报模式无需重新采集")
+   is_weekly = method == "weekly"
+   ```
+   （`_reroll_articles_async` 用 `_collectors_for_run` 已与首采一致。）
+3. **文案更新**：`runner.py:219` 周报无数据文案里的「信息源 → AI HOT」改为「新建任务窗口」。
+4. **死代码与旧测试**：`_collectors_for_run` 的 custom 分支已过滤 aihot，
+   `build_collectors_from_db` 内部的 AI HOT 互斥兜底（约 line 127-132）成为死代码——保留无害；
+   但 `backend/tests/test_runner_mutual_exclusion.py`（三个用例全围绕 aihot 互斥）语义过时，
+   **改写或删除**（改为覆盖：aihot 行被 `_resolve_collector_type` 识别并在 custom 分支过滤）。
+5. **模式优先级（文档化）**：后端以 `aihot_config` 非空为唯一判别；aihot 模式下即使 run 也存了
+   `source_ids` 也忽略。
+
+### 前端
+6. **`SourceSummary` 改为按 run 显示**（`frontend/src/components/SourceSummary.tsx`，被
+   `Dashboard.tsx:310` 的重采集确认框引用）：改签名为 `SourceSummary({ run })`，按 run 展示：
+   - `run.aihot_config` 非空 → `AI HOT · {动态/日报/周报}`（+ 分类/日期/周若有）；
+   - 否则解析 `run.source_ids` → 列出选中源名（用 sources 列表解析）；都无 → 默认 Hacker News。
+   不再读全局 enabled（旧口径会显示与该 run 不符的源）。
+7. **Dashboard 重采集模式 UI 由 `run.aihot_config` 推导**：`isWeekly`、日报禁用按钮等改从
+   `run.aihot_config.method` 解析（与后端一致），不再依赖 articles。
+8. **`runs.list/get` 返回含 `aihot_config`**：前端 PipelineRun 类型加 `aihot_config?: string | null`、
+   `source_ids?: string | null`，供第 6/7 点解析。
+9. **Sources.tsx 移除卡片后的清理**：删除仅服务于 `AIHotGroupCard` 的 `AIHOT_CATEGORIES`、
+   `parseConfig` 及随之未用的 import（`KeyedMutator`、`useEffect`、`Select` 等按实际）——否则
+   `noUnusedLocals` 致 `pnpm build` 失败。
+10. **MultiSelect「全选/全不选」对接 `null` 语义**：`onSelectAll(true)` → `setSourceIds(null)`；
+    `onSelectAll(false)` → `setSourceIds(new Set())`；`allSelected` = `effectiveSourceIds` 覆盖了全部
+    可用源。
+
+### 实施拆分（建议）
+- **阶段一（后端）**：模型/迁移/schema/engine/api 透传 + `_collectors_for_run` + reroll 口径统一 +
+  seed 移除 + 文案 + 测试（含旧互斥测试改写）。可独立验收（pytest）。
+- **阶段二（前端）**：api 类型 + MultiSelect 增强 + CreateRunDialog 2 选一 + Sources 去卡片/去互斥/清理
+  + SourceSummary/Dashboard 按 run 展示。`pnpm build` 验收。
