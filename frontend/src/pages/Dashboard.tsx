@@ -568,7 +568,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
 
           <div>
             <div className="text-[11px] text-white/60 mb-1">旁白</div>
-            <textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={3} className={`${inputCls} text-[13px]`} />
+            <textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={6} className={`${inputCls} text-[13px]`} />
             <div className="flex gap-2 mt-1.5">
               <button onClick={handleRegenAudio} disabled={regenAudioLoading} className={btnRegenAudio}>
                 {regenAudioLoading ? "生成中..." : "重新配音"}
@@ -1321,9 +1321,13 @@ export function DashboardPage() {
                   type="button"
                   onClick={(e) => stopRun(e, run)}
                   title="终止此任务"
-                  className="ml-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-500/15 border border-red-500/25 text-red-300 hover:bg-red-500/25 transition"
+                  aria-label="终止此任务"
+                  className="ml-1 inline-flex items-center justify-center p-1 rounded text-red-300 bg-red-500/15 border border-red-500/25 hover:bg-red-500/25 transition"
                 >
-                  终止
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                  </svg>
                 </button>
               )}
             </div>
