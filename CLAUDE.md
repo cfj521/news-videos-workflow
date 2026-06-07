@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **`backend/app/providers/`** — AI 服务的 Provider 抽象层
   - 统一接口：`TextProvider`, `ImageProvider`, `TTSProvider`, `LipSyncProvider`
-  - 具体实现按需接入（Claude、OpenAI、Stable Diffusion、Edge-TTS、CosyVoice 等）
+  - 具体实现按需接入（OpenAI、DashScope、Stable Diffusion、Edge-TTS、CosyVoice 等）
   - 通过配置文件切换 provider，不改业务代码
 
 - **`backend/app/api/`** — FastAPI 路由层

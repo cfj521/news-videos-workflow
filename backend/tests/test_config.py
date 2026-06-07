@@ -8,12 +8,13 @@ def test_config_loads_defaults():
     assert settings.pipeline.default_language == "zh"
     assert settings.DATABASE_URL == "sqlite:///../data/news_videos.db"
     # 选型与供应商参数库（新结构）
-    assert settings.pipeline.script_provider == "claude"
-    assert settings.pipeline.script_model == "claude-sonnet-4-6"
+    assert settings.pipeline.script_provider == "openai"
+    assert settings.pipeline.script_model == "gpt-5.5"
     assert settings.pipeline.tts_provider == "edge-tts"
     assert settings.pipeline.tts_voice == "zh-CN-XiaoxiaoNeural"
     assert "openai" in settings.providers
-    assert settings.providers["claude"].base_url == "https://api.anthropic.com"
+    assert "claude" not in settings.providers  # anthropic 已移除
+    assert settings.providers["openai"].base_url == "https://api.openai.com/v1"
 
 
 def test_config_from_dict():
@@ -63,16 +64,16 @@ def test_migrate_legacy_config():
     from app.config import Settings, _migrate_legacy
 
     raw = {
-        "text": {"provider": "claude", "base_url": "https://api.anthropic.com", "model": "claude-x", "api_key": "k-text"},
+        "text": {"provider": "dashscope", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-x", "api_key": "k-text"},
         "image": {"provider": "comfyui", "model": "gpt-image-1"},
         "tts": {"provider": "edge-tts", "voice": "en-US-JennyNeural"},
         "summary": {"provider": "openai", "model": "gpt-5", "api_key": "k-sum", "max_length": 200},
         "comfyui": {"image_workflow": "qwen", "video_workflow": "wan14b", "video_fps": 30},
     }
     s = Settings(**_migrate_legacy(raw))
-    assert s.pipeline.script_provider == "claude"
-    assert s.pipeline.script_model == "claude-x"
-    assert s.providers["claude"].api_key == "k-text"
+    assert s.pipeline.script_provider == "dashscope"
+    assert s.pipeline.script_model == "qwen-x"
+    assert s.providers["dashscope"].api_key == "k-text"
     assert s.pipeline.image_provider == "comfyui"
     assert s.pipeline.image_model == "qwen"          # comfyui 时取 image_workflow
     assert s.pipeline.tts_voice == "en-US-JennyNeural"

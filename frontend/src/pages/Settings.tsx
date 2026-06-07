@@ -323,7 +323,6 @@ function PurposeSelect({ label, desc, providerKeys, provider, model, modelOption
 
 const EMPTY_SETTINGS: AppSettings = {
   providers: {
-    claude: { base_url: "https://api.anthropic.com", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
     openai: { base_url: "https://api.openai.com/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
     dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
     "edge-tts": { base_url: "", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
@@ -334,7 +333,7 @@ const EMPTY_SETTINGS: AppSettings = {
     default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui",
     default_language: "zh", dedup_lookback: "30d", resolution: "1080x1920", max_images: 10,
     summary_provider: "openai", summary_model: "gpt-5", summary_max_length: 150,
-    script_provider: "claude", script_model: "claude-sonnet-4-6",
+    script_provider: "openai", script_model: "gpt-5.5",
     image_provider: "comfyui", image_model: "z_image_turbo",
     vision_provider: "openai", vision_model: "gpt-4o",
     tts_provider: "edge-tts", tts_model: "", tts_voice: "zh-CN-XiaoxiaoNeural",
@@ -348,7 +347,6 @@ const EMPTY_SETTINGS: AppSettings = {
 
 // 模型配置页：供应商横铺 tab（仅配 base_url + api_key；当前用哪个在流水线页选）
 const PROVIDER_TABS: { key: string; label: string }[] = [
-  { key: "claude", label: "Anthropic Claude" },
   { key: "openai", label: "OpenAI" },
   { key: "dashscope", label: "阿里云 DashScope" },
   { key: "edge-tts", label: "微软 Edge TTS" },
@@ -815,7 +813,7 @@ export function SettingsPage() {
       </div>
 
       {activeTab === "models" && (<>
-        {renderModelGroup("text", "文本模型", ["claude", "openai", "dashscope"])}
+        {renderModelGroup("text", "文本模型", ["openai", "dashscope"])}
         {renderModelGroup("image", "图片模型", ["openai", "dashscope"])}
         {renderModelGroup("vision", "多模态模型", ["openai", "dashscope"])}
         {renderModelGroup("tts", "语音生成模型", ["openai", "dashscope", "edge-tts"])}

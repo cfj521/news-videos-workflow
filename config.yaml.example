@@ -16,12 +16,6 @@ storage:
 #      max_output_tokens：文本/视觉模型单次输出上限；models：可用模型名（按类型分组，可在「模型配置」页增删）。
 #      也支持自定义供应商：在此或「模型配置」页新增一个键即可。models 留空时启动会自动补内置默认。
 providers:
-  claude:
-    base_url: https://api.anthropic.com
-    api_key: ""
-    max_output_tokens: 65535
-    models:
-      text: [claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5-20251001]
   openai:
     base_url: https://api.openai.com/v1
     api_key: ""
@@ -70,8 +64,8 @@ pipeline:
   summary_provider: openai
   summary_model: gpt-5
   summary_max_length: 150
-  script_provider: claude               # 文案/脚本生成
-  script_model: claude-sonnet-4-6
+  script_provider: openai               # 文案/脚本生成
+  script_model: gpt-5.5
   image_provider: comfyui               # comfyui | openai | dashscope
   image_model: z_image_turbo            # comfyui 时为图片 workflow：z_image_turbo | qwen_image
   vision_provider: openai               # 文档解析（导入 PDF）

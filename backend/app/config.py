@@ -53,7 +53,6 @@ class ProviderCreds(BaseModel):
 # 各供应商默认 base_url（初始化供应商库 / 旧配置迁移用）。
 # 语音生成与文本/图片共用同一供应商（openai/dashscope，共用 key）；edge-tts 免费无凭证。
 _PROVIDER_DEFAULTS: dict[str, str] = {
-    "claude": "https://api.anthropic.com",
     "openai": "https://api.openai.com/v1",
     "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "edge-tts": "",
@@ -61,7 +60,6 @@ _PROVIDER_DEFAULTS: dict[str, str] = {
 
 # 各供应商默认模型列表（按类型分组，含语音 tts）；用户可在「模型配置」页增删
 _PROVIDER_DEFAULT_MODELS: dict[str, dict[str, list[str]]] = {
-    "claude": {"text": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]},
     "openai": {
         "text": ["gpt-5.5", "gpt-5.5-pro", "gpt-5"],
         "image": ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"],
@@ -126,8 +124,8 @@ class PipelineCfg(BaseModel):
     summary_provider: str = "openai"
     summary_model: str = "gpt-5"
     summary_max_length: int = 150
-    script_provider: str = "claude"        # 文案/脚本生成（原 text）
-    script_model: str = "claude-sonnet-4-6"
+    script_provider: str = "openai"        # 文案/脚本生成（原 text）
+    script_model: str = "gpt-5.5"
     image_provider: str = "comfyui"
     image_model: str = "z_image_turbo"     # comfyui 时为图片 workflow
     vision_provider: str = "openai"        # 文档解析（导入 PDF）

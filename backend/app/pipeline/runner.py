@@ -33,9 +33,6 @@ def _build_text_provider():
     cfg = get_settings()
     provider, base_url, api_key, model = resolve(cfg, "script")
     max_tokens = cfg.provider_creds(provider).max_output_tokens
-    if provider == "claude":
-        from app.providers.text.claude import ClaudeTextProvider
-        return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
     from app.providers.text.openai_text import OpenAITextProvider
     # 仅当当前用途 provider 真是 openai 才看其订阅模式；第三方 openai 兼容 provider（dashscope 等）不走 codex
     sub = provider == "openai" and cfg.provider_creds("openai").auth_mode == "subscription"
@@ -165,9 +162,6 @@ def _build_summary_provider(cfg):
     if not provider:
         provider, base_url, api_key, model = resolve(cfg, "script")
     max_tokens = cfg.provider_creds(provider).max_output_tokens
-    if provider == "claude":
-        from app.providers.text.claude import ClaudeTextProvider
-        return ClaudeTextProvider(api_key=api_key, model=model, base_url=base_url, max_tokens=max_tokens)
     from app.providers.text.openai_text import OpenAITextProvider
     # 仅当当前用途 provider 真是 openai 才看其订阅模式；第三方 openai 兼容 provider（dashscope 等）不走 codex
     sub = provider == "openai" and cfg.provider_creds("openai").auth_mode == "subscription"
