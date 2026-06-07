@@ -5,6 +5,7 @@ import edge_tts
 
 from app.logging import get_logger
 from app.providers.base import AssetResult, ProviderError, TTSProvider
+from app.providers.tts.audio_duration import measure_audio_ms
 
 log = get_logger("provider.tts.edge")
 
@@ -31,12 +32,11 @@ class EdgeTTSProvider(TTSProvider):
             raise ProviderError(service="语音合成", provider="edge-tts", model=voice, cause=e) from e
 
         file_size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
-        duration_ms = self._estimate_duration(text, speed)
-        log.info("synthesize() done — %d bytes, ~%dms in %.1fs → %s", file_size, duration_ms, time.time() - t0, output_path)
+        # 必须测到真实时长；测不到（文件缺失/无效）直接报错，绝不估算
+        duration_ms = measure_audio_ms(output_path)
+        if duration_ms <= 0:
+            raise ProviderError(service="语音合成", provider="edge-tts", model=voice,
+                                cause=RuntimeError(f"无法读取合成音频时长（文件缺失或无效）：{output_path}"))
+        log.info("synthesize() done — %d bytes, %dms in %.1fs → %s", file_size, duration_ms, time.time() - t0, output_path)
 
         return AssetResult(file_path=output_path, duration_ms=duration_ms)
-
-    def _estimate_duration(self, text: str, speed: float) -> int:
-        chars = len(text)
-        chars_per_second = 4.0 * speed
-        return int((chars / chars_per_second) * 1000)

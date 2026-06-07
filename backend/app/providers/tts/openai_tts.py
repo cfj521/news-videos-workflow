@@ -5,6 +5,7 @@ import openai
 
 from app.logging import get_logger
 from app.providers.base import AssetResult, ProviderError, TTSProvider
+from app.providers.tts.audio_duration import measure_audio_ms
 
 log = get_logger("provider.tts.openai")
 
@@ -37,6 +38,9 @@ class OpenAITTSProvider(TTSProvider):
             raise ProviderError(service="语音合成", provider="openai", model=self._model, base_url=self._base_url, cause=e) from e
 
         size = Path(output_path).stat().st_size if Path(output_path).exists() else 0
-        dur = int((len(text) / (4.0 * (speed or 1.0))) * 1000)
+        dur = measure_audio_ms(output_path)
+        if dur <= 0:
+            raise ProviderError(service="语音合成", provider="openai", model=self._model, base_url=self._base_url,
+                                cause=RuntimeError(f"无法读取合成音频时长（文件缺失或无效）：{output_path}"))
         log.info("synthesize() done — %d bytes, voice=%s in %.1fs → %s", size, voice, time.time() - t0, output_path)
         return AssetResult(file_path=output_path, duration_ms=dur)

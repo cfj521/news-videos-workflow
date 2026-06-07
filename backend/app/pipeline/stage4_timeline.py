@@ -45,8 +45,12 @@ def run_stage4(
         scene_data = narration_map.get(scene_id, {})
         audio_duration = asset.get("audio", {}).get("duration_ms", 0)
         hint_ms = int(scene_data.get("duration_hint", 5) * 1000)
-        duration_ms = audio_duration if audio_duration > 0 else hint_ms
-        duration_ms = max(min_scene_ms, min(duration_ms, max_scene_ms))
+        if audio_duration > 0:
+            # 有真实音频：分镜时长跟随音频，完整播放，不用 max_scene_ms 截断（否则长旁白会被切）
+            duration_ms = max(min_scene_ms, audio_duration)
+        else:
+            # 无音频（如纯图片/估算回退）：用 hint，受 max_scene_ms 上限约束
+            duration_ms = max(min_scene_ms, min(hint_ms, max_scene_ms))
         duration_ms += scene_gap_ms
 
         narration = scene_data.get("narration", "")

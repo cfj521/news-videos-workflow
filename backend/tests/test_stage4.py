@@ -45,6 +45,25 @@ def test_stage4_uses_audio_duration_over_hint():
     assert timeline["entries"][0]["end_ms"] == 8000
 
 
+def test_stage4_audio_longer_than_cap_not_truncated():
+    # 真实音频 21s（超过旧 15s 上限）应完整保留，不被截断（否则旁白被切）
+    scene_assets = [
+        {"scene_id": 1, "image": {"file_path": "i.png"},
+         "audio": {"file_path": "a.mp3", "duration_ms": 21000}},
+    ]
+    script = {"scenes": [{"id": 1, "narration": "long narration", "duration_hint": 5}]}
+    timeline = run_stage4(script=script, scene_assets=scene_assets, scene_gap_ms=0)
+    assert timeline["entries"][0]["end_ms"] == 21000
+
+
+def test_stage4_no_audio_uses_capped_hint():
+    # 无音频时用 duration_hint，并受 max_scene_ms 上限约束
+    scene_assets = [{"scene_id": 1, "image": {"file_path": "i.png"}, "audio": {"duration_ms": 0}}]
+    script = {"scenes": [{"id": 1, "narration": "x", "duration_hint": 999}]}
+    timeline = run_stage4(script=script, scene_assets=scene_assets, scene_gap_ms=0, max_scene_ms=15000)
+    assert timeline["entries"][0]["end_ms"] == 15000
+
+
 def test_stage4_skips_errored_scenes():
     scene_assets = [
         {
