@@ -94,3 +94,19 @@ def test_pipeline_run_source_ids_roundtrip():
     run2 = PipelineRun(mode="auto", video_route="hyperframes")
     s.add(run2); s.commit(); s.refresh(run2)
     assert run2.source_ids is None
+
+
+def test_pipeline_run_aihot_config_roundtrip():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.models.base import Base
+    from app.models.pipeline_run import PipelineRun
+    eng = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+    run = PipelineRun(mode="auto", video_route="hyperframes", aihot_config='{"method": "items"}')
+    s.add(run); s.commit(); s.refresh(run)
+    assert run.aihot_config == '{"method": "items"}'
+    run2 = PipelineRun(mode="auto", video_route="hyperframes")
+    s.add(run2); s.commit(); s.refresh(run2)
+    assert run2.aihot_config is None

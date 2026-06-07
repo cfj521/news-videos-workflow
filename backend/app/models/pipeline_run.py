@@ -37,5 +37,7 @@ class PipelineRun(Base, TimestampMixin):
     max_images: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 该任务选用的信息源 id 列表（JSON 数组）；None/空 = 未指定（采集回退到 enabled 源）
     source_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # AI HOT 模式配置（JSON：method/category/report_date/week_start）；None = 其他源模式（用 source_ids）
+    aihot_config: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     articles: Mapped[list["RawArticle"]] = relationship(back_populates="run")

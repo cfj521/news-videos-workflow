@@ -25,6 +25,7 @@ def _ensure_pipeline_run_columns(engine) -> None:
         "language": "VARCHAR(10)",
         "max_images": "INTEGER",
         "source_ids": "TEXT",
+        "aihot_config": "TEXT",
     }
     with engine.begin() as conn:
         cols = [row[1] for row in conn.execute(text("PRAGMA table_info(pipeline_runs)"))]
