@@ -44,3 +44,9 @@ def test_falls_back_when_blank_json():
     db = _db(); _seed(db)
     rows = _sources_for_run(db, _Run("[]"))
     assert sorted(s.id for s in rows) == [1, 3]
+
+
+def test_falls_back_when_bad_json():
+    db = _db(); _seed(db)
+    rows = _sources_for_run(db, _Run("not-json"))
+    assert sorted(s.id for s in rows) == [1, 3]

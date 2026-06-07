@@ -481,7 +481,6 @@ async def _run_inner(run_id: int, db: Session) -> None:
     if 1 in selected:
         _check_cancel(run.id)
         t0 = time.time()
-        from app.models.news_source import NewsSource
 
         if not run.auto_collect:
             _save_articles([], run_dir)
