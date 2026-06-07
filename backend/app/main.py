@@ -36,26 +36,6 @@ def _ensure_pipeline_run_columns(engine) -> None:
                 conn.execute(text(f"ALTER TABLE pipeline_runs ADD COLUMN {name} {ddl}"))
 
 
-def _seed_aihot_source(factory) -> None:
-    import json
-
-    from app.models.news_source import NewsSource
-
-    db = factory()
-    try:
-        exists = db.query(NewsSource).filter(NewsSource.url.like("%aihot.virxact.com%")).first()
-        if exists:
-            return
-        db.add(NewsSource(
-            name="AI HOT", type="api", url="https://aihot.virxact.com/api/public",
-            category="ai", language="zh", priority=1, enabled=True, tier="standard",
-            config_json=json.dumps({"provider": "aihot", "method": "items"}),
-        ))
-        db.commit()
-    finally:
-        db.close()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_global_logger()
@@ -63,7 +43,6 @@ async def lifespan(app: FastAPI):
     factory = get_session_factory()
     Base.metadata.create_all(bind=factory.kw["bind"])
     _ensure_pipeline_run_columns(factory.kw["bind"])
-    _seed_aihot_source(factory)
     seed_default_admin(factory)
     yield
 
