@@ -191,7 +191,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
               <div className="mb-4">
                 <div className="flex gap-1.5 mb-2">
                   {(["items", "daily", "weekly"] as const).map((m) => (
-                    <button key={m} type="button" onClick={() => setAihotCfg((c) => ({ ...c, method: m }))}
+                    <button key={m} type="button" onClick={() => setAihotCfg({ method: m })}
                       className={`px-2.5 py-1 text-xs rounded-md border transition ${aihotCfg.method === m ? "bg-blue-500/15 text-blue-300 border-blue-400/30" : "bg-white/[0.03] text-white/70 border-white/[0.06]"}`}>
                       {m === "items" ? "动态" : m === "daily" ? "日报" : "周报"}
                     </button>
