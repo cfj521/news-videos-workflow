@@ -170,6 +170,36 @@ def build_collectors(cfg=None):
     return source_configs, collectors
 
 
+def _aihot_source_config(aihot: dict) -> dict:
+    """由 run.aihot_config 构造 AI HOT collector 的 source_config（URL 在 collector 内硬编码）。"""
+    cfg = {"name": "AI HOT", "type": "aihot", "provider": "aihot"}
+    for k in ("method", "category", "report_date", "week_start"):
+        if aihot.get(k):
+            cfg[k] = aihot[k]
+    cfg.setdefault("method", "items")
+    return cfg
+
+
+def _collectors_for_run(db, run, settings) -> tuple[list[dict], dict]:
+    """按 run 选模式返回 (source_configs, collectors)。
+    - aihot_config 非空 → AI HOT 单源（硬编码）。
+    - 否则 → run.source_ids 选中的非 aihot 源；空则 enabled 非 aihot；再空 → 默认 HN。
+    """
+    _ensure_collector_registry()
+    raw = getattr(run, "aihot_config", None)
+    if raw:
+        try:
+            aihot = json.loads(raw) or {}
+        except Exception:
+            aihot = {}
+        if aihot:
+            return [_aihot_source_config(aihot)], {"aihot": TYPE_TO_COLLECTOR["aihot"]()}
+    db_sources = [s for s in _sources_for_run(db, run) if _resolve_collector_type(s) != "aihot"]
+    if db_sources:
+        return build_collectors_from_db(db_sources)
+    return build_collectors(settings)
+
+
 def _build_summary_provider(cfg):
     """文章摘要 provider，按 pipeline 选型（summary）+ providers 库；缺省回退脚本选型。"""
     from app.config import resolve
