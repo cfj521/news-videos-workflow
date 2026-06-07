@@ -317,12 +317,13 @@ export function SourcesPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-2">
         <h1 className="text-2xl font-bold tracking-tight">信息源管理</h1>
         <button onClick={() => setShowAdd(true)} className={btnPrimary}>
           + 添加信息源
         </button>
       </div>
+      <p className="text-xs text-white/46 mb-5">启用 = 作为新建任务的可选信息源；具体某次任务使用哪些，在「新建任务」窗口里选择。</p>
 
       {aihotSource && (
         <AIHotGroupCard source={aihotSource} customIds={customIds} mutate={mutate} />
