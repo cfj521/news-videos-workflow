@@ -82,21 +82,22 @@ def test_import_file_unsupported_returns_400(client, tmp_path):
     assert r.status_code == 400
 
 
-# ─── 重新采集按钮按 AI HOT 模式分流 ───────────────────────────
-def _new_run(client):
-    return client.post("/api/pipeline/runs", json={}).json()["id"]
+# ─── 重新采集按钮按 run.aihot_config 分流 ────────────────────
+def _new_run(client, aihot_config=None):
+    payload = {}
+    if aihot_config is not None:
+        payload["aihot_config"] = aihot_config
+    return client.post("/api/pipeline/runs", json=payload).json()["id"]
 
 
 def test_reroll_daily_rejected(client, tmp_path):
-    rid = _new_run(client)
-    _seed_articles(tmp_path, rid, [{"title": "今日日报", "aihot_method": "daily"}])
+    rid = _new_run(client, aihot_config={"method": "daily"})
     r = client.post(f"/api/pipeline/runs/{rid}/reroll-articles")
     assert r.status_code == 400  # 日报无意义，禁止
 
 
 def test_reroll_weekly_is_resummarize(client, tmp_path):
-    rid = _new_run(client)
-    _seed_articles(tmp_path, rid, [{"title": "本周回顾", "aihot_method": "weekly"}])
+    rid = _new_run(client, aihot_config={"method": "weekly"})
     with patch("app.api.pipeline._reroll_articles_bg"):  # 别真跑采集
         r = client.post(f"/api/pipeline/runs/{rid}/reroll-articles")
     assert r.status_code == 200
@@ -104,8 +105,7 @@ def test_reroll_weekly_is_resummarize(client, tmp_path):
 
 
 def test_reroll_items_is_reroll(client, tmp_path):
-    rid = _new_run(client)
-    _seed_articles(tmp_path, rid, [{"title": "动态a", "aihot_method": "items"}])
+    rid = _new_run(client, aihot_config={"method": "items"})
     with patch("app.api.pipeline._reroll_articles_bg"):
         r = client.post(f"/api/pipeline/runs/{rid}/reroll-articles")
     assert r.status_code == 200

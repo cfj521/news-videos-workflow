@@ -572,12 +572,10 @@ async def reroll_articles(run_id: int, db: Session = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     # 按当前采集模式分流：daily 无意义→拒绝；weekly=重新总结；items/普通源=重新采集
-    apath = _run_dir(run_id) / "articles.json"
     method = ""
-    if apath.exists():
+    if run.aihot_config:
         try:
-            arts = json.loads(apath.read_text(encoding="utf-8"))
-            method = arts[0].get("aihot_method", "") if arts else ""
+            method = (json.loads(run.aihot_config) or {}).get("method", "")
         except Exception:
             method = ""
     if method == "daily":
@@ -606,12 +604,8 @@ async def _reroll_articles_async(run_id: int, session_factory):
         if not run:
             return
         cfg = get_settings()
-        from app.pipeline.runner import _sources_for_run
-        db_sources = _sources_for_run(db, run)
-        if db_sources:
-            source_configs, collectors = build_collectors_from_db(db_sources)
-        else:
-            source_configs, collectors = build_collectors(cfg)
+        from app.pipeline.runner import _collectors_for_run
+        source_configs, collectors = _collectors_for_run(db, run, get_settings())
         articles = await run_stage1(
             sources=source_configs, collectors=collectors,
             time_range=run.time_range, max_articles=run.max_articles,

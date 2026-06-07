@@ -246,7 +246,7 @@ async def _distill_weekly_if_needed(articles, log, language: str = "zh"):
 
 def _no_article_message(digest_method) -> str:
     if digest_method == "weekly":
-        return "所选周的 AI 日报数据不足，请在「信息源 → AI HOT」改选有数据的周，或切换日报(daily)/动态(items)模式"
+        return "所选周的 AI 日报数据不足，请在「新建任务窗口」改选有数据的周，或切换日报(daily)/动态(items)模式"
     if digest_method == "daily":
         return "今日 AI 日报尚未生成，请稍后再试或切换为动态(items)模式"
     return "No articles collected"
@@ -522,14 +522,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             _update(db, run, current_stage=1, progress_detail="S1 采集新闻中...")
             log.info("[S1] Collecting news — time_range=%s max=%d",
                      run.time_range, run.max_articles)
-            db_sources = _sources_for_run(db, run)
-            if db_sources:
-                source_configs, collectors = build_collectors_from_db(db_sources)
-                log.info("[S1] Using %d DB sources: %s", len(source_configs),
-                         [s["name"] for s in source_configs])
-            else:
-                source_configs, collectors = build_collectors(cfg)
-                log.info("[S1] No DB sources, using defaults")
+            source_configs, collectors = _collectors_for_run(db, run, cfg)
+            log.info("[S1] Using %d sources: %s", len(source_configs), [s["name"] for s in source_configs])
             digest_method = next((sc.get("method") for sc in source_configs
                                   if sc.get("method") in ("daily", "weekly")), None)
             history_fps = _load_history_fingerprints(db)

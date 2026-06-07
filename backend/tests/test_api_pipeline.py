@@ -130,3 +130,10 @@ def test_create_run_stores_aihot_config(client):
     r = client.post("/api/pipeline/runs", json={"aihot_config": {"method": "weekly"}})
     assert r.status_code == 201
     assert r.json()["aihot_config"] == '{"method": "weekly"}'
+
+
+def test_reroll_rejects_daily_by_aihot_config(client):
+    r = client.post("/api/pipeline/runs", json={"aihot_config": {"method": "daily"}})
+    rid = r.json()["id"]
+    rr = client.post(f"/api/pipeline/runs/{rid}/reroll-articles")
+    assert rr.status_code == 400
