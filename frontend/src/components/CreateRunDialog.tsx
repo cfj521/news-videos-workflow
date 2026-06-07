@@ -258,11 +258,12 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
                   { value: "zh", label: "中文" }, { value: "en", label: "English" },
                 ]} />
               </div>
-              <div>
-                <label className={labelCls}>最多图片数（0=不限制）</label>
-                <input type="number" value={effMaxImages} onChange={(e) => setMaxImages(Number(e.target.value))} min={0} max={100} className={inputCls} />
-                <p className="text-[11px] text-white/40 mt-1">超过则生图前 AI 重规划，合并零碎/短文章到同一张图</p>
-              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className={labelCls}>最多图片数（0=不限制）</label>
+              <input type="number" value={effMaxImages} onChange={(e) => setMaxImages(Number(e.target.value))} min={0} max={100} className={inputCls} />
+              <p className="text-[11px] text-white/40 mt-1">超过则生图前 AI 重规划，合并零碎/短文章到同一张图</p>
             </div>
 
             {effLang === "en" && (
