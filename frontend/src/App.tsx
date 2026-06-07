@@ -10,7 +10,7 @@ import { api, getToken, setToken, onUnauthorized } from "./api/client";
 
 const navItems = [
   { to: "/", label: "工作台", end: true },
-  { to: "/sources", label: "信息源" },
+  { to: "/sources", label: "信息源管理" },
   { to: "/publish", label: "发布管理" },
   { to: "/settings", label: "设置" },
 ];

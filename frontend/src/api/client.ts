@@ -120,6 +120,7 @@ export const api = {
       resolution?: string;
       language?: string;
       max_images?: number;
+      source_ids?: number[];
     }) =>
       fetchJSON<PipelineRun>("/pipeline/runs", {
         method: "POST",
