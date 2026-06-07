@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from pydantic import BaseModel as _PydBase
@@ -17,6 +17,7 @@ from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
 from app.pipeline.runner import execute_pipeline, build_collectors, build_collectors_from_db, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final
+from app.pipeline.serial_executor import submit as serial_submit
 from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
 
 log = get_logger("api.pipeline")
@@ -51,7 +52,7 @@ def _reap_orphan(run: PipelineRun, db: Session) -> PipelineRun:
 
 
 @router.post("/runs", response_model=PipelineRunRead, status_code=201)
-def create_run(body: PipelineRunCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def create_run(body: PipelineRunCreate, db: Session = Depends(get_db)):
     log.info("POST /runs — mode=%s stages=%s platforms=%s", body.mode, body.selected_stages, body.publish_platforms)
     cfg = get_settings()
     engine = PipelineEngine(db)
@@ -65,8 +66,8 @@ def create_run(body: PipelineRunCreate, background_tasks: BackgroundTasks, db: S
         max_images=body.max_images if body.max_images is not None else cfg.pipeline.max_images,
     )
     session_factory = get_session_factory()
-    background_tasks.add_task(_run_pipeline_bg, run.id, session_factory)
-    log.info("Pipeline run #%d queued", run.id)
+    serial_submit(_run_pipeline_bg, run.id, session_factory, label=f"run#{run.id}")
+    log.info("Pipeline run #%d queued (serial)", run.id)
     return run
 
 
@@ -564,7 +565,7 @@ async def regen_scene_image(run_id: int, scene_id: int, body: RegenImageRequest,
 # ─── Reroll articles ──────────────────────────────────────
 
 @router.post("/runs/{run_id}/reroll-articles")
-async def reroll_articles(run_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def reroll_articles(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -584,7 +585,7 @@ async def reroll_articles(run_id: int, background_tasks: BackgroundTasks, db: Se
     run.progress_detail = "S1 重新总结中..." if is_weekly else "S1 重新采集中..."
     db.commit()
     session_factory = get_session_factory()
-    background_tasks.add_task(_reroll_articles_bg, run_id, session_factory)
+    serial_submit(_reroll_articles_bg, run_id, session_factory, label=f"reroll#{run_id}")
     return {"status": "resummarizing" if is_weekly else "rerolling"}
 
 
@@ -780,7 +781,7 @@ def get_preview_html(run_id: int, db: Session = Depends(get_db)):
 # ─── Trigger render ───────────────────────────────────────
 
 @router.post("/runs/{run_id}/render")
-async def trigger_render(run_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def trigger_render(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -800,7 +801,7 @@ async def trigger_render(run_id: int, background_tasks: BackgroundTasks, db: Ses
     run.started_at = datetime.now(timezone.utc)  # 重新发起 → 刷新发起时间，避免被孤儿回收误判
     db.commit()
     session_factory = get_session_factory()
-    background_tasks.add_task(_render_video_bg, run_id, session_factory)
+    serial_submit(_render_video_bg, run_id, session_factory, label=f"render#{run_id}")
     return {"status": "rendering"}
 
 
@@ -903,7 +904,7 @@ def _parse_target_ids(publish_platforms: str | None) -> set[int]:
 
 
 @router.post("/runs/{run_id}/publish")
-def trigger_publish(run_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def trigger_publish(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -918,7 +919,7 @@ def trigger_publish(run_id: int, background_tasks: BackgroundTasks, db: Session 
     run.finished_at = None
     run.started_at = datetime.now(timezone.utc)  # 刷新发起时间，避免被孤儿回收误判
     db.commit()
-    background_tasks.add_task(_publish_bg, run_id, get_session_factory())
+    serial_submit(_publish_bg, run_id, get_session_factory(), label=f"publish#{run_id}")
     return {"status": "publishing"}
 
 
