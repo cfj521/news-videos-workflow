@@ -4,7 +4,6 @@ import { api, type AppSettings } from "../api/client";
 import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, selectCls } from "../styles";
 import { Select } from "./Select";
 import { MultiSelect } from "./MultiSelect";
-import { SourceSummary } from "./SourceSummary";
 import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isTargetReady, isAihotSource } from "../types";
 
 interface Props {
@@ -40,6 +39,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5, 6]));
   // null = 用户尚未手动改动 → 默认全选所有可用账号；非 null = 用户的具体选择
   const [targetIds, setTargetIds] = useState<Set<string> | null>(null);
+  // null = 用默认规则；非 null = 用户显式选择
+  const [sourceIds, setSourceIds] = useState<Set<number> | null>(null);
   const [loading, setLoading] = useState(false);
   const [resolution, setResolution] = useState("");
   const [language, setLanguage] = useState("");
@@ -59,9 +60,18 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
   const { data: sources } = useSWR("sources", api.sources.list);
   const { data: publishTargets } = useSWR("publishers", api.publishers.list);
-  const enabledSources = (sources ?? []).filter((s) => s.enabled);
-  // 后端互斥：只要有启用的 AI HOT 源，就只走 AI HOT 组
-  const aihotSource = enabledSources.find(isAihotSource);
+
+  const availableSources = (sources ?? []).filter((s) => s.enabled);
+  const aihotAvail = availableSources.filter(isAihotSource);
+  // 默认：有 AI HOT 则默认仅选 AI HOT；否则全选可用
+  const defaultSourceIds = (aihotAvail.length ? aihotAvail : availableSources).map((s) => s.id);
+  const availableSourceIdSet = new Set(availableSources.map((s) => s.id));
+  const effectiveSourceIds = sourceIds === null
+    ? new Set(defaultSourceIds)
+    : new Set([...sourceIds].filter((id) => availableSourceIdSet.has(id)));
+
+  // 后端互斥：只要有启用的 AI HOT 源且被选中，就走 AI HOT 组
+  const aihotSource = availableSources.find((s) => isAihotSource(s) && effectiveSourceIds.has(s.id));
   const aihotMethod = (() => {
     if (!aihotSource) return "";
     try { return (JSON.parse(aihotSource.config_json ?? "{}") as { method?: string }).method ?? "items"; }
@@ -119,6 +129,26 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
     });
   };
 
+  const toggleSource = (id: number) => {
+    setSourceIds((prev) => {
+      const base = prev ?? new Set(defaultSourceIds);
+      const next = new Set(base);
+      const turningOn = !next.has(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      if (turningOn) {
+        const src = availableSources.find((s) => s.id === id);
+        const onIsAihot = src ? isAihotSource(src) : false;
+        // 选中 AI HOT → 只留 AI HOT；选中常规 → 去掉所有 AI HOT
+        for (const x of [...next]) {
+          const s = availableSources.find((a) => a.id === x);
+          if (!s) continue;
+          if (onIsAihot ? !isAihotSource(s) : isAihotSource(s)) next.delete(x);
+        }
+      }
+      return next;
+    });
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
@@ -133,6 +163,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         language: effLang,
         max_images: effMaxImages,
         auto_collect: autoCollect,
+        source_ids: Array.from(effectiveSourceIds),
       });
       onCreated();
     } finally { setLoading(false); }
@@ -140,114 +171,138 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
   return (
     <div className={dialogOverlayCls}>
-      <div className={`${dialogPanelCls} w-[500px]`}>
+      <div className={`${dialogPanelCls} w-[720px]`}>
         <h2 className="text-lg font-semibold mb-4">新建任务</h2>
 
-        <div className="mb-5"><SourceSummary /></div>
+        <div className="flex gap-5">
+          {/* 左列：信息源 → 执行阶段 → 发布账号 */}
+          <div className="flex-1 min-w-0">
+            <label className={labelCls}>信息源</label>
+            {availableSources.length === 0 ? (
+              <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5 text-xs text-amber-300/80 mb-4">
+                暂无可用信息源，请先到「信息源管理」启用（将回退默认 Hacker News）
+              </div>
+            ) : (
+              <div className="rounded-lg border border-white/[0.06] mb-4 overflow-hidden">
+                {availableSources.map((s) => (
+                  <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] cursor-pointer border-b border-white/[0.04] last:border-0 transition">
+                    <input type="checkbox" checked={effectiveSourceIds.has(s.id)} onChange={() => toggleSource(s.id)} className="w-3.5 h-3.5 rounded accent-blue-500" />
+                    <span className="text-sm text-white/92 flex-1">{s.name}</span>
+                    {isAihotSource(s) && <span className="text-[10px] text-blue-300/80">AI HOT</span>}
+                  </label>
+                ))}
+              </div>
+            )}
 
-        <label className={labelCls}>执行阶段</label>
-        <div className="rounded-lg border border-white/[0.06] mb-4 overflow-hidden">
-          {dialogStages.map((s) => (
-            <label
-              key={s}
-              className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] cursor-pointer border-b border-white/[0.04] last:border-0 transition"
-            >
-              <input
-                type="checkbox"
-                checked={effectiveVisual.has(s)}
-                onChange={() => toggleStage(s)}
-                className="w-3.5 h-3.5 rounded accent-blue-500"
-              />
-              <span className="text-xs text-white/52 font-mono w-5">S{s}</span>
-              <span className="text-sm text-white/92 flex-1">{stageLabel(s)}</span>
-            </label>
-          ))}
-        </div>
-
-        {effectiveVisual.has(6) && (
-          <div className="mb-4">
-            <label className={labelCls}>发布账号</label>
-            <MultiSelect
-              values={[...effectiveTargetIds]}
-              onToggle={toggleTarget}
-              options={targetOptions}
-              placeholder="选择发布账号..."
-              emptyHint="暂无可用发布账号，请先到「发布管理」添加"
-            />
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className={labelCls}>运行模式</label>
-            <Select value={mode} onChange={(v) => { setMode(v); if (v === "auto") setAutoCollect(true); }} options={[
-              { value: "auto", label: "自动" },
-              { value: "manual", label: "手动（逐步审核）" },
-            ]} />
-          </div>
-          <div>
-            <label className={labelCls}>音视频路线</label>
-            <Select value={effVideoRoute} onChange={setVideoRoute} options={[
-              { value: "hyperframes", label: "Hyperframes" },
-              { value: "comfyui", label: "ComfyUI" },
-              { value: "audio", label: "纯语音" },
-            ]} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className={labelCls}>分辨率（图片与视频共用）</label>
-            <Select value={effRes} onChange={setResolution} options={resOptions} />
-          </div>
-          <div>
-            <label className={labelCls}>语言</label>
-            <Select value={effLang} onChange={setLanguage} options={[
-              { value: "zh", label: "中文" }, { value: "en", label: "English" },
-            ]} />
-          </div>
-          <div>
-            <label className={labelCls}>最多图片数（0=不限制）</label>
-            <input type="number" value={effMaxImages} onChange={(e) => setMaxImages(Number(e.target.value))} min={0} max={100} className={inputCls} />
-            <p className="text-[11px] text-white/40 mt-1">超过则生图前 AI 重规划，合并零碎/短文章到同一张图</p>
-          </div>
-        </div>
-        {effLang === "en" && (
-          <p className="text-xs text-amber-300/70 -mt-2 mb-4">英文模式：脚本/字幕用英文、图片倾向西方面孔与场景；TTS 音色请在「设置 → 流水线配置」选英文音色（en-US-*）。</p>
-        )}
-
-        <div className="mb-4">
-          <label className={labelCls}>采集方式</label>
-          {mode === "auto" ? (
-            <div className={`${selectCls} flex items-center justify-between opacity-50 cursor-not-allowed`}>
-              <span className="text-white/96">自动采集</span>
+            <label className={labelCls}>执行阶段</label>
+            <div className="rounded-lg border border-white/[0.06] mb-4 overflow-hidden">
+              {dialogStages.map((s) => (
+                <label
+                  key={s}
+                  className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] cursor-pointer border-b border-white/[0.04] last:border-0 transition"
+                >
+                  <input
+                    type="checkbox"
+                    checked={effectiveVisual.has(s)}
+                    onChange={() => toggleStage(s)}
+                    className="w-3.5 h-3.5 rounded accent-blue-500"
+                  />
+                  <span className="text-xs text-white/52 font-mono w-5">S{s}</span>
+                  <span className="text-sm text-white/92 flex-1">{stageLabel(s)}</span>
+                </label>
+              ))}
             </div>
-          ) : (
-            <Select value={autoCollect ? "auto" : "manual"} onChange={(v) => setAutoCollect(v === "auto")} options={[
-              { value: "auto", label: "自动采集" },
-              { value: "manual", label: "不采集（人工导入）" },
-            ]} />
-          )}
-        </div>
 
-        {autoCollect && !isAihotDigest && (
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            <div>
-              <label className={labelCls}>时间范围</label>
-              <Select value={timeRange} onChange={setTimeRange} options={[
-                { value: "1d", label: "最近 1 天" },
-                { value: "3d", label: "最近 3 天" },
-                { value: "7d", label: "最近 7 天" },
-                { value: "15d", label: "最近 15 天" },
-                { value: "1m", label: "最近 1 个月" },
-              ]} />
-            </div>
-            <div>
-              <label className={labelCls}>最大文章数</label>
-              <input type="number" value={maxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
-            </div>
+            {effectiveVisual.has(6) && (
+              <div className="mb-4">
+                <label className={labelCls}>发布账号</label>
+                <MultiSelect
+                  values={[...effectiveTargetIds]}
+                  onToggle={toggleTarget}
+                  options={targetOptions}
+                  placeholder="选择发布账号..."
+                  emptyHint="暂无可用发布账号，请先到「发布管理」添加"
+                />
+              </div>
+            )}
           </div>
-        )}
+
+          {/* 右列：运行模式·路线 → 分辨率·语言 → 最多图片数 → 采集方式 → 时间·文章数 */}
+          <div className="flex-1 min-w-0">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className={labelCls}>运行模式</label>
+                <Select value={mode} onChange={(v) => { setMode(v); if (v === "auto") setAutoCollect(true); }} options={[
+                  { value: "auto", label: "自动" },
+                  { value: "manual", label: "手动（逐步审核）" },
+                ]} />
+              </div>
+              <div>
+                <label className={labelCls}>音视频路线</label>
+                <Select value={effVideoRoute} onChange={setVideoRoute} options={[
+                  { value: "hyperframes", label: "Hyperframes" },
+                  { value: "comfyui", label: "ComfyUI" },
+                  { value: "audio", label: "纯语音" },
+                ]} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className={labelCls}>分辨率（图片与视频共用）</label>
+                <Select value={effRes} onChange={setResolution} options={resOptions} />
+              </div>
+              <div>
+                <label className={labelCls}>语言</label>
+                <Select value={effLang} onChange={setLanguage} options={[
+                  { value: "zh", label: "中文" }, { value: "en", label: "English" },
+                ]} />
+              </div>
+              <div>
+                <label className={labelCls}>最多图片数（0=不限制）</label>
+                <input type="number" value={effMaxImages} onChange={(e) => setMaxImages(Number(e.target.value))} min={0} max={100} className={inputCls} />
+                <p className="text-[11px] text-white/40 mt-1">超过则生图前 AI 重规划，合并零碎/短文章到同一张图</p>
+              </div>
+            </div>
+
+            {effLang === "en" && (
+              <p className="text-xs text-amber-300/70 -mt-2 mb-4">英文模式：脚本/字幕用英文、图片倾向西方面孔与场景；TTS 音色请在「设置 → 流水线配置」选英文音色（en-US-*）。</p>
+            )}
+
+            <div className="mb-4">
+              <label className={labelCls}>采集方式</label>
+              {mode === "auto" ? (
+                <div className={`${selectCls} flex items-center justify-between opacity-50 cursor-not-allowed`}>
+                  <span className="text-white/96">自动采集</span>
+                </div>
+              ) : (
+                <Select value={autoCollect ? "auto" : "manual"} onChange={(v) => setAutoCollect(v === "auto")} options={[
+                  { value: "auto", label: "自动采集" },
+                  { value: "manual", label: "不采集（人工导入）" },
+                ]} />
+              )}
+            </div>
+
+            {autoCollect && !isAihotDigest && (
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                <div>
+                  <label className={labelCls}>时间范围</label>
+                  <Select value={timeRange} onChange={setTimeRange} options={[
+                    { value: "1d", label: "最近 1 天" },
+                    { value: "3d", label: "最近 3 天" },
+                    { value: "7d", label: "最近 7 天" },
+                    { value: "15d", label: "最近 15 天" },
+                    { value: "1m", label: "最近 1 个月" },
+                  ]} />
+                </div>
+                <div>
+                  <label className={labelCls}>最大文章数</label>
+                  <input type="number" value={maxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className={btnSecondary}>取消</button>
