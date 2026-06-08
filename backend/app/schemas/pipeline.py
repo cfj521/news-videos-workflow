@@ -14,7 +14,7 @@ class PipelineRunCreate(BaseModel):
     resolution: str = ""
     language: str = ""
     max_images: int | None = None
-    source_ids: list[int] | None = None
+    source_ids: list[str] | None = None  # 信息源 slug 列表
     aihot_config: dict | None = None
 
 

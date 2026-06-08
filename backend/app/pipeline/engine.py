@@ -25,7 +25,7 @@ class PipelineEngine:
         resolution: str = "",
         language: str = "",
         max_images: int | None = None,
-        source_ids: list[int] | None = None,
+        source_ids: list[str] | None = None,
         aihot_config: dict | None = None,
     ) -> PipelineRun:
         stages = selected_stages or [1, 2, 3, 4, 5]

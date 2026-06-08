@@ -46,7 +46,9 @@ def create_target(body: PublishTargetCreate):
 def update_target(slug: str, body: PublishTargetUpdate):
     patch: dict = body.model_dump(exclude_unset=True)
     if "config_json" in patch:
-        patch["config"] = _parse_config(patch.pop("config_json"))
+        parsed = _parse_config(patch.pop("config_json"))
+        if parsed:  # 仅在非空时写 config，避免 config_json=null 静默清空已有配置
+            patch["config"] = parsed
     t = targets_store.update_target(slug, patch)
     if t is None:
         raise HTTPException(status_code=404, detail="Target not found")

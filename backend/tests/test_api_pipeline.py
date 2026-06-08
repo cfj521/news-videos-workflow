@@ -124,9 +124,11 @@ def test_create_run_auto_collect_false(client):
 
 
 def test_create_run_stores_source_ids(client):
-    r = client.post("/api/pipeline/runs", json={"time_range": "7d", "source_ids": [2, 5]})
+    r = client.post("/api/pipeline/runs",
+                    json={"time_range": "7d", "source_ids": ["hacker_news", "rss_one"]})
     assert r.status_code == 201
-    assert r.json()["source_ids"] == "[2, 5]"
+    import json as _json
+    assert _json.loads(r.json()["source_ids"]) == ["hacker_news", "rss_one"]
 
 
 def test_create_run_stores_aihot_config(client):

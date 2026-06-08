@@ -72,7 +72,9 @@ def create_source(body: NewsSourceCreate):
 def update_source(slug: str, body: NewsSourceUpdate):
     patch: dict = body.model_dump(exclude_unset=True)
     if "config_json" in patch:
-        patch["config"] = _parse_config(patch.pop("config_json"))
+        parsed = _parse_config(patch.pop("config_json"))
+        if parsed:  # 仅在非空时写 config，避免 config_json=null 静默清空已有配置
+            patch["config"] = parsed
     s = sources_store.update_source(slug, patch)
     if s is None:
         raise HTTPException(status_code=404, detail="Source not found")
