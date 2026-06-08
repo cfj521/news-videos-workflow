@@ -27,6 +27,8 @@ ENV/
 !.env.example
 config.yaml
 model_providers.yaml
+publish_targets.yaml
+news_sources.yaml
 .auth_secret
 
 # ---- 数据库（含 WAL 模式产生的副本）----
