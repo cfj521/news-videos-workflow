@@ -88,8 +88,41 @@ def _split_sentences(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCE_SPLIT.split(text) if s.strip()]
 
 
+def _wrap_text(text: str, max_chars: int) -> list[str]:
+    """把超长文本折成 ≤ max_chars 的片段：含空格（西文）按单词边界断，绝不切断单词；
+    无空格（中日韩）按字符定长硬切。单个词本身超长（如长链接）才对该词硬切。"""
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+    # 无空格（CJK）：保持原定长硬切
+    if " " not in text:
+        return [text[i:i + max_chars] for i in range(0, len(text), max_chars)]
+    # 含空格（西文）：按单词贪心打包，避免把单词从中间切开
+    chunks: list[str] = []
+    cur = ""
+    for word in text.split():
+        if len(word) > max_chars:  # 单个词就超长（极端）：冲掉 cur 再硬切该词
+            if cur:
+                chunks.append(cur)
+                cur = ""
+            for i in range(0, len(word), max_chars):
+                chunks.append(word[i:i + max_chars])
+        elif not cur:
+            cur = word
+        elif len(cur) + 1 + len(word) <= max_chars:
+            cur += " " + word
+        else:
+            chunks.append(cur)
+            cur = word
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
 def _chunk_sentence(sentence: str, max_chars: int) -> list[str]:
-    """把过长的句子按次级标点贪心打包成 ≤ max_chars 的片段；单个分句仍超长则硬切。"""
+    """把过长的句子按次级标点贪心打包成 ≤ max_chars 的片段；单个分句仍超长则按词/字断。"""
     if len(sentence) <= max_chars:
         return [sentence]
     chunks: list[str] = []
@@ -99,8 +132,7 @@ def _chunk_sentence(sentence: str, max_chars: int) -> list[str]:
             if cur:
                 chunks.append(cur)
                 cur = ""
-            for i in range(0, len(clause), max_chars):
-                chunks.append(clause[i:i + max_chars])
+            chunks.extend(_wrap_text(clause, max_chars))
         elif len(cur) + len(clause) <= max_chars:
             cur += clause
         else:

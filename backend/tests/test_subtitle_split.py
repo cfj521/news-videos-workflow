@@ -72,6 +72,41 @@ def test_run_stage4_applies_subtitle_limit():
     assert all(len(l["text"]) <= 36 for l in lines)
 
 
+def test_english_words_not_split_mid_word():
+    """英文超长句应在空格/单词边界切，绝不把单词从字母中间劈开。
+
+    回归：曾按字符位置硬切，导致 machines→machi+nes、bio-defense→bio-defe+nse。
+    """
+    text = "launching a new team to build machines that can serve society and infrastructure."
+    lines = _split_subtitles(text, duration_ms=8000, max_chars=36)
+    texts = [l["text"] for l in lines]
+    # 每段不超过上限
+    assert all(len(t) <= 36 for t in texts)
+    # 重组后的单词序列与原文完全一致——没有单词被切断、也没丢字
+    assert " ".join(texts).split() == text.split()
+    # 多段（确实触发了切分）
+    assert len(lines) > 1
+
+
+def test_oversized_single_word_falls_back_to_hard_wrap():
+    """单个词本身就超过上限（如长链接）时，对该词兜底硬切，短词不受影响。"""
+    text = "see https://example.com/a/very/long/path/that/exceeds/limit now"
+    lines = _split_subtitles(text, duration_ms=5000, max_chars=20)
+    texts = [l["text"] for l in lines]
+    assert all(len(t) <= 20 for t in texts)
+    joined = " ".join(texts)
+    assert "see" in joined.split() and "now" in joined.split()
+
+
+def test_cjk_without_spaces_still_hard_wraps():
+    """中日韩无空格文本保持按字符定长硬切（无“单词”概念）。"""
+    text = "欧爱推出了一款名为罗莎琳德的新工具用于生物防御帮助世界应对新出现的生物威胁"
+    lines = _split_subtitles(text, duration_ms=6000, max_chars=10)
+    assert len(lines) > 1
+    assert all(len(l["text"]) <= 10 for l in lines)
+    assert "".join(l["text"] for l in lines) == text
+
+
 def test_render_html_font_size_configurable():
     composer = HyperframesComposer()
     timeline = {"entries": [{"scene_id": 1, "start_ms": 0, "end_ms": 5000,

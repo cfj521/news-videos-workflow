@@ -995,10 +995,13 @@ def get_logs(run_id: int, tail: int = 200, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    log_path = _run_dir(run_id) / "pipeline.log"
-    if not log_path.exists():
+    # 日志已统一汇入 data/logs/app.log（不再写 per-run pipeline.log）；
+    # 每行带 [run=N] 标记，这里按标记切出本 run 的日志。
+    from app.logging import GLOBAL_LOG
+    if not GLOBAL_LOG.exists():
         return {"lines": []}
-    lines = log_path.read_text(encoding="utf-8").splitlines()
+    marker = f"[run={run_id}]"
+    lines = [ln for ln in GLOBAL_LOG.read_text(encoding="utf-8").splitlines() if marker in ln]
     return {"lines": lines[-tail:]}
 
 

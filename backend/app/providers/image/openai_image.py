@@ -1,3 +1,4 @@
+import re
 import time
 from pathlib import Path
 
@@ -10,15 +11,47 @@ from app.providers.base import AssetResult, ImageProvider, ProviderError
 
 log = get_logger("provider.image.openai")
 
-# DALL-E / gpt-image-1 的 size 映射（api_key 模式）
+# DALL-E / gpt-image-1 的 size 映射（api_key 模式）：这些模型只支持固定档位，按比例就近映射。
+# gpt-image-2 不走这张表，它原生支持任意分辨率（见 _align_gpt_image_2_size）。
 SIZE_MAP = {
-    "1080x1920": "1024x1792",
-    "1920x1080": "1792x1024",
-    "1024x1024": "1024x1024",
+    "720x1280": "1024x1792",   # 竖屏 HD
+    "1280x720": "1792x1024",   # 横屏 HD
+    "1080x1920": "1024x1792",  # 竖屏 FHD
+    "1920x1080": "1792x1024",  # 横屏 FHD
+    "1024x1024": "1024x1024",  # 方形
 }
 
 # 订阅(Responses image_generation 工具)支持的 size：竖/横/方/auto
-_SUB_SIZE_MAP = {"1080x1920": "1024x1536", "1920x1080": "1536x1024", "1024x1024": "1024x1024"}
+_SUB_SIZE_MAP = {
+    "720x1280": "1024x1536", "1280x720": "1536x1024",
+    "1080x1920": "1024x1536", "1920x1080": "1536x1024", "1024x1024": "1024x1024",
+}
+
+# gpt-image-2 自定义分辨率约束（官方文档）
+_G2_MAX_EDGE = 3840
+_G2_MAX_RATIO = 3
+_G2_MIN_PIXELS = 655_360
+_G2_MAX_PIXELS = 8_294_400
+
+
+def _align_gpt_image_2_size(size: str) -> str | None:
+    """把 WxH 对齐到 gpt-image-2 的约束并返回 'WxH'；无法满足返回 None（交回档位映射）。
+
+    gpt-image-2 接受任意分辨率：宽高均为 16 的倍数、最长边 ≤3840、长短比 ≤3:1、
+    总像素 65.5万~829万。对不合 16 倍数的尺寸（如 1080 系）四舍五入对齐到最近 16 倍数
+    （1080→1088，近乎无损）；1024x1024 / 720x1280 / 1280x720 等已合法的原样透传，精确出图。
+    """
+    m = re.fullmatch(r"\s*(\d+)x(\d+)\s*", size)
+    if not m:
+        return None
+    w = max(16, round(int(m.group(1)) / 16) * 16)
+    h = max(16, round(int(m.group(2)) / 16) * 16)
+    long_edge, short_edge = max(w, h), min(w, h)
+    if long_edge > _G2_MAX_EDGE or long_edge > _G2_MAX_RATIO * short_edge:
+        return None
+    if not (_G2_MIN_PIXELS <= w * h <= _G2_MAX_PIXELS):
+        return None
+    return f"{w}x{h}"
 
 
 class OpenAIImageProvider(ImageProvider):
@@ -108,4 +141,9 @@ class OpenAIImageProvider(ImageProvider):
         return AssetResult(file_path=output_path)
 
     def _map_size(self, size: str) -> str:
+        # gpt-image-2 原生支持任意分辨率：合法则透传/对齐（精确出图），避免把 1280x720 这类降级到 DALL-E 档位。
+        if self._model.startswith("gpt-image-2"):
+            aligned = _align_gpt_image_2_size(size)
+            if aligned:
+                return aligned
         return SIZE_MAP.get(size, "1024x1792")

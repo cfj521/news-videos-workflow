@@ -12,7 +12,7 @@ import { CreateRunDialog } from "../components/CreateRunDialog";
 import { SourceSummary } from "../components/SourceSummary";
 import { IconButton } from "../components/IconButton";
 import { DeleteIconButton } from "../components/DeleteIconButton";
-import { PencilIcon, PlusIcon, ImportIcon, RefreshIcon, SparklesIcon } from "../components/icons";
+import { PencilIcon, PlusIcon, ImportIcon, RefreshIcon, SparklesIcon, WandIcon } from "../components/icons";
 import { useToast } from "../components/Toast";
 import type { PipelineRun } from "../types";
 import { STAGE_LABELS, VISIBLE_STAGES, BACKEND_STAGE_MAP, PLATFORM_LABELS } from "../types";
@@ -32,11 +32,11 @@ const STATUS_LABEL: Record<string, string> = {
 // ─── Resolution presets ─────────────────────────────────
 
 const RES_PRESETS = [
-  { value: "1080x1920", label: "1080x1920  竖屏 FHD" },
-  { value: "1920x1080", label: "1920x1080  横屏 FHD" },
-  { value: "1080x1080", label: "1080x1080  方形" },
   { value: "720x1280", label: "720x1280  竖屏 HD" },
   { value: "1280x720", label: "1280x720  横屏 HD" },
+  { value: "1024x1024", label: "1024x1024  方形" },
+  { value: "1080x1920", label: "1080x1920  竖屏 FHD" },
+  { value: "1920x1080", label: "1920x1080  横屏 FHD" },
 ];
 
 // ─── PresetInput (editable dropdown) ────────────────────
@@ -77,7 +77,7 @@ function PresetInput({ value, onChange, onCommit, presets, className }: {
         </button>
       </div>
       {open && (
-        <div className="absolute z-30 top-full left-0 right-0 mt-1 rounded-lg bg-[#1a1a2e] border border-white/[0.1] shadow-xl overflow-hidden py-1">
+        <div className="absolute z-30 top-full left-0 right-0 mt-1 rounded-lg bg-[var(--color-surface-raised)] border border-white/[0.08] shadow-xl overflow-hidden py-1">
           {presets.map((p) => (
             <button
               key={p.value}
@@ -427,7 +427,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
           )}
           <IconButton onClick={() => setConfirmRegen(true)} disabled={regenning}
             title={regenning ? "生成中..." : "重新生成脚本（覆盖所有分镜）"}>
-            <RefreshIcon className={regenning ? "animate-spin" : ""} />
+            <WandIcon className={regenning ? "animate-pulse" : ""} />
           </IconButton>
         </div>
       </div>
@@ -577,7 +577,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
               <span className="text-[11px] text-white/60">旁白</span>
               <IconButton onClick={handleRegenAudio} disabled={regenAudioLoading}
                 title={regenAudioLoading ? "生成中..." : "重新配音"} className="p-1">
-                <RefreshIcon size={14} className={regenAudioLoading ? "animate-spin" : ""} />
+                <WandIcon size={14} className={regenAudioLoading ? "animate-pulse" : ""} />
               </IconButton>
             </div>
             <textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={6} className={`${inputCls} text-[13px]`} />
@@ -594,7 +594,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
                   </IconButton>
                   <IconButton onClick={handleRegenImage} disabled={regenImgLoading}
                     title={regenImgLoading ? "生成中..." : "重新生成图片"} className="p-1">
-                    <RefreshIcon size={14} className={regenImgLoading ? "animate-spin" : ""} />
+                    <WandIcon size={14} className={regenImgLoading ? "animate-pulse" : ""} />
                   </IconButton>
                 </div>
               </div>

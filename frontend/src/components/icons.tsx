@@ -34,3 +34,7 @@ export const ImportIcon = ({ size, className }: IconProps) =>
 // 用于「AI 重新生成提示词」，区别于 RefreshIcon
 export const SparklesIcon = ({ size, className }: IconProps) =>
   svg(<><path d="M12 3l1.6 4.9a2 2 0 0 0 1.3 1.3L20 11l-4.9 1.6a2 2 0 0 0-1.3 1.3L12 19l-1.6-4.9a2 2 0 0 0-1.3-1.3L4 11l4.9-1.6a2 2 0 0 0 1.3-1.3z" /><path d="M19 4v3" /><path d="M20.5 5.5h-3" /></>, size, className);
+
+// 用于「重新生成」（脚本/配音/图片）：魔杖+闪光，明确区别于刷新箭头 RefreshIcon，避免误读为「刷新」
+export const WandIcon = ({ size, className }: IconProps) =>
+  svg(<><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z" /><path d="m14 7 3 3" /><path d="M5 6v4" /><path d="M19 14v4" /><path d="M10 2v2" /><path d="M7 8H3" /><path d="M21 16h-4" /><path d="M11 3H9" /></>, size, className);

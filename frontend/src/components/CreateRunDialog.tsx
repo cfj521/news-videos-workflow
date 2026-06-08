@@ -30,10 +30,11 @@ function toBackendStages(visual: Set<number>): number[] {
 
 // 分辨率预设（图片与视频共用）；选中时同时确定画面比例
 const RES_PRESETS_DLG = [
+  { value: "720x1280", ar: "9:16", label: "720×1280 · 9:16 竖屏" },
+  { value: "1280x720", ar: "16:9", label: "1280×720 · 16:9 横屏" },
+  { value: "1024x1024", ar: "1:1", label: "1024×1024 · 1:1 方形" },
   { value: "1080x1920", ar: "9:16", label: "1080×1920 · 9:16 竖屏" },
   { value: "1920x1080", ar: "16:9", label: "1920×1080 · 16:9 横屏" },
-  { value: "1024x1024", ar: "1:1", label: "1024×1024 · 1:1 方形" },
-  { value: "720x1280", ar: "9:16", label: "720×1280 · 9:16 竖屏" },
 ];
 
 const AIHOT_CATEGORIES = [

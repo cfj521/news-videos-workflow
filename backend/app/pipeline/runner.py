@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config import get_settings, reload_settings
-from app.logging import get_logger, get_run_logger
+from app.logging import get_logger, get_run_logger, reset_run_context, set_run_context
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.events import publish as publish_event
 from app.pipeline.stage1_collect import run_stage1
@@ -458,6 +458,7 @@ async def execute_pipeline(run_id: int, db_factory) -> None:
     reload_settings()  # 每次运行重载配置（含可编辑提示词），保证跨进程 worker 也拿到最新值
     clear_cancel(run_id)  # 清理上一次可能残留的终止标记
     db: Session = db_factory()
+    run_token = set_run_context(run_id)  # 整个 pipeline 期间，所有日志（含各 stage/provider）都打上 [run=N]
     try:
         await _run_inner(run_id, db)
     except RunCancelled:
@@ -479,6 +480,7 @@ async def execute_pipeline(run_id: int, db_factory) -> None:
                 get_logger("runner").exception(
                     "Pipeline run #%d failed (could not write run log)", run_id)
     finally:
+        reset_run_context(run_token)
         clear_cancel(run_id)
         db.close()
 
@@ -650,16 +652,19 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 nonlocal img_count
                 _check_cancel(run.id)  # 每张图前检查终止，避免终止后还继续狂出图
                 img_count += 1
-                _update(db, run, progress_detail=f"S3 生成图片 {img_count}/{total}...")
-                log.info("[S3] Image %d/%d: %s", img_count, total, prompt[:60])
+                # 进度/日志分子用场景号（从 output_path 解析）：重试同一场景不会把计数顶成 7/6、8/6；
+                # 解析不到才退回累计调用数 img_count。
+                m = re.search(r"scene_(\d+)_image", os.path.basename(output_path or ""))
+                scene_no = int(m.group(1)) if m else img_count
+                _update(db, run, progress_detail=f"S3 生成图片 {scene_no}/{total}...")
+                log.info("[S3] Image %d/%d: %s", scene_no, total, prompt[:60])
                 t = time.time()
                 result = await self._inner.generate(
                     prompt=prompt, size=size, output_path=output_path)
                 log.info("[S3] Image %d/%d done (%.1fs, %s)",
-                         img_count, total, time.time() - t, result.file_path)
-                m = re.search(r"scene_(\d+)_image", os.path.basename(output_path or ""))
+                         scene_no, total, time.time() - t, result.file_path)
                 if m:  # 实时推送：该场景图片就绪，前端据此只刷新这一张
-                    publish_event(run.id, {"type": "asset", "kind": "image", "scene": int(m.group(1))})
+                    publish_event(run.id, {"type": "asset", "kind": "image", "scene": scene_no})
                 return result
 
         class TrackedTTSProvider:
@@ -670,15 +675,17 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 nonlocal tts_count
                 _check_cancel(run.id)
                 tts_count += 1
-                _update(db, run, progress_detail=f"S3 生成语音 {tts_count}/{total}...")
-                log.info("[S3] TTS %d/%d: %s...", tts_count, total, text[:30])
+                # 同图片：分子用场景号，重试不溢出；解析不到退回累计调用数。
+                m = re.search(r"scene_(\d+)_audio", os.path.basename(output_path or ""))
+                scene_no = int(m.group(1)) if m else tts_count
+                _update(db, run, progress_detail=f"S3 生成语音 {scene_no}/{total}...")
+                log.info("[S3] TTS %d/%d: %s...", scene_no, total, text[:30])
                 t = time.time()
                 result = await self._inner.synthesize(
                     text=text, voice=voice, speed=speed, output_path=output_path)
-                log.info("[S3] TTS %d/%d done (%.1fs)", tts_count, total, time.time() - t)
-                m = re.search(r"scene_(\d+)_audio", os.path.basename(output_path or ""))
+                log.info("[S3] TTS %d/%d done (%.1fs)", scene_no, total, time.time() - t)
                 if m:
-                    publish_event(run.id, {"type": "asset", "kind": "audio", "scene": int(m.group(1))})
+                    publish_event(run.id, {"type": "asset", "kind": "audio", "scene": scene_no})
                 return result
 
         audio_only = run.video_route == "audio"
