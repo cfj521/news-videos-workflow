@@ -9,7 +9,9 @@ import contextlib
 import os
 import tempfile
 import threading
+import time
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +30,7 @@ def _lock_for(path: Path) -> threading.Lock:
 
 
 @contextlib.contextmanager
-def file_lock(path: Path):
+def file_lock(path: Path) -> Iterator[None]:
     """上下文管理器：获取文件锁并在退出时释放。"""
     lock = _lock_for(path)
     lock.acquire()
@@ -50,13 +52,24 @@ def load_yaml(path: Path) -> dict[str, Any]:
 
 
 def save_yaml(path: Path, data: dict[str, Any]) -> None:
-    """原子写：先写同目录临时文件再 os.replace，避免半截文件。"""
+    """原子写：先写同目录临时文件再 os.replace，避免半截文件。
+
+    注意：本函数自身不持 file_lock；需要读改写一致性的调用方应用 file_lock 包住读+写。
+    Windows 上目标文件被其他线程读时 os.replace 可能抛 PermissionError，这里做小重试兜底。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-        os.replace(tmp, path)
+        for attempt in range(5):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.02)
     finally:
         if os.path.exists(tmp):
             with contextlib.suppress(OSError):

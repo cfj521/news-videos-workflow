@@ -32,17 +32,23 @@ def test_save_is_atomic_no_partial_temp_left(tmp_path: Path):
 
 
 def test_file_lock_serializes_writers(tmp_path: Path):
+    import time
     p = tmp_path / "z.yaml"
     order: list[str] = []
 
     def worker(tag: str):
         with _io.file_lock(p):
             order.append(f"{tag}-start")
+            time.sleep(0.05)
             order.append(f"{tag}-end")
 
     t1 = threading.Thread(target=worker, args=("a",))
     t2 = threading.Thread(target=worker, args=("b",))
-    t1.start(); t1.join(); t2.start(); t2.join()
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    # 持锁串行：每个 start 紧跟自己的 end，不交错
     assert order in (
         ["a-start", "a-end", "b-start", "b-end"],
         ["b-start", "b-end", "a-start", "a-end"],
