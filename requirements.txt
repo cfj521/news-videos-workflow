@@ -23,10 +23,13 @@ pytest-asyncio>=0.24
 pytest-cov>=5.0
 ruff>=0.6
 
-# ---- 采集功能可选依赖（按需安装；代码内懒加载，缺失则该源静默返回 0 篇）----
+# ---- 采集功能依赖 ----
 # DuckDuckGo 搜索源（启用 duckduckgo 采集器时需要）
 duckduckgo-search
-# 机器之心等无 RSS 的源走网页抓取：pip install "scrapling[all]" && scrapling install
+# 无 RSS 的源走网页抓取（scrapling）；首次运行后另需 `scrapling install` 下载浏览器
+scrapling[all]
+# 快速哈希（scrapling / 去重用；缺失会回退 md5 并告警）
+xxhash
 
 # ---- 发布功能可选依赖（按需安装；pyproject 未列，代码内懒加载）----
 # Bilibili 投稿
