@@ -858,7 +858,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             from app.providers.publisher import build_publishers
             from app.store import targets_store
 
-            targets = [t for t in targets_store.list_targets() if t.enabled and t.slug in target_slugs]
+            targets = [t for t in targets_store.list_targets()
+                       if t.enabled and t.slug in target_slugs]
             names = [t.name for t in targets]
             _update(db, run, current_stage=6,
                     progress_detail=f"S6 发布到 {', '.join(names)}...")
