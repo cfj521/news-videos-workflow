@@ -24,3 +24,12 @@ class ScheduleRead(BaseModel):
     last_run_at: datetime | None = None
     last_run_id: int | None = None
     created_at: str | None = None
+    payload: dict = {}
+
+
+class ScheduleUpdate(BaseModel):
+    name: str | None = None
+    freq: Literal["once", "daily", "weekly", "monthly"] | None = None
+    run_at: datetime | None = None
+    enabled: bool | None = None
+    payload: PipelineRunCreate | None = None
