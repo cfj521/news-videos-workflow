@@ -7,7 +7,7 @@ from app.api.dependencies import get_db
 from app.logging import get_logger
 
 # 顶部 import 新模型：保证启动时注册到 Base.metadata（create_all 建表）—— 见 spec S1
-from app.models.oauth_credential import OAuthCredential, OAuthLoginSession  # noqa: F401
+from app.models.oauth_credential import OAuthLoginSession  # noqa: F401
 from app.oauth import openai_oauth as oo
 
 log = get_logger("api.auth.openai")
@@ -35,11 +35,11 @@ async def login_status(state: str, db: Session = Depends(get_db)):
 
 
 @router.get("/status")
-async def status(db: Session = Depends(get_db)):
-    return oo.get_status(db)
+async def status():
+    return oo.get_status()
 
 
 @router.post("/logout")
-async def logout(db: Session = Depends(get_db)):
-    oo.logout(db)
+async def logout():
+    oo.logout()
     return {"status": "ok"}

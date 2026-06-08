@@ -15,6 +15,9 @@ from urllib.parse import parse_qs, quote, urlencode, urlparse
 import httpx
 import openai
 
+from app.store import providers_store
+from app.store.oauth_models import OAuthData
+
 # ---- 常量 ----
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 AUTH_BASE = "https://auth.openai.com"
@@ -109,90 +112,76 @@ class NotLoggedInError(Exception):
     pass
 
 
-def _apply_tokens(row, tok: dict) -> None:
-    """把 token dict 写入 row（解析 access_token 声明）。"""
+def _apply_tokens(data: "OAuthData", tok: dict) -> None:
+    """把 token dict 写入 OAuthData（解析 access_token 声明）。"""
     access = tok["access_token"]
     claims = parse_claims(access)
-    row.access_token = access
+    data.access_token = access
     if tok.get("refresh_token"):
-        row.refresh_token = tok["refresh_token"]
+        data.refresh_token = tok["refresh_token"]
     if tok.get("id_token"):
-        row.id_token = tok["id_token"]
-    row.account_id = claims["account_id"] or row.account_id
-    row.plan_type = claims["plan_type"] or row.plan_type
-    row.account_email = claims["email"] or row.account_email
+        data.id_token = tok["id_token"]
+    data.account_id = claims["account_id"] or data.account_id
+    data.plan_type = claims["plan_type"] or data.plan_type
+    data.account_email = claims["email"] or data.account_email
     if claims["exp"] is None:
         raise ValueError("access_token 缺少 exp 声明")
-    row.expires_at = datetime.fromtimestamp(claims["exp"], tz=timezone.utc)
-    row.last_refresh = datetime.now(timezone.utc)
+    data.expires_at = datetime.fromtimestamp(claims["exp"], tz=timezone.utc).isoformat()
+    data.last_refresh = datetime.now(timezone.utc).isoformat()
 
 
-def store_tokens(db, tok: dict):
-    from app.models.oauth_credential import OAuthCredential
-    row = db.query(OAuthCredential).filter_by(provider="openai").first()
-    if row is None:
-        row = OAuthCredential(
-            provider="openai", refresh_token="", access_token="",
-            expires_at=datetime.now(timezone.utc),
-        )
-        db.add(row)
-    _apply_tokens(row, tok)
-    db.commit()
-    db.refresh(row)
-    return row
+_PROVIDER = "openai"
 
 
-def get_valid_access_token(db) -> tuple[str, str]:
+def store_tokens(tok: dict) -> OAuthData:
+    data = providers_store.load_oauth(_PROVIDER)
+    _apply_tokens(data, tok)
+    providers_store.save_oauth(_PROVIDER, data)
+    return data
+
+
+def _parse_iso(s: str) -> datetime | None:
+    if not s:
+        return None
+    dt = datetime.fromisoformat(s)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def get_valid_access_token() -> tuple[str, str]:
     """返回 (access_token, account_id)；临期自动刷新。未登录抛 NotLoggedInError。"""
-    from app.models.oauth_credential import OAuthCredential
-    row = db.query(OAuthCredential).filter_by(provider="openai").first()
-    if row is None:
+    data = providers_store.load_oauth(_PROVIDER)
+    if not data.access_token:
         raise NotLoggedInError("未登录 OpenAI（订阅模式）")
     now = datetime.now(timezone.utc)
-    # 兜底：SQLite 下 expires_at 可能是 naive datetime，统一视为 UTC
-    expires_at = row.expires_at
-    if expires_at is not None and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    remaining = (expires_at - now).total_seconds()
+    expires_at = _parse_iso(data.expires_at)
+    remaining = (expires_at - now).total_seconds() if expires_at else -1
     if remaining < _REFRESH_MARGIN:
         with _refresh_lock:
-            db.refresh(row)
-            expires_at2 = row.expires_at
-            if expires_at2 is not None and expires_at2.tzinfo is None:
-                expires_at2 = expires_at2.replace(tzinfo=timezone.utc)
-            if (expires_at2 - datetime.now(timezone.utc)).total_seconds() < _REFRESH_MARGIN:
-                tok = refresh_tokens(row.refresh_token)
-                _apply_tokens(row, tok)
-                db.commit()
-                db.refresh(row)
-    return row.access_token, row.account_id
+            data = providers_store.load_oauth(_PROVIDER)  # 锁内重读，避免重复刷新
+            expires_at2 = _parse_iso(data.expires_at)
+            now2 = datetime.now(timezone.utc)
+            if not expires_at2 or (expires_at2 - now2).total_seconds() < _REFRESH_MARGIN:
+                tok = refresh_tokens(data.refresh_token)
+                _apply_tokens(data, tok)
+                providers_store.save_oauth(_PROVIDER, data)
+    return data.access_token, data.account_id
 
 
-def get_status(db) -> dict:
-    from app.models.oauth_credential import OAuthCredential
-    row = db.query(OAuthCredential).filter_by(provider="openai").first()
-    if row is None:
+def get_status() -> dict:
+    data = providers_store.load_oauth(_PROVIDER)
+    if not data.access_token:
         return {"logged_in": False}
-    expires_at = row.expires_at
-    if expires_at is not None:
-        # 兜底：SQLite 下可能是 naive datetime，统一视为 UTC，保证 isoformat 带时区后缀
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        expires_iso = expires_at.isoformat()
-    else:
-        expires_iso = None
+    expires_at = _parse_iso(data.expires_at)
     return {
         "logged_in": True,
-        "email": row.account_email,
-        "plan": row.plan_type,
-        "expires_at": expires_iso,
+        "email": data.account_email,
+        "plan": data.plan_type,
+        "expires_at": expires_at.isoformat() if expires_at else None,
     }
 
 
-def logout(db) -> None:
-    from app.models.oauth_credential import OAuthCredential
-    db.query(OAuthCredential).filter_by(provider="openai").delete()
-    db.commit()
+def logout() -> None:
+    providers_store.clear_oauth(_PROVIDER)
 
 
 # ---- 回调监听 + subscription_creds + codex client ----
@@ -207,7 +196,7 @@ def _open_session():
 
 
 def handle_callback(db, query: dict) -> bool:
-    """处理回调 query（已解析为 {code, state}）。成功 True，state 不符 False。"""
+    """处理回调 query。db 仅用于读写 OAuthLoginSession；token 走 providers_store。"""
     from app.models.oauth_credential import OAuthLoginSession
     state = query.get("state", "")
     code = query.get("code", "")
@@ -216,7 +205,7 @@ def handle_callback(db, query: dict) -> bool:
         return False
     try:
         tok = exchange_code(code, sess.code_verifier)
-        store_tokens(db, tok)
+        store_tokens(tok)
         sess.status = "success"
         db.commit()
         return True
@@ -307,13 +296,9 @@ def start_login_listener(state: str, timeout: int = 300) -> None:
 
 
 def subscription_creds() -> tuple[str, str, str]:
-    """供 provider 工厂用：返回 (CODEX_BASE, access_token, account_id)，自开 session。"""
-    db = _open_session()
-    try:
-        token, account_id = get_valid_access_token(db)
-        return CODEX_BASE, token, account_id
-    finally:
-        db.close()
+    """供 provider 工厂用：返回 (CODEX_BASE, access_token, account_id)。"""
+    token, account_id = get_valid_access_token()
+    return CODEX_BASE, token, account_id
 
 
 def build_codex_client(access_token: str, account_id: str):
