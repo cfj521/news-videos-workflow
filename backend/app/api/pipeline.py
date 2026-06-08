@@ -768,8 +768,8 @@ def get_preview_html(run_id: int, db: Session = Depends(get_db)):
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
     from app.providers.composer.hyperframes_composer import HyperframesComposer
     composer = HyperframesComposer()
-    html = composer._render_html(timeline, resolution, rd, transition=cfg.video.transition,
-                                 subtitle_font_size=cfg.video.subtitle_font_size)
+    html = composer._render_html(timeline, resolution, rd, transition=cfg.hyperframes.transition,
+                                 subtitle_font_size=cfg.hyperframes.subtitle_font_size)
     return HTMLResponse(html)
 
 
@@ -853,7 +853,7 @@ async def _render_video_async(run_id: int, session_factory):
             except Exception as e:
                 log.warning("ComfyUI render failed for run #%d: %s — trying FFmpeg", run_id, e)
                 _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
-                final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.video.fps)
+                final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.hyperframes.fps)
         else:
             _update(db, run, progress_detail="S5 Hyperframes 渲染中...")
             from app.providers.composer.hyperframes_composer import HyperframesComposer
@@ -868,7 +868,7 @@ async def _render_video_async(run_id: int, session_factory):
             except Exception as e:
                 log.warning("Hyperframes render failed for run #%d: %s — trying FFmpeg", run_id, e)
                 _update(db, run, progress_detail="S5 FFmpeg 合成中...")
-                final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.video.fps)
+                final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.hyperframes.fps)
 
         if Path(final_path).exists():
             size_mb = Path(final_path).stat().st_size / 1024 / 1024

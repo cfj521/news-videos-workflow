@@ -755,9 +755,9 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
 
   useEffect(() => {
     if (settings && !inited) {
-      setTransition(settings.video.transition);
-      setSceneGap(settings.video.scene_gap_ms);
-      setFps(settings.video.fps);
+      setTransition(settings.hyperframes.transition);
+      setSceneGap(settings.hyperframes.scene_gap_ms);
+      setFps(settings.hyperframes.fps);
       setInited(true);
     }
   }, [settings, inited]);
@@ -782,9 +782,9 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const settingsLabel = isHyperframes ? "HTML 设置" : "视频设置";
 
   const isDirty = !!settings && (
-    transition !== settings.video.transition ||
-    sceneGap !== settings.video.scene_gap_ms ||
-    fps !== settings.video.fps
+    transition !== settings.hyperframes.transition ||
+    sceneGap !== settings.hyperframes.scene_gap_ms ||
+    fps !== settings.hyperframes.fps
   );
 
   const [regenerating, setRegenerating] = useState(false);
@@ -793,7 +793,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     if (!settings) return;
     setRegenerating(true);
     try {
-      await api.settings.save({ video: { ...settings.video, transition, scene_gap_ms: sceneGap, fps } });
+      await api.settings.save({ hyperframes: { ...settings.hyperframes, transition, scene_gap_ms: sceneGap, fps } });
       mutateSettings();
       setIframeKey((k) => k + 1);
       setPlaying(false);

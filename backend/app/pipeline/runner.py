@@ -715,9 +715,9 @@ async def _run_inner(run_id: int, db: Session) -> None:
         log.info("[S4] Building timeline + preview (route=%s)", run.video_route)
 
         timeline = run_stage4(
-            script=script, scene_assets=scene_assets, scene_gap_ms=cfg.video.scene_gap_ms,
-            resolution=resolution, subtitle_font_size=cfg.video.subtitle_font_size,
-            subtitle_max_lines=cfg.video.subtitle_max_lines)
+            script=script, scene_assets=scene_assets, scene_gap_ms=cfg.hyperframes.scene_gap_ms,
+            resolution=resolution, subtitle_font_size=cfg.hyperframes.subtitle_font_size,
+            subtitle_max_lines=cfg.hyperframes.subtitle_max_lines)
         (run_dir / "timeline.json").write_text(
             json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
         # 外挂字幕 SRT 落盘：供前端下载、发布时随视频上传（YouTube 等）
@@ -735,8 +735,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             composer = HyperframesComposer()
             try:
                 hyperframes_html = composer._render_html(
-                    timeline, resolution, run_dir, transition=cfg.video.transition,
-                    subtitle_font_size=cfg.video.subtitle_font_size)
+                    timeline, resolution, run_dir, transition=cfg.hyperframes.transition,
+                    subtitle_font_size=cfg.hyperframes.subtitle_font_size)
                 (run_dir / "index.html").write_text(hyperframes_html, encoding="utf-8")
                 log.info("[S4] Hyperframes HTML generated at %s/index.html", run_dir)
             except Exception as e:
@@ -811,7 +811,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 except Exception as e:
                     log.warning("[S5] ComfyUI failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
-                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.video.fps)
+                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps)
             else:
                 _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
                 log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
@@ -825,7 +825,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 except Exception as e:
                     log.warning("[S5] Hyperframes failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 Hyperframes 失败，FFmpeg 合成中...")
-                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.video.fps)
+                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps)
 
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024

@@ -87,15 +87,9 @@ def migrate_targets_to_yaml(*, config_path: Path, sqlite_path: Path) -> None:
     """把 DB publish_targets 迁入 publish_targets.yaml，同时改写历史 run.publish_platforms 为 slug。
 
     幂等：publish_targets.yaml 已存在则整体跳过。
-    YouTube OAuth client 从 config.yaml 的 youtube 节读取，
-    若 config 不含 youtube 则写入空串兜底值。
     """
     if ts.TARGETS_PATH.exists():
         return  # 幂等
-    raw_cfg = (
-        yaml.safe_load(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
-    )
-    yt = (raw_cfg or {}).get("youtube") or {}
     id_to_slug: dict[int, str] = {}
     if sqlite_path.exists():
         try:
@@ -122,11 +116,8 @@ def migrate_targets_to_yaml(*, config_path: Path, sqlite_path: Path) -> None:
                     _rewrite_publish_platforms(conn, id_to_slug)
         except sqlite3.Error:
             pass
-    ts.save_youtube_client({
-        "client_id": yt.get("client_id", ""),
-        "client_secret": yt.get("client_secret", ""),
-    })
-    log.info("Migrated %d publish targets + youtube → %s", len(id_to_slug), ts.TARGETS_PATH)
+    ts.ensure_file()  # 无 DB target 时也落空文件，保证幂等
+    log.info("Migrated %d publish targets → %s", len(id_to_slug), ts.TARGETS_PATH)
 
 
 def _rewrite_source_ids(conn, id_to_slug: dict[int, str]) -> None:

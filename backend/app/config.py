@@ -99,11 +99,6 @@ class CollectorsCfg(BaseModel):
     serper_key: str = ""
 
 
-class YouTubeCfg(BaseModel):
-    client_id: str = ""
-    client_secret: str = ""
-
-
 class SummaryCfg(BaseModel):
     provider: str = ""
     base_url: str = ""
@@ -137,7 +132,7 @@ class PipelineCfg(BaseModel):
     video_fps: int = 24                    # comfyui 视频帧率（原 comfyui.video_fps）
 
 
-class VideoCfg(BaseModel):
+class HyperframesCfg(BaseModel):
     fps: str = "30"
     scene_gap_ms: int = 500
     transition: str = "crossfade"
@@ -210,9 +205,8 @@ class Settings(BaseModel):
     # 供应商参数库：各供应商的 base_url/api_key，被 pipeline 选型按需引用
     providers: dict[str, ProviderCreds] = Field(default_factory=_default_providers)
     collectors: CollectorsCfg = CollectorsCfg()
-    youtube: YouTubeCfg = YouTubeCfg()
     pipeline: PipelineCfg = PipelineCfg()
-    video: VideoCfg = VideoCfg()
+    hyperframes: HyperframesCfg = HyperframesCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
     prompts: PromptsCfg = PromptsCfg()
 
@@ -376,16 +370,15 @@ def get_settings() -> Settings:
     global _settings
     if _settings is None:
         raw = _migrate_legacy(_load_yaml(CONFIG_PATH))
+        if "video" in raw and "hyperframes" not in raw:
+            raw["hyperframes"] = raw.pop("video")  # 旧 key video → hyperframes
         raw.pop("providers", None)  # providers 不再从 config.yaml 取，改由 providers_store 注入
-        raw.pop("youtube", None)    # youtube client 改由 targets_store 注入
         raw.pop("collectors", None)  # 搜索 key 改由 sources_store 注入
         _settings = Settings(**raw)
-        from app.store import providers_store, sources_store, targets_store
+        from app.store import providers_store, sources_store
         stored = providers_store.load_providers()
         if stored:
             _settings.providers = stored  # 从 model_providers.yaml 注入 providers 凭证
-        # youtube client 从 publish_targets.yaml 注入
-        _settings.youtube = YouTubeCfg(**targets_store.load_youtube_client())
         # 搜索 key 从 news_sources.yaml 注入
         _settings.collectors = CollectorsCfg(**sources_store.load_search_keys())
         _ensure_default_models(_settings)
@@ -398,15 +391,12 @@ def get_settings() -> Settings:
 def save_settings(settings: Settings) -> None:
     global _settings
     _settings = settings
-    from app.store import providers_store, sources_store, targets_store
+    from app.store import providers_store, sources_store
     providers_store.save_providers(settings.providers)  # providers 凭证写入 model_providers.yaml
-    # youtube client 写入 publish_targets.yaml
-    targets_store.save_youtube_client(settings.youtube.model_dump())
     # 搜索 key 写入 news_sources.yaml
     sources_store.save_search_keys(settings.collectors.model_dump())
     data = settings.model_dump()
     data.pop("providers", None)  # providers 走 providers_store，不写 config.yaml
-    data.pop("youtube", None)    # youtube 走 targets_store，不写 config.yaml
     data.pop("collectors", None)  # collectors 走 sources_store，不写 config.yaml
     _save_yaml(CONFIG_PATH, data)
     import logging

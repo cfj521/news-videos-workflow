@@ -329,7 +329,6 @@ const EMPTY_SETTINGS: AppSettings = {
     "edge-tts": { base_url: "", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
   },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
-  youtube: { client_id: "", client_secret: "" },
   pipeline: {
     default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui",
     default_language: "zh", dedup_lookback: "30d", resolution: "1080x1920", max_images: 10,
@@ -341,7 +340,7 @@ const EMPTY_SETTINGS: AppSettings = {
     video_model: "wan2.2_5b", video_fps: 24,
   },
   storage: { work_dir: "", output_dir: "" },
-  video: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
+  hyperframes: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
   prompts: {},
 };
@@ -921,30 +920,30 @@ export function SettingsPage() {
 
       <Section title="Hyperframes 配置">
         <Field label="帧率">
-          <Select value={settings.video.fps} onChange={(v) => patch("video", { fps: v })} options={[
+          <Select value={settings.hyperframes.fps} onChange={(v) => patch("hyperframes", { fps: v })} options={[
             { value: "24", label: "24" }, { value: "25", label: "25" }, { value: "30", label: "30" },
           ]} />
         </Field>
         <Field label="场景间隔">
           <div className="flex items-center gap-3">
-            <input type="range" value={settings.video.scene_gap_ms} onChange={(e) => patch("video", { scene_gap_ms: Number(e.target.value) })} min={0} max={2000} step={100} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.video.scene_gap_ms}ms</span>
+            <input type="range" value={settings.hyperframes.scene_gap_ms} onChange={(e) => patch("hyperframes", { scene_gap_ms: Number(e.target.value) })} min={0} max={2000} step={100} className="flex-1 accent-blue-500" />
+            <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.hyperframes.scene_gap_ms}ms</span>
           </div>
         </Field>
         <Field label="转场效果">
-          <Select value={settings.video.transition} onChange={(v) => patch("video", { transition: v })} options={[
+          <Select value={settings.hyperframes.transition} onChange={(v) => patch("hyperframes", { transition: v })} options={[
             { value: "crossfade", label: "交叉淡入淡出" }, { value: "fade", label: "淡入淡出" },
             { value: "slide", label: "滑动" }, { value: "cut", label: "直接切换（无转场）" },
           ]} />
         </Field>
         <Field label="字幕字号" desc="按渲染分辨率计的像素值，过小会看不清">
           <div className="flex items-center gap-3">
-            <input type="range" value={settings.video.subtitle_font_size} onChange={(e) => patch("video", { subtitle_font_size: Number(e.target.value) })} min={24} max={96} step={2} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.video.subtitle_font_size}px</span>
+            <input type="range" value={settings.hyperframes.subtitle_font_size} onChange={(e) => patch("hyperframes", { subtitle_font_size: Number(e.target.value) })} min={24} max={96} step={2} className="flex-1 accent-blue-500" />
+            <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.hyperframes.subtitle_font_size}px</span>
           </div>
         </Field>
         <Field label="字幕最多行数" desc="超长旁白会按此上限自动切分成多条短字幕">
-          <Select value={String(settings.video.subtitle_max_lines)} onChange={(v) => patch("video", { subtitle_max_lines: Number(v) })} options={[
+          <Select value={String(settings.hyperframes.subtitle_max_lines)} onChange={(v) => patch("hyperframes", { subtitle_max_lines: Number(v) })} options={[
             { value: "1", label: "1 行" }, { value: "2", label: "2 行" }, { value: "3", label: "3 行" },
           ]} />
         </Field>

@@ -58,7 +58,6 @@ export interface AppSettings {
   // 供应商参数库：各供应商的连接凭证；当前用哪个由 pipeline 选型决定
   providers: Record<string, ProviderCreds>;
   collectors: { tavily_key: string; brave_key: string; serper_key: string };
-  youtube: { client_id: string; client_secret: string };
   pipeline: {
     default_time_range: string; default_max_articles: number; default_video_route: string;
     default_language: string; dedup_lookback: string; resolution: string; max_images: number;
@@ -70,7 +69,7 @@ export interface AppSettings {
     video_model: string; video_fps: number;
   };
   storage: { work_dir: string; output_dir: string };
-  video: { fps: string; scene_gap_ms: number; transition: string; subtitle_font_size: number; subtitle_max_lines: number };
+  hyperframes: { fps: string; scene_gap_ms: number; transition: string; subtitle_font_size: number; subtitle_max_lines: number };
   comfyui: { server_url: string; default_negative: string; image_params: Record<string, { steps: number; cfg: number }>; video_params: Record<string, { steps: number; cfg: number }> };
   prompts: Record<string, string>;
 }

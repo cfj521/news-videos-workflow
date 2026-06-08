@@ -1,7 +1,6 @@
-"""publish_targets.yaml 读写：发布账号（slug 主键）+ YouTube OAuth client。
+"""publish_targets.yaml 读写：发布账号（slug 主键）。
 
 结构：
-    youtube_oauth_client: {client_id, client_secret}
     targets:
       <slug>: {name, platform, enabled, created_at, config: {...}}
 """
@@ -17,8 +16,6 @@ from app.store._slug import slugify, unique_slug
 
 TARGETS_PATH = Path(__file__).resolve().parents[3] / "publish_targets.yaml"
 
-_DEFAULT_YT_CLIENT = {"client_id": "", "client_secret": ""}
-
 
 class TargetData(BaseModel):
     """单个发布账号。slug 为主键（YAML key），config 为平台凭证内联 dict。"""
@@ -33,6 +30,12 @@ class TargetData(BaseModel):
 
 def _read() -> dict:
     return _io.load_yaml(TARGETS_PATH)
+
+
+def ensure_file() -> None:
+    """文件不存在时写入空 targets 占位，保证迁移幂等（迁移后文件必存在）。"""
+    if not TARGETS_PATH.exists():
+        _io.save_yaml(TARGETS_PATH, {"targets": {}})
 
 
 def list_targets() -> list[TargetData]:
@@ -108,17 +111,3 @@ def delete_target(slug: str) -> bool:
         data["targets"] = targets
         _io.save_yaml(TARGETS_PATH, data)
         return True
-
-
-def load_youtube_client() -> dict:
-    """读取 YouTube OAuth client 配置，缺失字段用空串兜底。"""
-    yc = _read().get("youtube_oauth_client") or {}
-    return {**_DEFAULT_YT_CLIENT, **yc}
-
-
-def save_youtube_client(client: dict) -> None:
-    """写入 YouTube OAuth client 配置。"""
-    with _io.file_lock(TARGETS_PATH):
-        data = _read()
-        data["youtube_oauth_client"] = {**_DEFAULT_YT_CLIENT, **(client or {})}
-        _io.save_yaml(TARGETS_PATH, data)

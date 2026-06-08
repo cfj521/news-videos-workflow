@@ -45,12 +45,6 @@ def test_update_missing_returns_none():
     assert ts.update_target("nope", {"enabled": False}) is None
 
 
-def test_youtube_client_roundtrip():
-    assert ts.load_youtube_client() == {"client_id": "", "client_secret": ""}
-    ts.save_youtube_client({"client_id": "cid", "client_secret": "sec"})
-    assert ts.load_youtube_client() == {"client_id": "cid", "client_secret": "sec"}
-
-
 def test_create_explicit_slug():
     t = ts.create_target(name="My YT", platform="youtube", config={}, slug="custom_yt")
     assert t.slug == "custom_yt"

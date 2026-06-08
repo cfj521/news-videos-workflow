@@ -2,8 +2,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import yaml
-
 import app.store.targets_store as ts
 from app.store.migrate import migrate_targets_to_yaml
 
@@ -22,13 +20,10 @@ def _make_db(db_path: Path):
     conn.close()
 
 
-def test_migrate_targets_seeds_slugs_and_youtube(tmp_path, monkeypatch):
+def test_migrate_targets_seeds_slugs(tmp_path, monkeypatch):
     monkeypatch.setattr(ts, "TARGETS_PATH", tmp_path / "publish_targets.yaml")
     cfg = tmp_path / "config.yaml"
-    cfg.write_text(
-        yaml.safe_dump({"youtube": {"client_id": "ytid", "client_secret": "yts"}}),
-        encoding="utf-8",
-    )
+    cfg.write_text("pipeline: {}\n", encoding="utf-8")
     db = tmp_path / "app.db"
     _make_db(db)
 
@@ -37,7 +32,6 @@ def test_migrate_targets_seeds_slugs_and_youtube(tmp_path, monkeypatch):
     slugs = {t.slug for t in ts.list_targets()}
     assert slugs == {"youtube", "douyin"}
     assert ts.get_target("youtube").config["client_id"] == "x"
-    assert ts.load_youtube_client()["client_id"] == "ytid"
 
 
 def test_migrate_targets_rewrites_run_publish_platforms(tmp_path, monkeypatch):
@@ -58,8 +52,10 @@ def test_migrate_targets_rewrites_run_publish_platforms(tmp_path, monkeypatch):
 
 def test_migrate_targets_idempotent(tmp_path, monkeypatch):
     monkeypatch.setattr(ts, "TARGETS_PATH", tmp_path / "publish_targets.yaml")
-    ts.save_youtube_client({"client_id": "keep", "client_secret": ""})  # 文件已存在
+    ts.create_target(name="Keep", platform="youtube", config={"client_id": "keep"})  # 文件已存在
     cfg = tmp_path / "config.yaml"
-    cfg.write_text(yaml.safe_dump({"youtube": {"client_id": "should_not_load"}}), encoding="utf-8")
+    cfg.write_text("pipeline: {}\n", encoding="utf-8")
     migrate_targets_to_yaml(config_path=cfg, sqlite_path=tmp_path / "missing.db")
-    assert ts.load_youtube_client()["client_id"] == "keep"
+    # 文件已存在 → 整体跳过，原 target 不被覆盖、也不新增
+    assert {t.slug for t in ts.list_targets()} == {"keep"}
+    assert ts.get_target("keep").config["client_id"] == "keep"

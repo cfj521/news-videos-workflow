@@ -22,11 +22,6 @@ collectors:
   brave_key: ""
   serper_key: ""
 
-# ---- YouTube OAuth（也可改在「发布管理」页按平台配置，存 DB）----
-youtube:
-  client_id: ""
-  client_secret: ""
-
 # ---- 流水线默认参数 + 当前选型（创建任务窗口与 run 从这里读默认）----
 pipeline:
   default_time_range: 7d                # 1d | 3d | 7d | 15d | 1m
@@ -52,9 +47,8 @@ pipeline:
   video_model: wan2.2_5b                # comfyui 视频 workflow：wan2.2_5b | wan2.2_14b | wan2.2_14b_lightx2v | ltx_2.3
   video_fps: 24                         # comfyui 视频帧率
 
-# ---- 视频输出 ----
 # ---- Hyperframes 渲染配置（分辨率以任务级 run.resolution 为准，不在此处）----
-video:
+hyperframes:
   fps: "30"
   scene_gap_ms: 500
   transition: crossfade                 # crossfade | fade | slide | cut
