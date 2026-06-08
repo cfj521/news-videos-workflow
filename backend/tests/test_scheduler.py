@@ -103,3 +103,20 @@ def test_fire_skips_when_disabled(_patch_fire, monkeypatch):
         enabled=False, payload={}))
     sched_mod._fire("s", _factory)
     assert submitted == []
+
+
+def test_monthly_day_under_29_uses_exact_day():
+    kind, kw = scheduler._trigger_spec(_sched("monthly", "2024-12-15T08:30:00"))
+    assert kind == "cron"
+    assert kw == {"day": 15, "hour": 8, "minute": 30}
+
+
+def test_monthly_day_31_maps_to_last():
+    kind, kw = scheduler._trigger_spec(_sched("monthly", "2024-12-31T08:30:00"))
+    assert kind == "cron"
+    assert kw == {"day": "last", "hour": 8, "minute": 30}
+
+
+def test_monthly_day_29_maps_to_last():
+    kind, kw = scheduler._trigger_spec(_sched("monthly", "2024-12-29T09:00:00"))
+    assert kw["day"] == "last"

@@ -40,7 +40,9 @@ def _trigger_spec(sched: ScheduleData) -> tuple[str, dict]:
     if sched.freq == "weekly":
         return "cron", {"day_of_week": dt.weekday(), "hour": dt.hour, "minute": dt.minute}
     if sched.freq == "monthly":
-        return "cron", {"day": dt.day, "hour": dt.hour, "minute": dt.minute}
+        # 29/30/31 统一 → 每月最后一天（APScheduler day="last"，短月自动顺延）
+        day = "last" if dt.day >= 29 else dt.day
+        return "cron", {"day": day, "hour": dt.hour, "minute": dt.minute}
     raise ValueError(f"未知 freq: {sched.freq}")
 
 
