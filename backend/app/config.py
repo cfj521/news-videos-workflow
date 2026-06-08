@@ -376,7 +376,12 @@ def get_settings() -> Settings:
     global _settings
     if _settings is None:
         raw = _migrate_legacy(_load_yaml(CONFIG_PATH))
+        raw.pop("providers", None)  # providers 不再从 config.yaml 取，改由 providers_store 注入
         _settings = Settings(**raw)
+        from app.store import providers_store
+        stored = providers_store.load_providers()
+        if stored:
+            _settings.providers = stored  # 从 model_providers.yaml 注入 providers 凭证
         _ensure_default_models(_settings)
         _migrate_comfyui_keys(_settings)
         import logging
@@ -387,7 +392,11 @@ def get_settings() -> Settings:
 def save_settings(settings: Settings) -> None:
     global _settings
     _settings = settings
-    _save_yaml(CONFIG_PATH, settings.model_dump())
+    from app.store import providers_store
+    providers_store.save_providers(settings.providers)  # providers 凭证写入 model_providers.yaml
+    data = settings.model_dump()
+    data.pop("providers", None)  # providers 走 providers_store，不写 config.yaml
+    _save_yaml(CONFIG_PATH, data)
     import logging
     logging.getLogger("nv.config").info("Saved config to %s", CONFIG_PATH)
 
