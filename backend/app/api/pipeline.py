@@ -887,15 +887,13 @@ async def _render_video_async(run_id: int, session_factory):
 
 # ─── Publish (re)trigger ──────────────────────────────────
 
-def _parse_target_ids(publish_platforms: str | None) -> set[int]:
-    """从 run.publish_platforms（账号 id 列表，JSON）解析出 int id；容错旧数据（平台名）跳过。"""
-    ids: set[int] = set()
+def _parse_target_slugs(publish_platforms: str | None) -> set[str]:
+    """从 run.publish_platforms（账号 slug 列表，JSON）解析 slug 集合；容错非字符串项跳过。"""
+    out: set[str] = set()
     for x in json.loads(publish_platforms or "[]"):
-        try:
-            ids.add(int(x))
-        except (ValueError, TypeError):
-            continue
-    return ids
+        if isinstance(x, str) and x:
+            out.add(x)
+    return out
 
 
 @router.post("/runs/{run_id}/publish")
@@ -905,7 +903,7 @@ def trigger_publish(run_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Run not found")
     if not (run.output_path and Path(run.output_path).exists()):
         raise HTTPException(status_code=400, detail="尚无成片，请先完成渲染（S5）再发布")
-    if not _parse_target_ids(run.publish_platforms):
+    if not _parse_target_slugs(run.publish_platforms):
         raise HTTPException(status_code=400, detail="未选择发布账号")
     run.current_stage = 6
     run.status = "processing"
@@ -925,9 +923,9 @@ def _publish_bg(run_id: int, session_factory):
 async def _publish_async(run_id: int, session_factory):
     from dataclasses import asdict
 
-    from app.models.publish_target import PublishTarget
     from app.pipeline.stage6_publish import run_stage6
     from app.providers.publisher import build_publishers
+    from app.store import targets_store
 
     reload_settings()
     db = session_factory()
@@ -936,10 +934,8 @@ async def _publish_async(run_id: int, session_factory):
         if not run:
             return
         rd = _run_dir(run_id)
-        target_ids = _parse_target_ids(run.publish_platforms)
-        targets = [
-            t for t in db.query(PublishTarget).filter(PublishTarget.enabled.is_(True)).all()
-            if t.id in target_ids]
+        slugs = _parse_target_slugs(run.publish_platforms)
+        targets = [t for t in targets_store.list_targets() if t.enabled and t.slug in slugs]
         if not targets:
             _update(db, run, status="failed", error_message="无可用发布账号（可能已被禁用）",
                     finished_at=datetime.now(timezone.utc))

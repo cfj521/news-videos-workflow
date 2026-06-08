@@ -1,15 +1,13 @@
-import json
-from types import SimpleNamespace
-
 import pytest
 
 from app.providers.publisher import build_publishers
 from app.providers.publisher.bilibili import BilibiliPublisher
+from app.store.targets_store import TargetData
 
 
 def _target(platform, enabled=True, name=None, **cfg):
-    return SimpleNamespace(platform=platform, enabled=enabled, name=name or platform,
-                           config_json=json.dumps(cfg) if cfg else None)
+    return TargetData(slug=name or platform, platform=platform, enabled=enabled,
+                      name=name or platform, config=cfg or {})
 
 
 def test_cookie_uses_real_names_and_drops_empty():

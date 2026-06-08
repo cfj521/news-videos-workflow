@@ -846,23 +846,19 @@ async def _run_inner(run_id: int, db: Session) -> None:
     # ─── Stage 6: 发布 ────────────────────────────────────
     if 6 in selected:
         _check_cancel(run.id)
-        # publish_platforms 现存「发布账号 id」列表；容错旧数据（平台名字符串）跳过
-        target_ids: set[int] = set()
+        # publish_platforms 现存「发布账号 slug」列表；容错非字符串项跳过
+        target_slugs: set[str] = set()
         for x in json.loads(run.publish_platforms):
-            try:
-                target_ids.add(int(x))
-            except (ValueError, TypeError):
-                continue
-        if target_ids:
+            if isinstance(x, str) and x:
+                target_slugs.add(x)
+        if target_slugs:
             from dataclasses import asdict
 
-            from app.models.publish_target import PublishTarget
             from app.pipeline.stage6_publish import run_stage6
             from app.providers.publisher import build_publishers
+            from app.store import targets_store
 
-            targets = [
-                t for t in db.query(PublishTarget).filter(PublishTarget.enabled.is_(True)).all()
-                if t.id in target_ids]
+            targets = [t for t in targets_store.list_targets() if t.enabled and t.slug in target_slugs]
             names = [t.name for t in targets]
             _update(db, run, current_stage=6,
                     progress_detail=f"S6 发布到 {', '.join(names)}...")

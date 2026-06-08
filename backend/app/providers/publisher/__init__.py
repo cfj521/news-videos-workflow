@@ -1,26 +1,19 @@
-import json
-
 from app.logging import get_logger
 
 log = get_logger("publisher.factory")
 
 
 def build_publishers(targets) -> list:
-    """从 PublishTarget 记录构造发布 adapter，返回 [(target, adapter)] 列表。
+    """从 TargetData 列表构造发布 adapter，返回 [(target, adapter)]。
 
-    以「账号」为单位（不按 platform 去重），因此同一平台的多个账号都会保留、
-    各自独立发布。禁用、配置缺失或暂不支持的平台跳过。
-    targets: list[PublishTarget]
+    以「账号」为单位（不按 platform 去重）；禁用、暂不支持的平台跳过。
+    targets: list[TargetData]（.enabled/.platform/.config(dict)/.name/.slug）
     """
     pubs: list = []
     for t in targets:
         if not t.enabled:
             continue
-        try:
-            cfg = json.loads(t.config_json) if t.config_json else {}
-        except (ValueError, TypeError):
-            cfg = {}
-        adapter = _build_one(t.platform, cfg)
+        adapter = _build_one(t.platform, t.config or {})
         if adapter is not None:
             pubs.append((t, adapter))
         else:
