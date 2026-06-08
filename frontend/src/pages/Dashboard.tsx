@@ -4,7 +4,6 @@ import { api, type ScriptData, type TimelineData, type AppSettings, type Publish
 import {
   btnPrimary, btnSecondary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
   sectionTitleCls, inputCls, labelCls, errorTextCls,
-  btnRegenAudio, btnRegenImage, btnRegenPrompt,
   btnApprove, btnDelete, btnDeleteIcon,
   dialogOverlayCls, dialogPanelCls,
 } from "../styles";
@@ -13,7 +12,7 @@ import { CreateRunDialog } from "../components/CreateRunDialog";
 import { SourceSummary } from "../components/SourceSummary";
 import { IconButton } from "../components/IconButton";
 import { DeleteIconButton } from "../components/DeleteIconButton";
-import { PencilIcon, PlusIcon, ImportIcon, RefreshIcon } from "../components/icons";
+import { PencilIcon, PlusIcon, ImportIcon, RefreshIcon, SparklesIcon } from "../components/icons";
 import { useToast } from "../components/Toast";
 import type { PipelineRun } from "../types";
 import { STAGE_LABELS, VISIBLE_STAGES, BACKEND_STAGE_MAP, PLATFORM_LABELS } from "../types";
@@ -576,10 +575,11 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
           <div>
             <div className="text-[11px] text-white/60 mb-1">旁白</div>
             <textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={6} className={`${inputCls} text-[13px]`} />
-            <div className="flex gap-2 mt-1.5">
-              <button onClick={handleRegenAudio} disabled={regenAudioLoading} className={btnRegenAudio}>
-                {regenAudioLoading ? "生成中..." : "重新配音"}
-              </button>
+            <div className="flex gap-1.5 mt-1.5">
+              <IconButton onClick={handleRegenAudio} disabled={regenAudioLoading}
+                title={regenAudioLoading ? "生成中..." : "重新配音"}>
+                <RefreshIcon className={regenAudioLoading ? "animate-spin" : ""} />
+              </IconButton>
             </div>
           </div>
 
@@ -587,13 +587,15 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
             <div>
               <div className="text-[11px] text-white/60 mb-1">图片提示词</div>
               <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={5} className={`${inputCls} text-[13px] text-white/76 resize-y`} />
-              <div className="flex gap-2 mt-1.5">
-                <button onClick={handleRegenPrompt} disabled={regenPromptLoading} className={btnRegenPrompt}>
-                  {regenPromptLoading ? "生成中..." : "重生成提示词"}
-                </button>
-                <button onClick={handleRegenImage} disabled={regenImgLoading} className={btnRegenImage}>
-                  {regenImgLoading ? "生成中..." : "重新生成图片"}
-                </button>
+              <div className="flex gap-1.5 mt-1.5">
+                <IconButton onClick={handleRegenPrompt} disabled={regenPromptLoading}
+                  title={regenPromptLoading ? "生成中..." : "重新生成提示词"}>
+                  <SparklesIcon className={regenPromptLoading ? "animate-pulse" : ""} />
+                </IconButton>
+                <IconButton onClick={handleRegenImage} disabled={regenImgLoading}
+                  title={regenImgLoading ? "生成中..." : "重新生成图片"}>
+                  <RefreshIcon className={regenImgLoading ? "animate-spin" : ""} />
+                </IconButton>
               </div>
             </div>
           )}

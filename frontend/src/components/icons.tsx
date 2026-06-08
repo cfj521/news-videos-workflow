@@ -30,3 +30,7 @@ export const ResetIcon = ({ size, className }: IconProps) =>
 
 export const ImportIcon = ({ size, className }: IconProps) =>
   svg(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></>, size, className);
+
+// 用于「AI 重新生成提示词」，区别于 RefreshIcon
+export const SparklesIcon = ({ size, className }: IconProps) =>
+  svg(<><path d="M12 3l1.6 4.9a2 2 0 0 0 1.3 1.3L20 11l-4.9 1.6a2 2 0 0 0-1.3 1.3L12 19l-1.6-4.9a2 2 0 0 0-1.3-1.3L4 11l4.9-1.6a2 2 0 0 0 1.3-1.3z" /><path d="M19 4v3" /><path d="M20.5 5.5h-3" /></>, size, className);
