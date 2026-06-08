@@ -139,7 +139,7 @@ export function PublishersPage() {
   const { data: targets, mutate } = useSWR("publishers", api.publishers.list);
   const [dialog, setDialog] = useState<{ target: PublishTarget | null } | null>(null);
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     await api.publishers.remove(id);
     mutate();
   };

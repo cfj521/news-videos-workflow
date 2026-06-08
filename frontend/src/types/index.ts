@@ -64,12 +64,12 @@ export const VIDEO_ROUTE_LABELS: Record<string, string> = {
 };
 
 export interface PublishTarget {
-  id: number;
+  id: string;
   name: string;
   platform: "youtube" | "instagram" | "bilibili" | "douyin" | "kuaishou" | "ximalaya" | "xiaoyuzhou" | "netease_music" | "apple_podcasts";
   enabled: boolean;
   config_json: string | null;
-  created_at: string;
+  created_at: string | null;
 }
 
 export const PLATFORM_LABELS: Record<string, string> = {

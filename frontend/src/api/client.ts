@@ -246,12 +246,12 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    update: (id: number, body: Partial<PublishTarget>) =>
+    update: (id: string, body: Partial<PublishTarget>) =>
       fetchJSON<PublishTarget>(`/publishers/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    remove: (id: number) =>
+    remove: (id: string) =>
       fetchJSON<{ status: string }>(`/publishers/${id}`, { method: "DELETE" }),
   },
   settings: {
