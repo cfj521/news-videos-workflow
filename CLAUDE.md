@@ -90,6 +90,7 @@ pnpm test                        # Vitest
 - **Hyperframes**（hyperframes 视频路线）: 需 Node.js + `npx hyperframes`（npm 包，非 Python 依赖，不在 requirements.txt）。首次渲染由 npx 联网拉取，或预装 `npm i -g hyperframes`。缺失时自动回退到 FFmpeg 合成。
 - **ComfyUI**（可选，本地图片/视频生成）: 默认视频路线，需本机运行 ComfyUI（默认 `http://127.0.0.1:8188`）+ 下载模型（见 `scripts/download-comfyui-models.ps1`）。工作流 JSON 在 `comfyui/workflows/api/`，配置在设置页「ComfyUI」标签。
 - **发布可选依赖**（按需）: B站投稿用 `biliup`；YouTube 用 `google-api-python-client` / `google-auth` / `google-auth-oauthlib`。均已列入 `requirements.txt`。发布平台凭证在「发布管理」页配置，详见 `docs/video-publish-guide.md`。
+- **APScheduler / tzlocal**（计划任务）: 「计划任务」页排期存仓库根 `schedule.yaml`，由进程内 `BackgroundScheduler` 到点自动建 run（执行模式强制 auto）。调度按**后端进程所在时区**；Docker/WSL 部署须设 `TZ` 与宿主一致，否则「本地时刻」会偏移。
 
 ## Configuration
 
@@ -100,6 +101,7 @@ pnpm test                        # Vitest
 - `comfyui` — 本地图片/视频生成的 workflow 与每流 steps/cfg
 - `hyperframes` — Hyperframes 视频路线的渲染参数（fps / 转场 / 字幕等；原 `video` 段，已重命名）
 - 发布平台凭证不在此文件，存仓库根的 `publish_targets.yaml`（按账号，「发布管理」页配置）
+- 计划任务排期不在 `config.yaml`，存仓库根 `schedule.yaml`（不入库，模板见 `schedule.yaml.example`）
 
 ## Conventions
 
