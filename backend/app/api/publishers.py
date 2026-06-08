@@ -1,49 +1,62 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+import json
 
-from app.api.dependencies import get_db
+from fastapi import APIRouter, HTTPException
+
 from app.logging import get_logger
-from app.models.publish_target import PublishTarget
 from app.schemas.publish_target import PublishTargetCreate, PublishTargetRead, PublishTargetUpdate
+from app.store import targets_store
 
 log = get_logger("api.publishers")
 router = APIRouter(prefix="/api/publishers", tags=["publishers"])
 
 
+def _to_read(t) -> PublishTargetRead:
+    return PublishTargetRead(
+        id=t.slug, name=t.name, platform=t.platform, enabled=t.enabled,
+        config_json=json.dumps(t.config, ensure_ascii=False) if t.config else None,
+        created_at=t.created_at or None,
+    )
+
+
+def _parse_config(config_json: str | None) -> dict:
+    if not config_json:
+        return {}
+    try:
+        return json.loads(config_json)
+    except (ValueError, TypeError):
+        return {}
+
+
 @router.get("/", response_model=list[PublishTargetRead])
-def list_targets(db: Session = Depends(get_db)):
-    return db.query(PublishTarget).order_by(PublishTarget.id).all()
+def list_targets():
+    return [_to_read(t) for t in targets_store.list_targets()]
 
 
 @router.post("/", response_model=PublishTargetRead, status_code=201)
-def create_target(body: PublishTargetCreate, db: Session = Depends(get_db)):
-    target = PublishTarget(**body.model_dump())
-    db.add(target)
-    db.commit()
-    db.refresh(target)
-    log.info("Created publish target #%d: '%s' (%s)", target.id, target.name, target.platform)
-    return target
+def create_target(body: PublishTargetCreate):
+    t = targets_store.create_target(
+        name=body.name, platform=body.platform, enabled=body.enabled,
+        config=_parse_config(body.config_json), slug=body.slug,
+    )
+    log.info("Created publish target '%s' (%s)", t.slug, t.platform)
+    return _to_read(t)
 
 
-@router.patch("/{target_id}", response_model=PublishTargetRead)
-def update_target(target_id: int, body: PublishTargetUpdate, db: Session = Depends(get_db)):
-    target = db.get(PublishTarget, target_id)
-    if not target:
+@router.patch("/{slug}", response_model=PublishTargetRead)
+def update_target(slug: str, body: PublishTargetUpdate):
+    patch: dict = body.model_dump(exclude_unset=True)
+    if "config_json" in patch:
+        patch["config"] = _parse_config(patch.pop("config_json"))
+    t = targets_store.update_target(slug, patch)
+    if t is None:
         raise HTTPException(status_code=404, detail="Target not found")
-    for key, value in body.model_dump(exclude_unset=True).items():
-        setattr(target, key, value)
-    db.commit()
-    db.refresh(target)
-    log.info("Updated publish target #%d: %s", target_id, body.model_dump(exclude_unset=True).keys())
-    return target
+    log.info("Updated publish target '%s'", slug)
+    return _to_read(t)
 
 
-@router.delete("/{target_id}")
-def delete_target(target_id: int, db: Session = Depends(get_db)):
-    target = db.get(PublishTarget, target_id)
-    if not target:
+@router.delete("/{slug}")
+def delete_target(slug: str):
+    if not targets_store.delete_target(slug):
         raise HTTPException(status_code=404, detail="Target not found")
-    db.delete(target)
-    db.commit()
-    log.info("Deleted publish target #%d", target_id)
+    log.info("Deleted publish target '%s'", slug)
     return {"status": "ok"}
