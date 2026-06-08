@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import sqlite3
 from pathlib import Path
@@ -25,11 +26,10 @@ def _read_oauth_from_sqlite(sqlite_path: Path) -> OAuthData | None:
     if not sqlite_path.exists():
         return None
     try:
-        conn = sqlite3.connect(sqlite_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM oauth_credentials WHERE provider = 'openai' LIMIT 1")
-        row = cur.fetchone()
-        conn.close()
+        with contextlib.closing(sqlite3.connect(sqlite_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.execute("SELECT * FROM oauth_credentials WHERE provider = 'openai' LIMIT 1")
+            row = cur.fetchone()
     except sqlite3.Error:
         return None
     if row is None:

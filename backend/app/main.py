@@ -19,6 +19,8 @@ def _sqlite_path_from_url(url: str) -> Path:
     """从 sqlite URL 解析出文件路径（仅 sqlite 支持文件迁移）。"""
     prefix = "sqlite:///"
     if not url.startswith(prefix):
+        import logging
+        logging.getLogger("nv.migrate").debug("非 sqlite 数据库，跳过 oauth 迁移：%s", url[:20])
         return Path("")
     raw = url[len(prefix):]
     p = Path(raw)
