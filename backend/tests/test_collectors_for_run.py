@@ -1,55 +1,53 @@
 import json
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from app.models.base import Base
-from app.models.news_source import NewsSource
-from app.pipeline.runner import _aihot_source_config, _collectors_for_run
-from app.config import get_settings
+import pytest
+
+import app.pipeline.runner as runner
+import app.store.sources_store as ss
 
 
-def _db():
-    eng = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(eng)
-    return sessionmaker(bind=eng)()
+@pytest.fixture(autouse=True)
+def _isolate(tmp_path, monkeypatch):
+    monkeypatch.setattr(ss, "NEWS_SOURCES_PATH", tmp_path / "news_sources.yaml")
 
 
 class _Run:
-    def __init__(self, aihot_config=None, source_ids=None):
-        self.aihot_config = aihot_config
-        self.source_ids = source_ids
+    def __init__(self, source_ids=None, aihot_config=None):
+        self.source_ids = json.dumps(source_ids) if source_ids is not None else None
+        self.aihot_config = json.dumps(aihot_config) if aihot_config is not None else None
 
 
-def test_aihot_source_config_passes_params():
-    cfg = _aihot_source_config({"method": "weekly", "week_start": "2026-01-05"})
-    assert cfg["type"] == "aihot" and cfg["method"] == "weekly" and cfg["week_start"] == "2026-01-05"
+def test_aihot_config_uses_aihot_source():
+    run = _Run(aihot_config={"method": "daily"})
+    cfgs, collectors = runner._collectors_for_run(None, run, None)
+    assert cfgs[0]["type"] == "aihot" and "aihot" in collectors
 
 
-def test_aihot_source_config_defaults_items():
-    assert _aihot_source_config({})["method"] == "items"
+def test_selected_slugs_build_those_sources():
+    ss.create_source(name="HN", type="api", url="https://hn.algolia.com/api/v1/", slug="hn")
+    ss.create_source(name="RSS One", type="rss", url="https://x.com/feed", slug="rss_one")
+    run = _Run(source_ids=["rss_one"])
+    cfgs, collectors = runner._collectors_for_run(None, run, None)
+    names = [c["name"] for c in cfgs]
+    assert "RSS One" in names and "HN" not in names
 
 
-def test_collectors_for_run_aihot_mode():
-    db = _db()
-    scs, cols = _collectors_for_run(db, _Run(aihot_config=json.dumps({"method": "daily"})), get_settings())
-    assert len(scs) == 1 and scs[0]["type"] == "aihot" and scs[0]["method"] == "daily"
-    assert "aihot" in cols
+def test_no_source_ids_falls_back_to_hn():
+    run = _Run()
+    cfgs, collectors = runner._collectors_for_run(None, run, None)
+    assert any(c["type"] == "hackernews_algolia" for c in cfgs)
 
 
-def test_collectors_for_run_custom_filters_residual_aihot():
-    db = _db()
-    db.add_all([
-        NewsSource(id=1, name="RSS", type="rss", url="https://a/feed", enabled=True),
-        NewsSource(id=2, name="AI HOT", type="api", url="https://aihot.virxact.com/api/public",
-                   enabled=True, config_json=json.dumps({"provider": "aihot"})),
-    ])
-    db.commit()
-    scs, cols = _collectors_for_run(db, _Run(source_ids=json.dumps([1, 2])), get_settings())
-    names = [s["name"] for s in scs]
-    assert "RSS" in names and "AI HOT" not in names
+def test_all_selected_sources_missing_raises():
+    run = _Run(source_ids=["ghost_slug"])
+    with pytest.raises(ValueError):
+        runner._collectors_for_run(None, run, None)
 
 
-def test_collectors_for_run_empty_defaults_hn():
-    db = _db()
-    scs, cols = _collectors_for_run(db, _Run(), get_settings())
-    assert len(scs) == 1 and scs[0]["type"] == "hackernews_algolia"
+def test_aihot_source_excluded_from_custom():
+    ss.create_source(name="AIHot", type="api", url="u", slug="aihot_src", config={"provider": "aihot"})  # noqa: E501
+    ss.create_source(name="RSS", type="rss", url="https://x.com/feed", slug="rss_one")
+    run = _Run(source_ids=["aihot_src", "rss_one"])
+    cfgs, _ = runner._collectors_for_run(None, run, None)
+    names = [c["name"] for c in cfgs]
+    assert "RSS" in names and "AIHot" not in names

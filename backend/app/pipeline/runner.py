@@ -82,43 +82,42 @@ _URL_HINTS: list[tuple[str, str]] = [
 
 
 def _resolve_collector_type(src) -> str:
-    """Determine collector key: config_json.provider > URL hint > type field."""
-    config_json = src.config_json if hasattr(src, "config_json") else src.get("config_json")
-    if config_json:
-        try:
-            import json as _json
-            provider = _json.loads(config_json).get("provider", "")
-            if provider and provider in TYPE_TO_COLLECTOR:
-                return provider
-        except Exception:
-            pass
+    """Determine collector key: config.provider > URL hint > type field."""
+    config = getattr(src, "config", None)
+    if config is None and isinstance(src, dict):
+        config = src.get("config")
+    provider = (config or {}).get("provider", "") if isinstance(config, dict) else ""
+    if provider and provider in TYPE_TO_COLLECTOR:
+        return provider
 
-    url = (src.url if hasattr(src, "url") else src.get("url", "")).lower()
+    raw_url = getattr(src, "url", None) or (src.get("url", "") if isinstance(src, dict) else "")
+    url = raw_url.lower()
     for pattern, collector_key in _URL_HINTS:
         if pattern in url:
             return collector_key
 
-    src_type = src.type if hasattr(src, "type") else src.get("type", "")
+    src_type = getattr(src, "type", None) or (src.get("type", "") if isinstance(src, dict) else "")
     if src_type in TYPE_TO_COLLECTOR:
         return src_type
-
     type_map = {"api": "hackernews_algolia", "search": "duckduckgo", "scrape": "scraping"}
     return type_map.get(src_type, "")
 
 
 def _sources_for_run(db, run) -> list:
-    """按 run.source_ids 取 NewsSource；为空/无则回退所有 enabled。"""
-    from app.models.news_source import NewsSource
-    ids: list = []
+    """按 run.source_ids（slug 列表）取 SourceData；为空/无则回退所有 enabled。"""
+    from app.store import sources_store
+    slugs: list = []
     raw = getattr(run, "source_ids", None)
     if raw:
         try:
-            ids = json.loads(raw) or []
+            slugs = [s for s in (json.loads(raw) or []) if isinstance(s, str)]
         except Exception:
-            ids = []
-    if ids:
-        return db.query(NewsSource).filter(NewsSource.id.in_(ids)).all()
-    return db.query(NewsSource).filter(NewsSource.enabled.is_(True)).all()
+            slugs = []
+    all_sources = sources_store.list_sources()
+    if slugs:
+        by_slug = {s.slug: s for s in all_sources}
+        return [by_slug[s] for s in slugs if s in by_slug]
+    return [s for s in all_sources if s.enabled]
 
 
 def build_collectors_from_db(db_sources: list) -> tuple[list[dict], dict]:
@@ -142,17 +141,11 @@ def build_collectors_from_db(db_sources: list) -> tuple[list[dict], dict]:
             continue
         if collector_key not in collectors:
             collectors[collector_key] = TYPE_TO_COLLECTOR[collector_key]()
-
-        cfg: dict = {"name": src.name if hasattr(src, "name") else src.get("name", ""),
-                      "type": collector_key,
-                      "url": src.url if hasattr(src, "url") else src.get("url", "")}
-        config_json = src.config_json if hasattr(src, "config_json") else src.get("config_json")
-        if config_json:
-            try:
-                import json as _json
-                cfg.update(_json.loads(config_json))
-            except Exception:
-                pass
+        cfg: dict = {"name": getattr(src, "name", ""), "type": collector_key,
+                     "url": getattr(src, "url", "")}
+        src_config = getattr(src, "config", None)
+        if isinstance(src_config, dict):
+            cfg.update(src_config)
         source_configs.append(cfg)
 
     return source_configs, collectors
@@ -183,7 +176,8 @@ def _aihot_source_config(aihot: dict) -> dict:
 def _collectors_for_run(db, run, settings) -> tuple[list[dict], dict]:
     """按 run 选模式返回 (source_configs, collectors)。
     - aihot_config 非空 → AI HOT 单源（硬编码）。
-    - 否则 → run.source_ids 选中的非 aihot 源；空则 enabled 非 aihot；再空 → 默认 HN。
+    - 否则 → run.source_ids 选中的非 aihot 源；空 source_ids → 默认 HN；
+      有 source_ids 但全部失效 → 抛 ValueError（不静默回退）。
     """
     _ensure_collector_registry()
     raw = getattr(run, "aihot_config", None)
@@ -194,9 +188,20 @@ def _collectors_for_run(db, run, settings) -> tuple[list[dict], dict]:
             aihot = {}
         if aihot:
             return [_aihot_source_config(aihot)], {"aihot": TYPE_TO_COLLECTOR["aihot"]()}
+
+    raw_ids = getattr(run, "source_ids", None)
+    requested: list = []
+    if raw_ids:
+        try:
+            requested = [s for s in (json.loads(raw_ids) or []) if isinstance(s, str)]
+        except Exception:
+            requested = []
+
     db_sources = [s for s in _sources_for_run(db, run) if _resolve_collector_type(s) != "aihot"]
     if db_sources:
         return build_collectors_from_db(db_sources)
+    if requested:
+        raise ValueError("所选信息源已不存在，请在「新建任务窗口」重新选择信息源")
     return build_collectors(settings)
 
 
