@@ -64,7 +64,9 @@ export function SchedulesPage() {
                   : "—"}
               </div>
             </div>
-            <button onClick={() => onRunNow(s)} className="px-3 py-1.5 rounded-lg text-xs text-white/66 border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] hover:text-white/85 transition">立即执行</button>
+            {s.enabled && (
+              <button onClick={() => onRunNow(s)} className="px-3 py-1.5 rounded-lg text-xs text-white/66 border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] hover:text-white/85 transition">立即执行</button>
+            )}
             <DeleteIconButton onClick={() => onDelete(s)} title="删除此计划" />
           </div>
         ))}
