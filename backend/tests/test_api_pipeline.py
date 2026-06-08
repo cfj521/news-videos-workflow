@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.store.sources_store as ss
 from app.api.dependencies import get_db
 from app.auth import get_current_user
 from app.main import create_app
@@ -13,7 +14,9 @@ from app.models import Base  # noqa: F401 – side-effect: registers all ORM mod
 
 
 @pytest.fixture
-def client():
+def client(tmp_path, monkeypatch):
+    # 隔离 news_sources.yaml，防止测试间相互污染
+    monkeypatch.setattr(ss, "NEWS_SOURCES_PATH", tmp_path / "news_sources.yaml")
     # StaticPool ensures all connections share the same in-memory SQLite database.
     engine = create_engine(
         "sqlite:///:memory:",

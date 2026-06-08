@@ -1,12 +1,10 @@
-from datetime import datetime
-
 from pydantic import BaseModel
 
 
 class NewsSourceCreate(BaseModel):
     name: str
     type: str
-    url: str
+    url: str = ""
     category: str = "general"
     language: str = "en"
     priority: int = 5
@@ -14,10 +12,11 @@ class NewsSourceCreate(BaseModel):
     pinned: bool = False
     tier: str = "free"
     config_json: str | None = None
+    slug: str | None = None
 
 
 class NewsSourceRead(BaseModel):
-    id: int
+    id: str            # slug
     name: str
     type: str
     url: str
@@ -28,9 +27,6 @@ class NewsSourceRead(BaseModel):
     pinned: bool
     tier: str
     config_json: str | None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class NewsSourceUpdate(BaseModel):

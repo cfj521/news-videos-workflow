@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.store.sources_store as ss
 from app import config
 from app.api.dependencies import get_db
 from app.auth import get_current_user
@@ -24,6 +25,7 @@ from app.models.pipeline_run import PipelineRun
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.yaml")
+    monkeypatch.setattr(ss, "NEWS_SOURCES_PATH", tmp_path / "news_sources.yaml")
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr("app.api.pipeline._run_dir", lambda run_id: tmp_path / "runs" / str(run_id))
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
