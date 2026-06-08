@@ -6,12 +6,15 @@ import { Select } from "./Select";
 import { MultiSelect } from "./MultiSelect";
 import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isTargetReady, isAihotSource } from "../types";
 import { formatScheduleSummary } from "../lib/schedule";
+import type { Schedule } from "../types";
+import { payloadToDialogState, type DialogInit } from "../lib/runConfig";
 
 interface Props {
   onCreated: () => void;
   onClose: () => void;
   schedule?: boolean;          // true = 计划模式
-  onScheduled?: () => void;    // 计划创建成功回调
+  onScheduled?: () => void;    // 新建/编辑成功回调
+  edit?: Schedule;             // 存在 = 编辑模式（隐含 schedule 行为）
 }
 
 const VISUAL_DEPS: Record<number, number[]> = { 2: [1], 4: [1, 2], 5: [1, 2, 4], 6: [1, 2, 4, 5] };
@@ -42,28 +45,31 @@ const AIHOT_CATEGORIES = [
   { value: "tip", label: "技巧" },
 ];
 
-export function CreateRunDialog({ onCreated, onClose, schedule = false, onScheduled }: Props) {
+export function CreateRunDialog({ onCreated, onClose, schedule = false, onScheduled, edit }: Props) {
+  const isSchedule = schedule || !!edit;
+  // 编辑模式：从存储 payload 反填弹窗 state（只在挂载时算一次）
+  const [init] = useState<DialogInit | null>(() => (edit ? payloadToDialogState(edit.payload) : null));
   const [mode, setMode] = useState("auto");
-  const [freq, setFreq] = useState<"once" | "daily" | "weekly" | "monthly">("once");
-  const [runAt, setRunAt] = useState("");          // datetime-local 原始字符串
-  const [scheduleName, setScheduleName] = useState("");
-  const [timeRange, setTimeRange] = useState("7d");
-  const [maxArticles, setMaxArticles] = useState(5);
-  const [autoCollect, setAutoCollect] = useState(true);
-  const [videoRoute, setVideoRoute] = useState("hyperframes");
-  const [selectedVisual, setSelectedVisual] = useState<Set<number>>(new Set([1, 2, 4, 5, 6]));
+  const [freq, setFreq] = useState<"once" | "daily" | "weekly" | "monthly">(edit?.freq ?? "once");
+  const [runAt, setRunAt] = useState(edit ? edit.run_at.slice(0, 16) : "");  // ISO→datetime-local（截到分）
+  const [scheduleName, setScheduleName] = useState(edit?.name ?? "");
+  const [timeRange, setTimeRange] = useState(init?.timeRange ?? "7d");
+  const [maxArticles, setMaxArticles] = useState(init?.maxArticles ?? 5);
+  const [autoCollect, setAutoCollect] = useState(init?.autoCollect ?? true);
+  const [videoRoute, setVideoRoute] = useState(init?.videoRoute ?? "hyperframes");
+  const [selectedVisual, setSelectedVisual] = useState<Set<number>>(init?.selectedVisual ?? new Set([1, 2, 4, 5, 6]));
   // null = 用户尚未手动改动 → 默认全选所有可用账号；非 null = 用户的具体选择
-  const [targetIds, setTargetIds] = useState<Set<string> | null>(null);
+  const [targetIds, setTargetIds] = useState<Set<string> | null>(init?.targetIds ?? null);
   // null = 用默认规则；非 null = 用户显式选择
-  const [sourceIds, setSourceIds] = useState<Set<string> | null>(null);
+  const [sourceIds, setSourceIds] = useState<Set<string> | null>(init?.sourceIds ?? null);
   const [loading, setLoading] = useState(false);
-  const [resolution, setResolution] = useState("");
-  const [language, setLanguage] = useState("");
-  const [maxImages, setMaxImages] = useState<number | null>(null);  // null = 用流水线配置默认
+  const [resolution, setResolution] = useState(init?.resolution ?? "");
+  const [language, setLanguage] = useState(init?.language ?? "");
+  const [maxImages, setMaxImages] = useState<number | null>(init?.maxImages ?? null);  // null = 用流水线配置默认
 
   // 信息源模式：AI HOT 或 其他源
-  const [sourceMode, setSourceMode] = useState<"aihot" | "custom">("aihot");
-  const [aihotCfg, setAihotCfg] = useState<{ method: string; category?: string; report_date?: string; week_start?: string }>({ method: "items" });
+  const [sourceMode, setSourceMode] = useState<"aihot" | "custom">(init?.sourceMode ?? "aihot");
+  const [aihotCfg, setAihotCfg] = useState<{ method: string; category?: string; report_date?: string; week_start?: string }>(init?.aihotCfg ?? { method: "items" });
 
   const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
   // 默认值取自流水线配置；用户可在此覆盖
@@ -158,7 +164,7 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
     setLoading(true);
     try {
       const payload = {
-        mode: schedule ? "auto" : mode,
+        mode: isSchedule ? "auto" : mode,
         video_route: effVideoRoute,
         time_range: timeRange,
         max_articles: maxArticles,
@@ -167,16 +173,24 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
         resolution: effRes,
         language: effLang,
         max_images: effMaxImages,
-        auto_collect: schedule ? true : autoCollect,
+        auto_collect: isSchedule ? true : autoCollect,
         ...(sourceMode === "aihot"
           ? { aihot_config: aihotCfg }
           : { source_ids: Array.from(effectiveSourceIds) }),
       };
-      if (schedule) {
-        await api.schedules.create({
+      if (edit) {
+        await api.schedules.update(edit.slug, {
           name: scheduleName.trim() || formatScheduleSummary(freq, runAt),
           freq,
           run_at: runAt,                 // 直接提交 datetime-local 原始串，勿 toISOString
+          payload,
+        });
+        onScheduled?.();
+      } else if (isSchedule) {
+        await api.schedules.create({
+          name: scheduleName.trim() || formatScheduleSummary(freq, runAt),
+          freq,
+          run_at: runAt,
           payload,
         });
         onScheduled?.();
@@ -190,9 +204,9 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
   return (
     <div className={dialogOverlayCls}>
       <div className={`${dialogPanelCls} w-[720px]`}>
-        <h2 className="text-lg font-semibold mb-4">{schedule ? "新建计划任务" : "新建任务"}</h2>
+        <h2 className="text-lg font-semibold mb-4">{edit ? "编辑计划任务" : isSchedule ? "新建计划任务" : "新建任务"}</h2>
 
-        {schedule && (
+        {isSchedule && (
           <div className="mb-5 rounded-lg border border-white/[0.06] p-3 grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>间隔</label>
@@ -312,7 +326,7 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
                 <label className={labelCls}>运行模式</label>
-                {schedule ? (
+                {isSchedule ? (
                   <div className={`${selectCls} flex items-center opacity-50 cursor-not-allowed`}>
                     <span className="text-white/96">自动</span>
                   </div>
@@ -394,8 +408,8 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
 
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className={btnSecondary}>取消</button>
-          <button onClick={handleSubmit} disabled={loading || effectiveVisual.size === 0 || (schedule && !runAt)} className={btnPrimary}>
-            {loading ? "创建中..." : (schedule ? "创建计划" : "创建")}
+          <button onClick={handleSubmit} disabled={loading || effectiveVisual.size === 0 || (isSchedule && !runAt)} className={btnPrimary}>
+            {loading ? "创建中..." : edit ? "保存修改" : isSchedule ? "创建计划" : "创建"}
           </button>
         </div>
       </div>
