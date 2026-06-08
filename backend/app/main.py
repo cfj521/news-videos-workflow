@@ -29,10 +29,15 @@ def _sqlite_path_from_url(url: str) -> Path:
 
 def _run_storage_migrations() -> None:
     from app.config import CONFIG_PATH, get_settings, reload_settings
-    from app.store.migrate import migrate_providers_to_yaml, migrate_targets_to_yaml
+    from app.store.migrate import (
+        migrate_providers_to_yaml,
+        migrate_sources_to_yaml,
+        migrate_targets_to_yaml,
+    )
     sqlite_path = _sqlite_path_from_url(get_settings().infra.database_url)
     migrate_providers_to_yaml(config_path=CONFIG_PATH, sqlite_path=sqlite_path)
     migrate_targets_to_yaml(config_path=CONFIG_PATH, sqlite_path=sqlite_path)
+    migrate_sources_to_yaml(config_path=CONFIG_PATH, sqlite_path=sqlite_path)
     reload_settings()  # 迁移可能新建 model_providers.yaml，清缓存让 providers 重新从 store 注入
 
 
