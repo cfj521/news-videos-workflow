@@ -23,6 +23,10 @@ def _isolate_store_paths(tmp_path, monkeypatch):
         "app.store.sources_store.NEWS_SOURCES_PATH",
         tmp_path / "news_sources.yaml",
     )
+    monkeypatch.setattr(
+        "app.store.schedules_store.SCHEDULE_PATH",
+        tmp_path / "schedule.yaml",
+    )
 
 
 @pytest.fixture
