@@ -34,14 +34,19 @@ YouTube Data API v3。项目已有基础实现: `backend/app/providers/publisher
 
 OAuth 2.0 + refresh_token 自动续期。
 
+凭证（`client_id` / `client_secret` / `refresh_token`）来自该 YouTube 账号自己的
+target 配置（`publish_targets.yaml` 的 `targets.<slug>.config`，在「发布管理」页填写），
+不再有全局共享的 OAuth client。
+
 ```python
 from google.oauth2.credentials import Credentials
 
+# client_id / client_secret / refresh_token 均取自 target.config（每账号自包含）
 creds = Credentials(
     token=None,
-    refresh_token=cfg.youtube.refresh_token,
-    client_id=cfg.youtube.client_id,
-    client_secret=cfg.youtube.client_secret,
+    refresh_token=refresh_token,
+    client_id=client_id,
+    client_secret=client_secret,
     token_uri="https://oauth2.googleapis.com/token",
 )
 ```
@@ -500,40 +505,47 @@ playwright install chromium
 
 ---
 
-## config.yaml 配置结构设计
+## 凭证存储结构（`publish_targets.yaml`）
+
+发布平台凭证**不在 `config.yaml`**，而是按账号（target）存于仓库根的
+`publish_targets.yaml`，在「发布管理」页可视化增删改。每个 target 自包含全部凭证，
+互不共享（YouTube 也无全局 OAuth client）。
 
 ```yaml
-youtube:
-  client_id: ""
-  client_secret: ""
-  refresh_token: ""      # 首次授权后自动保存
+targets:
+  <slug>:                      # slug 为主键，由账号名生成
+    name: "youtube cfj521"     # 显示名
+    platform: youtube          # youtube | instagram | bilibili | douyin | kuaishou
+    enabled: true
+    created_at: "2026-06-08T..."
+    config:                    # 各平台凭证字段（见下）
+      ...
+```
 
-instagram:
-  user_id: ""
-  access_token: ""       # 长期令牌
-  file_host: "s3"        # s3 / local / ngrok
+各平台 `config` 字段：
 
-bilibili:
-  sessdata: ""           # 必填
-  bili_jct: ""           # 必填（CSRF）
-  dede_user_id: ""       # 强烈建议（上传者 UID）
-  buvid3: ""             # 建议（设备指纹）
-  buvid4: ""             # 建议（新版设备指纹）
-  ac_time_value: ""      # 可选（登录态续期）
+```yaml
+# youtube —— 该账号自带完整 OAuth 凭证
+config: { client_id: "", client_secret: "", refresh_token: "" }
 
-douyin:
-  method: "api"          # api / playwright
-  client_key: ""         # method=api 时使用
-  client_secret: ""
-  access_token: ""
-  cookie_path: ""        # method=playwright 时使用
+# instagram
+config: { user_id: "", access_token: "", file_host_url: "" }
 
-kuaishou:
-  method: "api"          # api / playwright
-  app_id: ""
-  app_secret: ""
-  access_token: ""
-  cookie_path: ""
+# bilibili —— 浏览器 Cookie
+config:
+  sessdata: ""          # 必填
+  bili_jct: ""          # 必填（CSRF）
+  dede_user_id: ""      # 强烈建议（上传者 UID）
+  buvid3: ""            # 建议（设备指纹）
+  buvid4: ""            # 建议（新版设备指纹）
+  ac_time_value: ""     # 可选（登录态续期）
+  tid: "17"             # 分区 ID
+
+# douyin
+config: { method: "playwright", client_key: "", client_secret: "", access_token: "" }
+
+# kuaishou
+config: { method: "playwright", app_id: "", app_secret: "", access_token: "" }
 ```
 
 ---

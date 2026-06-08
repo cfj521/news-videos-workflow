@@ -80,7 +80,7 @@ cd frontend && pnpm build     # frontend type-check + build
 - **Pipeline** page: the single place that selects **which provider + model** each purpose uses (summary / script / image / vision / TTS), plus default resolution, language, video route, and the ComfyUI video model + fps.
 - **ComfyUI** page: per-workflow steps/cfg parameters for image (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx) workflows.
 - **Prompts** page: editable Chinese / English prompt sets — the task language decides which set is used.
-- **Publishing platforms**: credentials are configured per platform on the "Publishers" page (stored in the DB), not in the config file.
+- **Publishing platforms**: credentials are configured per account on the "Publishers" page and stored in `publish_targets.yaml` at the repo root (each account is self-contained), not in `config.yaml`.
 
 ## ComfyUI models (local image/video generation)
 

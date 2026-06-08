@@ -98,7 +98,8 @@ pnpm test                        # Vitest
 - `text` / `image` / `vision` / `tts` / `summary` — 各 AI provider 的 provider/base_url/model/api_key
 - `pipeline` — 默认时间范围、最大文章数、视频路线（comfyui | hyperframes | audio）等
 - `comfyui` — 本地图片/视频生成的 workflow 与每流 steps/cfg
-- 发布平台凭证不在此文件，存 DB（「发布管理」页配置）
+- `hyperframes` — Hyperframes 视频路线的渲染参数（fps / 转场 / 字幕等；原 `video` 段，已重命名）
+- 发布平台凭证不在此文件，存仓库根的 `publish_targets.yaml`（按账号，「发布管理」页配置）
 
 ## Conventions
 
