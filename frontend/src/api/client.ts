@@ -1,4 +1,4 @@
-import type { NewsSource, PipelineRun, PublishTarget } from "../types";
+import type { NewsSource, PipelineRun, PublishTarget, Schedule, RunCreatePayload } from "../types";
 
 const BASE = "/api";
 const TOKEN_KEY = "nv_token";
@@ -261,6 +261,17 @@ export const api = {
         body: JSON.stringify(body),
       }),
     promptDefaults: () => fetchJSON<Record<string, { label: string; desc: string; default: string; default_en: string }>>("/settings/prompts/defaults"),
+  },
+  schedules: {
+    list: () => fetchJSON<Schedule[]>("/schedules/"),
+    create: (body: { name: string; freq: string; run_at: string; payload: RunCreatePayload }) =>
+      fetchJSON<Schedule>("/schedules/", { method: "POST", body: JSON.stringify(body) }),
+    toggle: (slug: string, enabled: boolean) =>
+      fetchJSON<Schedule>(`/schedules/${slug}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+    remove: (slug: string) =>
+      fetchJSON<{ status: string }>(`/schedules/${slug}`, { method: "DELETE" }),
+    runNow: (slug: string) =>
+      fetchJSON<{ status: string }>(`/schedules/${slug}/run-now`, { method: "POST" }),
   },
   auth: {
     login: (username: string, password: string) =>

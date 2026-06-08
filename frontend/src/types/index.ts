@@ -178,3 +178,33 @@ export const BACKEND_STAGE_MAP: Record<number, number[]> = {
   5: [5],
   6: [6],
 };
+
+export type ScheduleFreq = "once" | "daily" | "weekly" | "monthly";
+
+/** 建任务参数（创建任务与计划任务共用的请求体）。 */
+export interface RunCreatePayload {
+  mode?: string;
+  video_route?: string;
+  time_range?: string;
+  max_articles?: number;
+  selected_stages?: number[];
+  publish_platforms?: string[];
+  auto_collect?: boolean;
+  resolution?: string;
+  language?: string;
+  max_images?: number;
+  source_ids?: string[];
+  aihot_config?: { method: string; category?: string; report_date?: string; week_start?: string };
+}
+
+export interface Schedule {
+  slug: string;
+  name: string;
+  enabled: boolean;
+  freq: ScheduleFreq;
+  run_at: string;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_run_id: number | null;
+  created_at: string | null;
+}
