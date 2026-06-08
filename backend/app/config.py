@@ -383,7 +383,8 @@ def get_settings() -> Settings:
         stored = providers_store.load_providers()
         if stored:
             _settings.providers = stored  # 从 model_providers.yaml 注入 providers 凭证
-        _settings.youtube = YouTubeCfg(**targets_store.load_youtube_client())  # 从 publish_targets.yaml 注入
+        # youtube client 从 publish_targets.yaml 注入
+        _settings.youtube = YouTubeCfg(**targets_store.load_youtube_client())
         _ensure_default_models(_settings)
         _migrate_comfyui_keys(_settings)
         import logging
@@ -396,7 +397,8 @@ def save_settings(settings: Settings) -> None:
     _settings = settings
     from app.store import providers_store, targets_store
     providers_store.save_providers(settings.providers)  # providers 凭证写入 model_providers.yaml
-    targets_store.save_youtube_client(settings.youtube.model_dump())  # youtube client 写入 publish_targets.yaml
+    # youtube client 写入 publish_targets.yaml
+    targets_store.save_youtube_client(settings.youtube.model_dump())
     data = settings.model_dump()
     data.pop("providers", None)  # providers 走 providers_store，不写 config.yaml
     data.pop("youtube", None)    # youtube 走 targets_store，不写 config.yaml
