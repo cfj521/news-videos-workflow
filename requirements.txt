@@ -38,3 +38,5 @@ biliup
 google-api-python-client
 google-auth
 google-auth-oauthlib
+APScheduler>=3.10
+tzlocal>=5.0

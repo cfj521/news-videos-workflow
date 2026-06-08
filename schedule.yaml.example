@@ -1,0 +1,23 @@
+# 计划任务定义（由「计划任务」页写入；本文件为模板，实际文件 schedule.yaml 不入库）
+schedules: {}
+# 示例：
+#   daily_ai:
+#     name: "每日AI日报"
+#     enabled: true
+#     freq: daily               # once | daily | weekly | monthly
+#     run_at: "2026-06-15T08:00:00"   # 锚点本地时刻（无时区）；daily/weekly/monthly 取其时分/星期/号
+#     created_at: "2026-06-09T10:00:00+00:00"
+#     last_run_at: null
+#     last_run_id: null
+#     payload:                  # 整份建任务参数；触发时 mode 强制 auto
+#       video_route: hyperframes
+#       time_range: "7d"
+#       max_articles: 5
+#       selected_stages: [1, 2, 3, 4, 5, 6]
+#       publish_platforms: []
+#       resolution: "1080x1920"
+#       language: "zh"
+#       max_images: 10
+#       auto_collect: true
+#       source_ids: null
+#       aihot_config: { method: "items" }
