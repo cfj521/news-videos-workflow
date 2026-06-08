@@ -1254,6 +1254,8 @@ export function DashboardPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PipelineRun | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [pendingStop, setPendingStop] = useState<PipelineRun | null>(null);
+  const [stopping, setStopping] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -1264,15 +1266,18 @@ export function DashboardPage() {
     }
   }, [runs, expandedId]);
 
-  const stopRun = async (e: React.MouseEvent, run: PipelineRun) => {
-    e.stopPropagation();
-    if (!window.confirm(`确认终止任务 #${run.id}？正在进行的步骤会在当前操作完成后停止。`)) return;
+  const confirmStop = async () => {
+    if (!pendingStop) return;
+    setStopping(true);
     try {
-      await api.runs.stop(run.id);
+      await api.runs.stop(pendingStop.id);
       showToast("已请求终止", "success");
       mutate();
+      setPendingStop(null);
     } catch {
       showToast("终止失败", "error");
+    } finally {
+      setStopping(false);
     }
   };
 
@@ -1328,7 +1333,7 @@ export function DashboardPage() {
               {run.status === "processing" && (
                 <button
                   type="button"
-                  onClick={(e) => stopRun(e, run)}
+                  onClick={(e) => { e.stopPropagation(); setPendingStop(run); }}
                   title="终止此任务"
                   aria-label="终止此任务"
                   className="ml-1 inline-flex items-center justify-center p-1 rounded text-red-300 bg-red-500/15 border border-red-500/25 hover:bg-red-500/25 transition"
@@ -1367,6 +1372,21 @@ export function DashboardPage() {
               <button onClick={() => setPendingDelete(null)} disabled={deleting} className={btnSecondary}>取消</button>
               <button onClick={confirmDelete} disabled={deleting} className={btnDelete}>
                 {deleting ? "删除中..." : "删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingStop && (
+        <div className={dialogOverlayCls} onClick={() => { if (!stopping) setPendingStop(null); }}>
+          <div className={`${dialogPanelCls} w-[360px]`} onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-2">终止任务 #{pendingStop.id}</h2>
+            <p className="text-sm text-white/76 mb-5 leading-relaxed">正在进行的步骤会在当前操作完成后停止。</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setPendingStop(null)} disabled={stopping} className={btnSecondary}>取消</button>
+              <button onClick={confirmStop} disabled={stopping} className={btnDelete}>
+                {stopping ? "终止中..." : "终止"}
               </button>
             </div>
           </div>
