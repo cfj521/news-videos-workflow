@@ -49,7 +49,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   // null = 用户尚未手动改动 → 默认全选所有可用账号；非 null = 用户的具体选择
   const [targetIds, setTargetIds] = useState<Set<string> | null>(null);
   // null = 用默认规则；非 null = 用户显式选择
-  const [sourceIds, setSourceIds] = useState<Set<number> | null>(null);
+  const [sourceIds, setSourceIds] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(false);
   const [resolution, setResolution] = useState("");
   const [language, setLanguage] = useState("");
@@ -136,7 +136,7 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
     });
   };
 
-  const toggleSource = (id: number) => {
+  const toggleSource = (id: string) => {
     setSourceIds((prev) => {
       const base = prev ?? new Set(availableSources.map((s) => s.id));
       const next = new Set(base);
@@ -218,8 +218,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
                     variant="chips" searchable selectAll
                     allSelected={allSourcesSelected}
                     onSelectAll={onSelectAllSources}
-                    values={[...effectiveSourceIds].map(String)}
-                    onToggle={(v) => toggleSource(Number(v))}
+                    values={[...effectiveSourceIds]}
+                    onToggle={(v) => toggleSource(v)}
                     options={availableSources.map((s) => ({ value: String(s.id), label: s.name }))}
                     placeholder="选择信息源..."
                   />

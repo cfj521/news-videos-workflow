@@ -22,7 +22,7 @@ export interface PipelineRun {
 }
 
 export interface NewsSource {
-  id: number;
+  id: string;
   name: string;
   type: "rss" | "api" | "search" | "scrape";
   url: string;
@@ -33,7 +33,6 @@ export interface NewsSource {
   pinned: boolean;
   tier: string;
   config_json: string | null;
-  created_at: string;
 }
 
 /** 判断信息源是否为 AI HOT 聚合源（与后端 _resolve_collector_type 的判断一致）。 */

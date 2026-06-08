@@ -26,7 +26,7 @@ function sortSources(sources: NewsSource[], key: SortKey, dir: SortDir): NewsSou
 
 // ── Drag & drop ─────────────────────────────────────────
 
-function useDragReorder(items: NewsSource[], onReorder: (ids: number[], priorityMap: Record<number, number>) => void) {
+function useDragReorder(items: NewsSource[], onReorder: (ids: string[], priorityMap: Record<string, number>) => void) {
   const dragIdx = useRef<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
 
@@ -47,7 +47,7 @@ function useDragReorder(items: NewsSource[], onReorder: (ids: number[], priority
     const [moved] = reordered.splice(fromIdx, 1);
     reordered.splice(dropIdx, 0, moved);
 
-    const priorityMap: Record<number, number> = {};
+    const priorityMap: Record<string, number> = {};
     reordered.forEach((s, i) => { priorityMap[s.id] = i + 1; });
     onReorder(reordered.map((s) => s.id), priorityMap);
   }, [items, onReorder]);
@@ -183,7 +183,7 @@ export function SourcesPage() {
     }
   };
 
-  const handleReorder = async (ids: number[], priorityMap: Record<number, number>) => {
+  const handleReorder = async (ids: string[], priorityMap: Record<string, number>) => {
     await api.sources.batch({ ids, priority_map: priorityMap });
     mutate();
   };

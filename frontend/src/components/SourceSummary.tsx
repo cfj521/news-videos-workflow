@@ -15,8 +15,8 @@ export function SourceSummary({ run }: { run: PipelineRun }) {
   const aihot = run.aihot_config
     ? (() => { try { return JSON.parse(run.aihot_config) as { method?: string }; } catch { return null; } })()
     : null;
-  const ids: number[] = run.source_ids
-    ? (() => { try { return JSON.parse(run.source_ids) as number[]; } catch { return []; } })()
+  const ids: string[] = run.source_ids
+    ? (() => { try { return JSON.parse(run.source_ids) as string[]; } catch { return []; } })()
     : [];
   const names = (sources ?? []).filter((s) => ids.includes(s.id)).map((s) => s.name);
 

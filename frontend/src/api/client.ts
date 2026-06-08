@@ -120,7 +120,7 @@ export const api = {
       resolution?: string;
       language?: string;
       max_images?: number;
-      source_ids?: number[];
+      source_ids?: string[];
       aihot_config?: { method: string; category?: string; report_date?: string; week_start?: string };
     }) =>
       fetchJSON<PipelineRun>("/pipeline/runs", {
@@ -226,17 +226,17 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    update: (id: number, body: Partial<NewsSource>) =>
+    update: (id: string, body: Partial<NewsSource>) =>
       fetchJSON<NewsSource>(`/sources/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    batch: (body: { ids: number[]; enabled?: boolean; pinned?: boolean; priority_map?: Record<number, number> }) =>
+    batch: (body: { ids: string[]; enabled?: boolean; pinned?: boolean; priority_map?: Record<string, number> }) =>
       fetchJSON<NewsSource[]>("/sources/batch", {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    remove: (id: number) =>
+    remove: (id: string) =>
       fetchJSON<void>(`/sources/${id}`, { method: "DELETE" }),
   },
   publishers: {
