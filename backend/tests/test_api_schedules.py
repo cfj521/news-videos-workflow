@@ -78,3 +78,13 @@ def test_patch_edit_to_once_past_rejected(client):
         "name": "Daily AI", "freq": "daily", "run_at": "2026-06-15T08:00:00", "payload": PAYLOAD})
     r = client.patch("/api/schedules/daily_ai", json={"freq": "once", "run_at": "2000-01-01T08:00:00"})
     assert r.status_code == 400
+
+
+def test_patch_pure_toggle_skips_once_past_check(client):
+    # 模拟一条「已触发」的 once：enabled=False、run_at 在过去（store 直写，因 API 不允许建过去的 once）
+    ss.create_schedule(name="Old Once", freq="once", run_at="2000-01-01T08:00:00",
+                       payload=PAYLOAD, enabled=False, slug="old_once")
+    # 纯启停 PATCH 不含 freq/run_at，不应被 once 过期校验拦截
+    r = client.patch("/api/schedules/old_once", json={"enabled": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["enabled"] is True

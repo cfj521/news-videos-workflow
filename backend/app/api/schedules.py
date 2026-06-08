@@ -49,11 +49,13 @@ def update_schedule(slug: str, body: ScheduleUpdate):
         patch["run_at"] = body.run_at.isoformat()
     if body.payload is not None:
         patch["payload"] = body.payload.model_dump()
-    # 用合并后的有效值做 once 过期校验（对齐 POST）
-    eff_freq = patch.get("freq", existing.freq)
-    eff_run_at = patch.get("run_at", existing.run_at)
-    if eff_freq == "once" and datetime.fromisoformat(eff_run_at) <= datetime.now():
-        raise HTTPException(status_code=400, detail="执行时间已过去")
+    # once 过期校验只在本次实际改动排期时分（freq/run_at）时做，用合并后的有效值（对齐 POST）。
+    # 纯启停 / 改名 / 改 payload（如对已触发的 once 重新启用）不应被过去的 run_at 拦截。
+    if "freq" in patch or "run_at" in patch:
+        eff_freq = patch.get("freq", existing.freq)
+        eff_run_at = patch.get("run_at", existing.run_at)
+        if eff_freq == "once" and datetime.fromisoformat(eff_run_at) <= datetime.now():
+            raise HTTPException(status_code=400, detail="执行时间已过去")
     s = schedules_store.update_schedule(slug, patch)
     if s.enabled:
         scheduler.register(s, get_session_factory())
