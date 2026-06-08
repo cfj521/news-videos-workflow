@@ -247,3 +247,56 @@ def build_codex_client(access_token, account_id):
 - 不做 Docker/WSL 下的 1455 端口映射（本特性按本机 uvicorn 运行设计）。
 - 不做订阅模式的 TTS。
 - 不做多 ChatGPT 账号切换（单条 openai 记录）。
+
+---
+
+## 运行时发现：订阅生图的 ~180s 网关超时（2026-06-09，run #12）
+
+实跑后发现订阅模式生图存在一个**服务端侧的硬超时**，记录如下，供后续优化与排障参考。
+
+### 现象
+
+run #12（6 个场景）中，scene 5 连失 2 次、scene 6 失 1 次，均靠 `_with_retry`（3 次重试）救回，
+最终 `6/6 ok`。失败日志（`nv.stage3` / `nv.provider.image.openai`，落 `app.log`，**不在** per-run `pipeline.log`）：
+
+```
+generate(sub) image failed after 180.3s
+图片 S5 第 1/3 次失败：peer closed connection without sending complete message body
+                       (incomplete chunked read) — 5.3s 后重试
+```
+
+三次失败**全部精确卡在 180.3s**。
+
+### 根因（已用完整 traceback 确认）
+
+异常类型是 `httpx.RemoteProtocolError: peer closed connection`，traceback 终止于
+`httpcore ... _receive_response_body` —— 即**已收到 200、正在读 chunked 流式响应体的途中**，
+对端（peer）主动断开了 TCP。结论：
+
+- **不是限流**。限流会是 HTTP 429 / `openai.RateLimitError`，带 `rate_limit_exceeded`，是另一类异常。
+- **不是客户端超时**。`build_codex_client`（`openai_oauth.py:306`）调 `AsyncOpenAI(...)` **未传 `timeout`**，
+  SDK 默认总超时 600s，远大于 180s；且客户端超时会抛 `httpx.ReadTimeout` / `APITimeoutError`，不是 "peer closed"。
+- **是服务端/网关掐的**。连接目标 `https://chatgpt.com/backend-api/codex`（ChatGPT 后端，借 codex 端点生图）
+  这条链路上的网关对单次（流式）响应有 ~180s（典型 `proxy_read_timeout` 量级）的硬上限。
+  这个 codex 端点本为对话设计，而 gpt-image-2 出图耗时 100~180s 正贴着上限，超了即断流。
+  成功的几张（106s、178.8s）都是踩线过的。
+
+> 端点物理上**无法回报具体原因**：它已回 200 并开始 chunked 传输，中途断 TCP，没有 4xx/5xx 也没有 error JSON body。
+> `log.exception` 已记录完整 traceback，`ProviderError(cause=e)` 也用 `str(cause)` 透传了 httpx 原话——信息没被吞，是确实没有。
+
+### 关于"灰色端点"措辞的更新
+
+原"风险声明"称该端点为"未公开接口"。据 Simon Willison《GPT-5.5》（2026-04-23）记述，
+OpenAI 的 Romain Huet 已确认 `/backend-api/codex/responses` **对 ChatGPT 订阅用户为官方支持**的端点
+（GPT-5.5 初期无 API，只通过 ChatGPT / Codex 提供）。即"端点本身受支持"，但仍**借用 codex client_id**，
+且该端点**为对话场景设计、对长耗时响应有网关超时**，并非为图像生成等长任务优化——这是本次超时的本质。
+
+### 待优化（未实施，需用户确认后动手）
+
+1. **客户端主动超时 + 早重试**：给 `_generate_subscription` 的流加 ~150s read timeout，超时即主动
+   `raise TimeoutError("出图超 150s，疑似服务端响应上限")` 并进重试，省掉干等 180s 被掐的时间，日志也更明确。
+2. **断连前进度日志**：`except` 里补记"断连前收到过几个 `partial_image` / 是否进过 `image_generation_call`"，
+   用于区分"压根没开始生成"还是"生成中途被掐"。
+3. **降低单次耗时**：降出图尺寸 / 精简 prompt，把单张压到 180s 以下，从源头减少触发。
+4. **进度计数口径**：`runner.py:650` 的 `img_count` 是 nonlocal **累计调用次数**（含重试），分母却是场景总数，
+   重试即溢出成 `7/6`、`8/6`、`9/6`。应改为按"完成场景数"计，或显式拆成"场景 i / 第 n 次尝试"。
