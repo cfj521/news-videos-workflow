@@ -1063,3 +1063,11 @@ def _ffmpeg_merge_audio(script: dict, assets_dir, run_dir) -> str:
     )
     get_logger("runner").info("Merged %d audio clips → %s", len(list_lines), output_path)
     return output_path
+
+
+def run_pipeline_bg(run_id: int, session_factory) -> None:
+    """串行执行器的同步入口：在独立线程内跑完整条异步流水线。
+
+    原定义在 api/pipeline.py，为避免「调度层 → API 层」的循环 import 下沉到此（干净下层）。
+    """
+    asyncio.run(execute_pipeline(run_id, session_factory))

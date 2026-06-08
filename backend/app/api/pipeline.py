@@ -16,7 +16,7 @@ from app.config import get_settings, reload_settings
 from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
-from app.pipeline.runner import execute_pipeline, _collectors_for_run, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final
+from app.pipeline.runner import execute_pipeline, _collectors_for_run, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final, run_pipeline_bg
 from app.pipeline.serial_executor import submit as serial_submit
 from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
 
@@ -91,8 +91,7 @@ def update_run(run_id: int, body: _RunUpdate, db: Session = Depends(get_db)):
     return run
 
 
-def _run_pipeline_bg(run_id: int, session_factory):
-    asyncio.run(execute_pipeline(run_id, session_factory))
+_run_pipeline_bg = run_pipeline_bg
 
 
 @router.get("/runs", response_model=list[PipelineRunRead])
