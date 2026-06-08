@@ -161,6 +161,8 @@ def get_valid_access_token() -> tuple[str, str]:
             expires_at2 = _parse_iso(data.expires_at)
             now2 = datetime.now(timezone.utc)
             if not expires_at2 or (expires_at2 - now2).total_seconds() < _REFRESH_MARGIN:
+                if not data.refresh_token:
+                    raise NotLoggedInError("缺少 refresh_token，请重新登录 OpenAI（订阅模式）")
                 tok = refresh_tokens(data.refresh_token)
                 _apply_tokens(data, tok)
                 providers_store.save_oauth(_PROVIDER, data)
