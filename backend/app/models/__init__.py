@@ -3,7 +3,6 @@ from .base import Base as Base
 from .base import TimestampMixin as TimestampMixin
 from .issue_summary import IssueSummary as IssueSummary
 from .news_source import NewsSource as NewsSource
-from .oauth_credential import OAuthCredential as OAuthCredential
 from .oauth_credential import OAuthLoginSession as OAuthLoginSession
 from .pipeline_run import PipelineRun as PipelineRun
 from .publish_record import PublishRecord as PublishRecord
