@@ -268,6 +268,8 @@ export const api = {
       fetchJSON<Schedule>("/schedules/", { method: "POST", body: JSON.stringify(body) }),
     toggle: (slug: string, enabled: boolean) =>
       fetchJSON<Schedule>(`/schedules/${slug}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+    update: (slug: string, body: { name?: string; freq?: string; run_at?: string; payload?: RunCreatePayload }) =>
+      fetchJSON<Schedule>(`/schedules/${slug}`, { method: "PATCH", body: JSON.stringify(body) }),
     remove: (slug: string) =>
       fetchJSON<{ status: string }>(`/schedules/${slug}`, { method: "DELETE" }),
     runNow: (slug: string) =>

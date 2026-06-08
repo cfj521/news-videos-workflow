@@ -207,4 +207,5 @@ export interface Schedule {
   last_run_at: string | null;
   last_run_id: number | null;
   created_at: string | null;
+  payload: RunCreatePayload;
 }
