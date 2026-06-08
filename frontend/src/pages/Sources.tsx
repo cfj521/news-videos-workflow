@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { btnPrimary, TYPE_CHIP, cardCls, chipCls, sectionTitleCls, toggleCls, toggleThumbCls } from "../styles";
 import { AddSourceDialog } from "../components/AddSourceDialog";
 import { EditSourceDialog } from "../components/EditSourceDialog";
+import { PlusIcon } from "../components/icons";
 import { DeleteIconButton } from "../components/DeleteIconButton";
 import { type NewsSource, isAihotSource } from "../types";
 
@@ -196,8 +197,8 @@ export function SourcesPage() {
     <div>
       <div className="flex justify-between items-center mb-2">
         <h1 className="text-2xl font-bold tracking-tight">信息源管理</h1>
-        <button onClick={() => setShowAdd(true)} className={btnPrimary}>
-          + 添加信息源
+        <button onClick={() => setShowAdd(true)} className={btnPrimary} title="添加信息源" aria-label="添加信息源">
+          <PlusIcon />
         </button>
       </div>
       <p className="text-xs text-white/46 mb-5">启用 = 作为新建任务的可选信息源；具体某次任务使用哪些，在「新建任务」窗口里选择。</p>

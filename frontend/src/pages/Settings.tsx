@@ -4,6 +4,8 @@ import { api, type AppSettings, type AuthUser, type ProviderCreds, type OpenAIAu
 import { useToast } from "../components/Toast";
 import { Select } from "../components/Select";
 import { PasswordInput } from "../components/PasswordInput";
+import { IconButton } from "../components/IconButton";
+import { ResetIcon } from "../components/icons";
 import {
   inputCls as _inputCls,
   monoInputCls as _monoInputCls,
@@ -229,7 +231,6 @@ function PromptRow({ label, desc, zhValue, enValue, onZh, onEn, onResetZh, onRes
   }, [zhValue, enValue]);
   const ta = "w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/96 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40";
   const badge = "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium";
-  const resetBtn = "px-2 py-0.5 text-[11px] rounded-md border border-white/[0.08] bg-white/[0.04] text-white/55 hover:text-white/85 hover:bg-white/[0.08] transition";
   return (
     <div className="mb-5">
       <label className="text-sm text-white/92">{label}<span className="text-white/60 text-xs ml-2">{desc}</span></label>
@@ -237,14 +238,14 @@ function PromptRow({ label, desc, zhValue, enValue, onZh, onEn, onResetZh, onRes
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className={`${badge} bg-blue-500/15 text-blue-300`}>中文</span>
-            <button onClick={onResetZh} className={resetBtn}>恢复默认</button>
+            <IconButton onClick={onResetZh} title="恢复默认" className="p-1"><ResetIcon size={14} /></IconButton>
           </div>
           <textarea ref={zhRef} value={zhValue} onChange={(e) => onZh(e.target.value)} className={ta} style={{ maxHeight: maxPx }} />
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className={`${badge} bg-violet-500/15 text-violet-300`}>English</span>
-            <button onClick={onResetEn} className={resetBtn}>恢复默认</button>
+            <IconButton onClick={onResetEn} title="恢复默认" className="p-1"><ResetIcon size={14} /></IconButton>
           </div>
           <textarea ref={enRef} value={enValue} onChange={(e) => onEn(e.target.value)} className={ta} style={{ maxHeight: maxPx }} />
         </div>

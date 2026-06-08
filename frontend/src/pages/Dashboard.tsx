@@ -4,13 +4,16 @@ import { api, type ScriptData, type TimelineData, type AppSettings, type Publish
 import {
   btnPrimary, btnSecondary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
   sectionTitleCls, inputCls, labelCls, errorTextCls,
-  btnRegenAudio, btnRegenImage, btnRegenPrompt, btnRegen,
-  btnApprove, btnDelete, btnDeleteCompact, btnDeleteIcon, btnAdd, btnEdit,
+  btnRegenAudio, btnRegenImage, btnRegenPrompt,
+  btnApprove, btnDelete, btnDeleteIcon,
   dialogOverlayCls, dialogPanelCls,
 } from "../styles";
 import { Select } from "../components/Select";
 import { CreateRunDialog } from "../components/CreateRunDialog";
 import { SourceSummary } from "../components/SourceSummary";
+import { IconButton } from "../components/IconButton";
+import { DeleteIconButton } from "../components/DeleteIconButton";
+import { PencilIcon, PlusIcon, ImportIcon, RefreshIcon } from "../components/icons";
 import { useToast } from "../components/Toast";
 import type { PipelineRun } from "../types";
 import { STAGE_LABELS, VISIBLE_STAGES, BACKEND_STAGE_MAP, PLATFORM_LABELS } from "../types";
@@ -265,12 +268,13 @@ function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     <div>
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm text-white/66">{list.length} 篇文章</span>
-        <div className="flex gap-2">
-          <button onClick={() => setImporting(true)} className={btnAdd}>导入</button>
-          <button onClick={() => setAdding(true)} className={btnAdd}>+ 添加文章</button>
-          <button onClick={() => setConfirmReroll(true)} disabled={rerolling || isDaily}
-            title={isDaily ? "日报无需重新采集（同一份当日日报）" : undefined} className={btnRegen}>
-            {rerolling ? (isWeekly ? "总结中..." : "采集中...") : rerollLabel}</button>
+        <div className="flex gap-1.5">
+          <IconButton onClick={() => setImporting(true)} title="导入文章"><ImportIcon /></IconButton>
+          <IconButton onClick={() => setAdding(true)} title="添加文章" variant="primary"><PlusIcon /></IconButton>
+          <IconButton onClick={() => setConfirmReroll(true)} disabled={rerolling || isDaily}
+            title={isDaily ? "日报无需重新采集（同一份当日日报）" : (rerolling ? (isWeekly ? "总结中..." : "采集中...") : rerollLabel)}>
+            <RefreshIcon className={rerolling ? "animate-spin" : ""} />
+          </IconButton>
         </div>
       </div>
       {list.length === 0 && <p className="text-white/60 text-sm">暂无文章，点「导入」或「添加文章」</p>}
@@ -286,9 +290,9 @@ function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
                   <div className="text-[11px] text-white/52 mt-1">{String(a.source ?? "")}</div>
                   {a.summary ? <p className="text-xs text-white/66 mt-2 leading-relaxed">{String(a.summary)}</p> : null}
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={() => setEditing({ idx: i, rec: a })} className={btnEdit}>编辑</button>
-                  <button onClick={() => onDelete(i)} className={btnDeleteCompact}>删除</button>
+                <div className="flex gap-1 shrink-0">
+                  <IconButton onClick={() => setEditing({ idx: i, rec: a })} title="编辑文章"><PencilIcon /></IconButton>
+                  <DeleteIconButton onClick={() => onDelete(i)} title="删除文章" />
                 </div>
               </div>
             </div>
@@ -422,9 +426,10 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
               <PresetInput value={imgSize} onChange={setImgSize} onCommit={handleImgSizeCommit} presets={RES_PRESETS} className="w-40" />
             </>
           )}
-          <button onClick={() => setConfirmRegen(true)} disabled={regenning} className={btnRegen}>
-            {regenning ? "生成中..." : "重新生成脚本"}
-          </button>
+          <IconButton onClick={() => setConfirmRegen(true)} disabled={regenning}
+            title={regenning ? "生成中..." : "重新生成脚本（覆盖所有分镜）"}>
+            <RefreshIcon className={regenning ? "animate-spin" : ""} />
+          </IconButton>
         </div>
       </div>
 
@@ -434,7 +439,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
           <div key={gid} className="mb-5">
             <div className="flex items-center justify-between mb-2">
               <h4 className={sectionTitleCls}>{groupTitle(gid)}</h4>
-              <button onClick={() => setAddGroup(gid)} className={btnAdd}>+ 新增分镜</button>
+              <IconButton onClick={() => setAddGroup(gid)} title="新增分镜" variant="primary"><PlusIcon /></IconButton>
             </div>
             <div className="space-y-3">
               {groupScenes.map((scene) => {
@@ -564,7 +569,7 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
             <span className="text-xs text-white/60 font-mono">场景 {sid}</span>
             {durationS && <span className="text-xs text-white/52 font-mono">{durationS}s</span>}
             {onDelete && (
-              <button onClick={() => setConfirmDel(true)} className={btnDeleteCompact} title="删除分镜">删除</button>
+              <DeleteIconButton onClick={() => setConfirmDel(true)} title="删除分镜" />
             )}
           </div>
 

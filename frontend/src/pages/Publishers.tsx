@@ -11,6 +11,7 @@ import {
 import { Select } from "../components/Select";
 import { PasswordInput } from "../components/PasswordInput";
 import { DeleteIconButton } from "../components/DeleteIconButton";
+import { PlusIcon } from "../components/icons";
 
 const PLATFORM_OPTIONS = Object.entries(PLATFORM_LABELS).map(([k, v]) => ({ value: k, label: v }));
 
@@ -153,7 +154,7 @@ export function PublishersPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold tracking-tight">发布管理</h1>
-        <button onClick={() => setDialog({ target: null })} className={btnPrimary}>+ 添加平台</button>
+        <button onClick={() => setDialog({ target: null })} className={btnPrimary} title="添加平台" aria-label="添加平台"><PlusIcon /></button>
       </div>
 
       <div className="space-y-3">
