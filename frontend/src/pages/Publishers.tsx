@@ -154,7 +154,7 @@ export function PublishersPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold tracking-tight">发布管理</h1>
-        <button onClick={() => setDialog({ target: null })} className={btnPrimary} title="添加平台" aria-label="添加平台"><PlusIcon /></button>
+        <button onClick={() => setDialog({ target: null })} className={`${btnPrimary} inline-flex items-center gap-1.5`}><PlusIcon /> 添加平台</button>
       </div>
 
       <div className="space-y-3">

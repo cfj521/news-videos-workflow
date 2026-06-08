@@ -573,30 +573,32 @@ function SceneEditor({ runId, scene, durationS, mutateScript, imgSize, refreshTi
           </div>
 
           <div>
-            <div className="text-[11px] text-white/60 mb-1">旁白</div>
-            <textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={6} className={`${inputCls} text-[13px]`} />
-            <div className="flex gap-1.5 mt-1.5">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[11px] text-white/60">旁白</span>
               <IconButton onClick={handleRegenAudio} disabled={regenAudioLoading}
-                title={regenAudioLoading ? "生成中..." : "重新配音"}>
-                <RefreshIcon className={regenAudioLoading ? "animate-spin" : ""} />
+                title={regenAudioLoading ? "生成中..." : "重新配音"} className="p-1">
+                <RefreshIcon size={14} className={regenAudioLoading ? "animate-spin" : ""} />
               </IconButton>
             </div>
+            <textarea value={narration} onChange={(e) => setNarration(e.target.value)} rows={6} className={`${inputCls} text-[13px]`} />
           </div>
 
           {!audioOnly && (
             <div>
-              <div className="text-[11px] text-white/60 mb-1">图片提示词</div>
-              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={5} className={`${inputCls} text-[13px] text-white/76 resize-y`} />
-              <div className="flex gap-1.5 mt-1.5">
-                <IconButton onClick={handleRegenPrompt} disabled={regenPromptLoading}
-                  title={regenPromptLoading ? "生成中..." : "重新生成提示词"}>
-                  <SparklesIcon className={regenPromptLoading ? "animate-pulse" : ""} />
-                </IconButton>
-                <IconButton onClick={handleRegenImage} disabled={regenImgLoading}
-                  title={regenImgLoading ? "生成中..." : "重新生成图片"}>
-                  <RefreshIcon className={regenImgLoading ? "animate-spin" : ""} />
-                </IconButton>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[11px] text-white/60">图片提示词</span>
+                <div className="flex items-center gap-0.5">
+                  <IconButton onClick={handleRegenPrompt} disabled={regenPromptLoading}
+                    title={regenPromptLoading ? "生成中..." : "重新生成提示词"} className="p-1">
+                    <SparklesIcon size={14} className={regenPromptLoading ? "animate-pulse" : ""} />
+                  </IconButton>
+                  <IconButton onClick={handleRegenImage} disabled={regenImgLoading}
+                    title={regenImgLoading ? "生成中..." : "重新生成图片"} className="p-1">
+                    <RefreshIcon size={14} className={regenImgLoading ? "animate-spin" : ""} />
+                  </IconButton>
+                </div>
               </div>
+              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={5} className={`${inputCls} text-[13px] text-white/76 resize-y`} />
             </div>
           )}
         </div>
