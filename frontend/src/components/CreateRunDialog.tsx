@@ -5,10 +5,13 @@ import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogP
 import { Select } from "./Select";
 import { MultiSelect } from "./MultiSelect";
 import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isTargetReady, isAihotSource } from "../types";
+import { formatScheduleSummary } from "../lib/schedule";
 
 interface Props {
   onCreated: () => void;
   onClose: () => void;
+  schedule?: boolean;          // true = 计划模式
+  onScheduled?: () => void;    // 计划创建成功回调
 }
 
 const VISUAL_DEPS: Record<number, number[]> = { 2: [1], 4: [1, 2], 5: [1, 2, 4], 6: [1, 2, 4, 5] };
@@ -39,8 +42,11 @@ const AIHOT_CATEGORIES = [
   { value: "tip", label: "技巧" },
 ];
 
-export function CreateRunDialog({ onCreated, onClose }: Props) {
+export function CreateRunDialog({ onCreated, onClose, schedule = false, onScheduled }: Props) {
   const [mode, setMode] = useState("auto");
+  const [freq, setFreq] = useState<"once" | "daily" | "weekly" | "monthly">("once");
+  const [runAt, setRunAt] = useState("");          // datetime-local 原始字符串
+  const [scheduleName, setScheduleName] = useState("");
   const [timeRange, setTimeRange] = useState("7d");
   const [maxArticles, setMaxArticles] = useState(5);
   const [autoCollect, setAutoCollect] = useState(true);
@@ -151,8 +157,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      await api.runs.create({
-        mode,
+      const payload = {
+        mode: schedule ? "auto" : mode,
         video_route: effVideoRoute,
         time_range: timeRange,
         max_articles: maxArticles,
@@ -161,19 +167,59 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
         resolution: effRes,
         language: effLang,
         max_images: effMaxImages,
-        auto_collect: autoCollect,
+        auto_collect: schedule ? true : autoCollect,
         ...(sourceMode === "aihot"
           ? { aihot_config: aihotCfg }
           : { source_ids: Array.from(effectiveSourceIds) }),
-      });
-      onCreated();
+      };
+      if (schedule) {
+        await api.schedules.create({
+          name: scheduleName.trim() || formatScheduleSummary(freq, runAt),
+          freq,
+          run_at: runAt,                 // 直接提交 datetime-local 原始串，勿 toISOString
+          payload,
+        });
+        onScheduled?.();
+      } else {
+        await api.runs.create(payload);
+        onCreated();
+      }
     } finally { setLoading(false); }
   };
 
   return (
     <div className={dialogOverlayCls}>
       <div className={`${dialogPanelCls} w-[720px]`}>
-        <h2 className="text-lg font-semibold mb-4">新建任务</h2>
+        <h2 className="text-lg font-semibold mb-4">{schedule ? "新建计划任务" : "新建任务"}</h2>
+
+        {schedule && (
+          <div className="mb-5 rounded-lg border border-white/[0.06] p-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>间隔</label>
+              <Select value={freq} onChange={(v) => setFreq(v as typeof freq)} options={[
+                { value: "once", label: "单次" },
+                { value: "daily", label: "每日" },
+                { value: "weekly", label: "每周" },
+                { value: "monthly", label: "每月" },
+              ]} />
+            </div>
+            <div>
+              <label className={labelCls}>执行时间</label>
+              <input type="datetime-local" value={runAt} onChange={(e) => setRunAt(e.target.value)} className={inputCls} />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>名称（可空，默认用规则摘要）</label>
+              <input type="text" value={scheduleName} onChange={(e) => setScheduleName(e.target.value)}
+                placeholder={runAt ? formatScheduleSummary(freq, runAt) : "如：每日AI日报"} className={inputCls} />
+            </div>
+            <p className="col-span-2 text-[11px] text-white/40 leading-snug">
+              {freq === "once"
+                ? "在所选时刻执行一次。"
+                : "所选日期为锚点，之后按间隔在该时分重复。"}
+              {freq === "monthly" && new Date(runAt || 0).getDate() >= 29 && " 注意：部分月份无 29~31 号，当月将跳过。"}
+            </p>
+          </div>
+        )}
 
         <div className="flex gap-5">
           {/* 左列：信息源 → 发布账号 → 执行阶段 */}
@@ -266,10 +312,16 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
                 <label className={labelCls}>运行模式</label>
-                <Select value={mode} onChange={(v) => { setMode(v); if (v === "auto") setAutoCollect(true); }} options={[
-                  { value: "auto", label: "自动" },
-                  { value: "manual", label: "手动（逐步审核）" },
-                ]} />
+                {schedule ? (
+                  <div className={`${selectCls} flex items-center opacity-50 cursor-not-allowed`}>
+                    <span className="text-white/96">自动</span>
+                  </div>
+                ) : (
+                  <Select value={mode} onChange={(v) => { setMode(v); if (v === "auto") setAutoCollect(true); }} options={[
+                    { value: "auto", label: "自动" },
+                    { value: "manual", label: "手动（逐步审核）" },
+                  ]} />
+                )}
               </div>
               <div>
                 <label className={labelCls}>音视频路线</label>
@@ -342,8 +394,8 @@ export function CreateRunDialog({ onCreated, onClose }: Props) {
 
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className={btnSecondary}>取消</button>
-          <button onClick={handleSubmit} disabled={loading || effectiveVisual.size === 0} className={btnPrimary}>
-            {loading ? "创建中..." : "创建"}
+          <button onClick={handleSubmit} disabled={loading || effectiveVisual.size === 0 || (schedule && !runAt)} className={btnPrimary}>
+            {loading ? "创建中..." : (schedule ? "创建计划" : "创建")}
           </button>
         </div>
       </div>
