@@ -32,3 +32,19 @@ def test_ensure_pipeline_run_columns_adds_missing(tmp_path):
         cols = [r[1] for r in c.execute(text("PRAGMA table_info(pipeline_runs)"))]
     assert "auto_collect" in cols and "resolution" in cols and "aspect_ratio" in cols
     _ensure_pipeline_run_columns(eng)  # idempotent, no error
+
+
+def test_lifespan_starts_and_stops_scheduler(monkeypatch):
+    """create_app + TestClient 进入/退出时应调用 start/shutdown_scheduler。"""
+    from fastapi.testclient import TestClient
+
+    import app.main as main_mod
+
+    calls = []
+    monkeypatch.setattr(main_mod, "start_scheduler", lambda factory: calls.append("start"))
+    monkeypatch.setattr(main_mod, "shutdown_scheduler", lambda: calls.append("stop"))
+
+    app = main_mod.create_app()
+    with TestClient(app):
+        pass
+    assert "start" in calls and "stop" in calls

@@ -13,6 +13,7 @@ from app.auth import seed_default_admin
 from app.config import get_settings
 from app.logging import setup_global_logger
 from app.models.base import Base
+from app.pipeline.scheduler import shutdown_scheduler, start_scheduler
 
 
 def _sqlite_path_from_url(url: str) -> Path:
@@ -71,7 +72,9 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=factory.kw["bind"])
     _ensure_pipeline_run_columns(factory.kw["bind"])
     seed_default_admin(factory)
+    start_scheduler(factory)
     yield
+    shutdown_scheduler()
 
 
 def _mount_frontend(app: FastAPI) -> bool:
