@@ -5,7 +5,7 @@ import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogP
 import { Select } from "./Select";
 import { MultiSelect } from "./MultiSelect";
 import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isTargetReady, isAihotSource } from "../types";
-import { formatScheduleSummary } from "../lib/schedule";
+import { formatScheduleSummary, composeRunAt, decomposeRunAt } from "../lib/schedule";
 import type { Schedule } from "../types";
 import { payloadToDialogState, type DialogInit } from "../lib/runConfig";
 
@@ -51,8 +51,14 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
   const [init] = useState<DialogInit | null>(() => (edit ? payloadToDialogState(edit.payload) : null));
   const [mode, setMode] = useState("auto");
   const [freq, setFreq] = useState<"once" | "daily" | "weekly" | "monthly">(edit?.freq ?? "once");
-  const [runAt, setRunAt] = useState(edit ? edit.run_at.slice(0, 16) : "");  // ISO→datetime-local（截到分）
+  // 执行时间分件：once 用 onceAt；其余用 tod(HH:mm)；weekly 用 weekday；monthly 用 monthDay
+  const [tparts] = useState(() => (edit ? decomposeRunAt(edit.freq, edit.run_at) : null));
+  const [onceAt, setOnceAt] = useState(tparts?.onceAt ?? "");
+  const [tod, setTod] = useState(tparts?.tod ?? "");
+  const [weekday, setWeekday] = useState<number>(tparts?.weekday ?? 0);
+  const [monthDay, setMonthDay] = useState<number | "last">(tparts?.monthDay ?? 1);
   const [scheduleName, setScheduleName] = useState(edit?.name ?? "");
+  const timeReady = freq === "once" ? !!onceAt : !!tod;
   const [timeRange, setTimeRange] = useState(init?.timeRange ?? "7d");
   const [maxArticles, setMaxArticles] = useState(init?.maxArticles ?? 5);
   const [autoCollect, setAutoCollect] = useState(init?.autoCollect ?? true);
@@ -163,6 +169,7 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      const runAt = composeRunAt(freq, { onceAt, tod, weekday, monthDay });
       const payload = {
         mode: isSchedule ? "auto" : mode,
         video_route: effVideoRoute,
@@ -219,18 +226,40 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
             </div>
             <div>
               <label className={labelCls}>执行时间</label>
-              <input type="datetime-local" value={runAt} onChange={(e) => setRunAt(e.target.value)} className={inputCls} />
+              {freq === "once" && (
+                <input type="datetime-local" value={onceAt} onChange={(e) => setOnceAt(e.target.value)} className={inputCls} />
+              )}
+              {freq === "daily" && (
+                <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
+              )}
+              {freq === "weekly" && (
+                <div className="flex gap-2">
+                  <Select value={String(weekday)} onChange={(v) => setWeekday(Number(v))} options={[
+                    { value: "0", label: "周一" }, { value: "1", label: "周二" }, { value: "2", label: "周三" },
+                    { value: "3", label: "周四" }, { value: "4", label: "周五" }, { value: "5", label: "周六" }, { value: "6", label: "周日" },
+                  ]} />
+                  <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
+                </div>
+              )}
+              {freq === "monthly" && (
+                <div className="flex gap-2">
+                  <Select value={typeof monthDay === "number" ? String(monthDay) : "last"}
+                    onChange={(v) => setMonthDay(v === "last" ? "last" : Number(v))}
+                    options={[...Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} 号` })), { value: "last", label: "月末（最后一天）" }]} />
+                  <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
+                </div>
+              )}
             </div>
             <div className="col-span-2">
               <label className={labelCls}>名称（可空，默认用规则摘要）</label>
               <input type="text" value={scheduleName} onChange={(e) => setScheduleName(e.target.value)}
-                placeholder={runAt ? formatScheduleSummary(freq, runAt) : "如：每日AI日报"} className={inputCls} />
+                placeholder={timeReady ? formatScheduleSummary(freq, composeRunAt(freq, { onceAt, tod, weekday, monthDay })) : "如：每日AI日报"} className={inputCls} />
             </div>
             <p className="col-span-2 text-[11px] text-white/40 leading-snug">
               {freq === "once"
                 ? "在所选时刻执行一次。"
-                : "所选日期为锚点，之后按间隔在该时分重复。"}
-              {freq === "monthly" && new Date(runAt || 0).getDate() >= 29 && " 注意：部分月份无 29~31 号，当月将跳过。"}
+                : "按所选间隔在该时间重复执行。"}
+              {freq === "monthly" && monthDay === "last" && " 每月最后一天执行（短月自动顺延，如 2 月跑 28/29 号）。"}
             </p>
           </div>
         )}
@@ -408,7 +437,7 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
 
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className={btnSecondary}>取消</button>
-          <button onClick={handleSubmit} disabled={loading || effectiveVisual.size === 0 || (isSchedule && !runAt)} className={btnPrimary}>
+          <button onClick={handleSubmit} disabled={loading || effectiveVisual.size === 0 || (isSchedule && !timeReady)} className={btnPrimary}>
             {loading ? "创建中..." : edit ? "保存修改" : isSchedule ? "创建计划" : "创建"}
           </button>
         </div>
