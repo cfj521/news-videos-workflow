@@ -4,12 +4,14 @@ import { DashboardPage } from "./pages/Dashboard";
 import { SourcesPage } from "./pages/Sources";
 import { PublishersPage } from "./pages/Publishers";
 import { SettingsPage } from "./pages/Settings";
+import { SchedulesPage } from "./pages/Schedules";
 import { ToastProvider } from "./components/Toast";
 import { Login } from "./components/Login";
 import { api, getToken, setToken, onUnauthorized } from "./api/client";
 
 const navItems = [
   { to: "/", label: "工作台", end: true },
+  { to: "/schedules", label: "计划任务" },
   { to: "/sources", label: "信息源管理" },
   { to: "/publish", label: "发布管理" },
   { to: "/settings", label: "设置" },
@@ -163,6 +165,7 @@ export default function App() {
         <Layout username={username} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme}>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/schedules" element={<SchedulesPage />} />
             <Route path="/sources" element={<SourcesPage />} />
             <Route path="/publish" element={<PublishersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
