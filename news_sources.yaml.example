@@ -1,0 +1,54 @@
+# 信息源（从 DB 迁出）。首次启动后端会自动从旧 DB 的 news_sources 表 +
+# config.yaml 的 collectors 块生成 news_sources.yaml（已被 .gitignore 忽略，不入库）。
+# 手动配置时复制本文件为 news_sources.yaml 并按需增删源。
+# slug 作为信息源主键（YAML key）；新建任务时按 slug 选用；config 为采集器额外参数。
+
+# 搜索类采集器 Key（原 config.yaml.collectors；启用对应搜索源时才需要）
+search_keys:
+  tavily_key: ''
+  brave_key: ''
+  serper_key: ''
+
+sources:
+  # 示例：Hacker News（API 采集器）
+  hacker_news:
+    name: Hacker News
+    type: api
+    url: https://hn.algolia.com/api/v1/
+    category: tech
+    language: en
+    priority: 1
+    enabled: true
+    tier: standard
+    pinned: false
+    config:
+      default_query: AI
+      tags: story
+      min_points: 30
+  # 示例：普通 RSS 源
+  techcrunch_rss:
+    name: TechCrunch RSS
+    type: rss
+    url: https://techcrunch.com/feed/
+    category: tech
+    language: en
+    priority: 5
+    enabled: true
+    tier: standard
+    pinned: false
+    config: {}
+  # 示例：AI HOT 聚合源（config.provider=aihot 标识，URL 在采集器内硬编码）
+  ai_hot:
+    name: AI Hot
+    type: api
+    url: https://aihot.virxact.com/api/public/items
+    category: ai
+    language: zh
+    priority: 1
+    enabled: true
+    tier: free
+    pinned: false
+    config:
+      provider: aihot
+      method: items                # items | daily | weekly
+  # 其他类型：search（tavily/brave/serper/duckduckgo）、google_news 等

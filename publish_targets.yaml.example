@@ -1,0 +1,37 @@
+# 发布账号（从 DB 迁出）。首次启动后端会自动从旧 DB 的 publish_targets 表 +
+# config.yaml 的 youtube 块生成 publish_targets.yaml（已被 .gitignore 忽略，不入库）。
+# 手动配置时复制本文件为 publish_targets.yaml 并填入各平台凭证。
+# slug 作为账号主键（YAML key）；config 为该平台的凭证字段（见前端「发布管理」页表单）。
+
+# YouTube OAuth 应用凭证（获取 refresh_token 用；也可在「发布管理」页配置）
+youtube_oauth_client:
+  client_id: ''
+  client_secret: ''
+
+targets:
+  # 示例：YouTube 账号
+  youtube_main:
+    name: YouTube
+    platform: youtube
+    enabled: true
+    created_at: ''                 # 创建时自动写入 ISO8601
+    config:
+      client_id: ''
+      client_secret: ''
+      refresh_token: ''
+  # 示例：B 站账号（凭证从浏览器 Cookie 获取）
+  bilibili_main:
+    name: Bilibili
+    platform: bilibili
+    enabled: false
+    created_at: ''
+    config:
+      sessdata: ''
+      bili_jct: ''
+      dede_user_id: ''
+      buvid3: ''
+      buvid4: ''
+      ac_time_value: ''
+      tid: '17'                    # 投稿分区 ID
+  # 其他平台：instagram / douyin / kuaishou / ximalaya / xiaoyuzhou / netease_music / apple_podcasts
+  # 字段定义见 frontend/src/types/index.ts 的 PLATFORM_FIELDS
