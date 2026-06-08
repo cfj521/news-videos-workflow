@@ -209,6 +209,8 @@ def update_schedule(slug: str, body: ScheduleUpdate):
 
 `schedules_store.update_schedule` 已支持 `name/freq/run_at/payload/enabled` 键，**无需改动 store**。
 
+**`ScheduleRead` 暴露 `payload`**（关键，否则前端无从预填）：现有 read 模型不含 payload，列表 API 也就不返回它。给 `ScheduleRead` 加 `payload: dict = {}`、`_to_read` 里 `payload=s.payload`，前端 `Schedule` 类型同步加 `payload: RunCreatePayload`。这样列表项即带完整建任务参数，编辑直接用 `edit.payload` 预填，无需额外的单条 GET 端点。
+
 ## 6. 数据流
 
 ```
