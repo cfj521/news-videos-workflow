@@ -76,6 +76,6 @@ async def run_stage1(
     log.info("After dedup: %d (removed %d)", len(deduplicated), len(all_articles) - len(deduplicated))
     compliant = _filter_compliant(deduplicated)
     scoring = ScoringService()
-    selected = scoring.select_top(compliant, n=max_articles)
+    selected = (await scoring.select_top(compliant, None, "zh", n=max_articles)).selected
     log.info("Selected top %d articles (from %d compliant)", len(selected), len(compliant))
     return selected

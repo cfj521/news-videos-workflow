@@ -83,3 +83,69 @@ async def test_llm_score_bad_json_fallback():
     s = ScoringService()
     out = await s._llm_score(_art(), tp, "zh")
     assert out["score"] == 7
+
+
+# ── S6: select_top 编排测试 ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_select_top_small_pool_all_llm():
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.return_value = '{"score": 7, "reason": "r", "tags": []}'
+    arts = [_art(title=f"t{i}", content="OpenAI agent", source="Hacker News") for i in range(6)]
+    s = ScoringService()
+    res = await s.select_top(arts, tp, "en", n=3)
+    assert len(res.selected) == 3
+    assert tp.generate.call_count == 6
+    assert len(res.report["candidates"]) == 6
+    assert sum(c["selected"] for c in res.report["candidates"]) == 3
+    assert res.report["candidates"][0]["final"] >= res.report["candidates"][-1]["final"]
+
+
+@pytest.mark.asyncio
+async def test_select_top_large_pool_preshortlist():
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.return_value = '{"score": 6, "reason": "", "tags": []}'
+    arts = [_art(title=f"t{i}", content="x", source="Tavily") for i in range(12)]
+    s = ScoringService()
+    s.cfg.llm_candidate_cap = 5     # 2K=10；12>10 触发预筛
+    res = await s.select_top(arts, tp, "en", n=3)
+    assert tp.generate.call_count == 5
+    assert len(res.report["candidates"]) == 12
+    assert any(not c["llm_ran"] for c in res.report["candidates"])
+
+
+@pytest.mark.asyncio
+async def test_select_top_min_score_floor():
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.return_value = '{"score": 0, "reason": "", "tags": []}'
+    s = ScoringService()
+    s.cfg.min_score = 0.9
+    res = await s.select_top([_art(source="Tavily") for _ in range(4)], tp, "en", n=3)
+    assert len(res.selected) == 1
+
+
+@pytest.mark.asyncio
+async def test_select_top_rule_only_when_no_provider():
+    s = ScoringService()
+    s.cfg.min_score = 0.0   # 不受其他测试 min_score 修改影响
+    res = await s.select_top([_art(title="OpenAI", source="Hacker News") for _ in range(3)], None, "en", n=2)
+    assert len(res.selected) == 2
+    assert all(not c["llm_ran"] for c in res.report["candidates"])
+
+
+@pytest.mark.asyncio
+async def test_select_top_llm_all_fail_degrades():
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.side_effect = Exception("provider down")
+    s = ScoringService()
+    s.cfg.min_score = 0.0   # LLM 全失败 → 退回规则分，不受地板影响
+    res = await s.select_top([_art(source="Hacker News") for _ in range(3)], tp, "en", n=2)
+    assert len(res.selected) == 2

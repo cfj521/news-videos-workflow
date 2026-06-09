@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import json
-import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -13,31 +12,6 @@ from app.providers.base import RawArticleData
 from app.services import scoring_constants as C
 
 log = get_logger("service.scoring")
-
-# ── Keyword lists（旧版兼容，供旧 _legacy_rule_score 使用）────────────────────────────────────────
-
-AI_KEYWORDS = [
-    "ai", "artificial intelligence", "llm", "gpt", "claude", "machine learning",
-    "deep learning", "neural network", "transformer", "openai", "anthropic", "gemini",
-    "diffusion", "agent", "rag", "fine-tune", "benchmark", "open source",
-    "人工智能", "大模型", "深度学习", "机器学习", "神经网络", "开源",
-]
-
-NEGATIVE_KEYWORDS = [
-    "crypto", "nft", "blockchain", "bitcoin", "meme", "casino", "gambling",
-    "加密货币", "比特币", "赌博",
-]
-
-DEFAULT_SOURCE_WEIGHTS = {
-    "Hacker News": 0.9, "MarkTechPost": 1.0, "TechCrunch": 0.9, "机器之心": 1.0,
-    "36氪": 0.8, "量子位": 0.9, "Tavily": 0.7, "Brave Search": 0.7,
-    "Google News": 0.6, "Serper": 0.7, "DuckDuckGo": 0.5,
-}
-
-# ── upvoteRate constants (from quality-news) ─────────────
-
-FATIGUE_FACTOR = 0.003462767
-PRIOR_WEIGHT = 0.75
 
 # ── 模块级 LLM 评分缓存（reload_settings() 时清空）────────────────────────────
 _LLM_CACHE: dict[str, dict] = {}
@@ -99,8 +73,6 @@ class ScoringResult:
 
 class ScoringService:
     def __init__(self, source_weights: dict[str, float] | None = None):
-        # source_weights 参数保留以向后兼容旧调用方，但新子评分器统一走 cfg
-        self.source_weights = source_weights or DEFAULT_SOURCE_WEIGHTS
         self.cfg = get_settings().scoring
 
     # ── 新子评分器（0–1 纯函数）────────────────────────────────────────────────
@@ -153,89 +125,6 @@ class ScoringService:
                 + wr * self._recency_score(a.published_at)
                 + wk * self._keyword_score(a.title, a.content or "", language)) / tot
 
-    # ── 旧版方法（保留以兼容 stage1/stage2 调用的 select_top）────────────────────
-
-    def score(self, article: RawArticleData) -> float:
-        rule = self._legacy_rule_score(article)
-        data = self._data_signal_score(article)
-        return 0.6 * rule + 0.4 * data
-
-    async def score_with_llm(self, article: RawArticleData, text_provider) -> tuple[float, dict]:
-        """Returns (final_score, llm_result_dict). Falls back to rules on failure."""
-        data = self._data_signal_score(article)
-        try:
-            llm_result = await self._llm_score(article, text_provider)
-            llm_norm = llm_result.get("score", 5) / 10.0
-            final = 0.6 * llm_norm + 0.4 * data
-            return final, llm_result
-        except Exception:
-            log.warning("LLM scoring failed for '%s', falling back to rules", article.title[:40])
-            rule = self._legacy_rule_score(article)
-            return 0.6 * rule + 0.4 * data, {}
-
-    def select_top(self, articles: list[RawArticleData], n: int = 5) -> list[RawArticleData]:
-        scored = [(self.score(a), a) for a in articles]
-        scored.sort(key=lambda x: x[0], reverse=True)
-        for s, a in scored[:n]:
-            log.debug("Score %.3f: '%s' (%s)", s, a.title[:50], a.source_name)
-        return [a for _, a in scored[:n]]
-
-    async def select_top_with_llm(self, articles: list[RawArticleData], text_provider, n: int = 5) -> list[RawArticleData]:
-        scored = []
-        for a in articles:
-            s, result = await self.score_with_llm(a, text_provider)
-            if result.get("tags"):
-                a.metadata["ai_tags"] = result["tags"]
-            if result.get("reason"):
-                a.metadata["ai_reason"] = result["reason"]
-            scored.append((s, a))
-        scored.sort(key=lambda x: x[0], reverse=True)
-        for s, a in scored[:n]:
-            log.info("Score %.3f: '%s' (%s) %s", s, a.title[:50], a.source_name, a.metadata.get("ai_reason", ""))
-        return [a for _, a in scored[:n]]
-
-    # ── 旧版规则评分（内部，供旧 score() 调用）───────────────────────────────────
-
-    def _legacy_rule_score(self, article: RawArticleData) -> float:
-        source_w = self.source_weights.get(article.source_name, 0.5)
-        recency_w = self._recency_weight(article.published_at)
-        relevance_w = self._keyword_relevance(article.title, article.content)
-        return source_w * 0.3 + recency_w * 0.3 + relevance_w * 0.4
-
-    # ── Data signal (upvoteRate, quality-news style) ─────
-
-    def _data_signal_score(self, article: RawArticleData) -> float:
-        meta = article.metadata
-        points = meta.get("points", 0)
-        if not points:
-            return 0.5
-
-        age_hours = 24.0
-        if article.published_at:
-            delta = (datetime.now(timezone.utc) - article.published_at).total_seconds() / 3600
-            age_hours = max(1.0, delta)
-
-        # Estimate expected upvotes from age (simplified position model)
-        # A top-30 HN story gets ~5-15 votes/hour in the first few hours
-        avg_vote_rate = 8.0
-        raw_expected = avg_vote_rate * age_hours
-
-        # Fatigue adjustment (from quality-news)
-        adjusted_expected = (1 - math.exp(-FATIGUE_FACTOR * raw_expected)) / FATIGUE_FACTOR
-
-        # Bayesian upvoteRate
-        upvote_rate = (points + PRIOR_WEIGHT) / (adjusted_expected + PRIOR_WEIGHT)
-
-        # Comment engagement signal
-        num_comments = meta.get("num_comments", 0)
-        comment_ratio = num_comments / max(points, 1.0)
-
-        # Normalize to 0-1
-        rate_norm = min(1.0, upvote_rate / 3.0)
-        comment_norm = min(1.0, comment_ratio * 0.5)
-
-        return rate_norm * 0.7 + comment_norm * 0.3
-
     # ── LLM score (structured JSON, with cache + language + timeout/retry) ────
 
     async def _llm_score(self, a: RawArticleData, text_provider, language: str = "zh") -> dict:
@@ -269,16 +158,69 @@ class ScoringService:
                 last_exc = e
         raise last_exc or RuntimeError("llm score failed")
 
-    # ── Helpers（旧版，供 _legacy_rule_score 使用）────────────────────────────────
+    # ── 核心编排：async select_top ────────────────────────────────────────────
 
-    def _recency_weight(self, published_at: datetime | None) -> float:
-        if not published_at:
-            return 0.3
-        hours_ago = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
-        return max(0.0, 1.0 - (hours_ago / 168))
+    async def select_top(self, articles, text_provider=None, language="zh", n=5) -> ScoringResult:
+        if not articles:
+            return ScoringResult(selected=[], report={"candidates": [], "n": n, "k": 0, "pool": 0,
+                                 "min_score": self.cfg.min_score, "source_type": ""})
+        pool = len(articles)
+        cap = self.cfg.llm_candidate_cap
+        ws, wr, wk = self.cfg.w_source, self.cfg.w_recency, self.cfg.w_keyword
+        wtot = (ws + wr + wk) or 1.0
+        scored = []
+        for a in articles:
+            src = self._source_score(a)
+            rec = self._recency_score(a.published_at)
+            kw = self._keyword_score(a.title, a.content or "", language)
+            rule = (ws * src + wr * rec + wk * kw) / wtot
+            scored.append({"art": a, "source_w": src, "recency": rec, "keyword": kw, "rule": rule})
+        # 选 LLM 评分集：小池子(≤2·cap)全量；大池子按 rule 取前 cap
+        if text_provider is not None and pool > 2 * cap:
+            scored.sort(key=lambda x: x["rule"], reverse=True)
+            llm_set = scored[:cap]
+        else:
+            llm_set = scored if text_provider is not None else []
+        if llm_set:
+            sem = asyncio.Semaphore(self.cfg.concurrency)
+            async def run_one(item):
+                async with sem:
+                    try:
+                        r = await self._llm_score(item["art"], text_provider, language)
+                        item["llm"] = r["score"] / 10.0
+                        item["reason"], item["tags"], item["llm_ran"] = r.get("reason", ""), r.get("tags", []), True
+                    except Exception:
+                        item["llm_ran"] = False
+            await asyncio.gather(*(run_one(it) for it in llm_set))
+        for it in scored:
+            if it.get("llm_ran"):
+                it["final"] = self.cfg.w_final_llm * it["llm"] + self.cfg.w_final_rule * it["rule"]
+            else:
+                it["final"] = it["rule"]
+        scored.sort(key=lambda x: x["final"], reverse=True)
+        passed = [it for it in scored if it["final"] >= self.cfg.min_score]
+        chosen = (passed or scored[:1])[:n]
+        chosen_ids = {id(it) for it in chosen}
+        for it in scored:
+            it["selected"] = id(it) in chosen_ids
+        report = {
+            "source_type": (articles[0].metadata or {}).get("aihot_method") or "normal",
+            "n": n, "k": cap, "pool": pool, "min_score": self.cfg.min_score,
+            "candidates": [self._row(it) for it in scored],
+        }
+        log.info("[scoring] pool=%d llm=%d selected=%d (min=%.2f)", pool, len(llm_set), len(chosen), self.cfg.min_score)
+        for it in chosen:
+            it["art"].metadata["score_final"] = round(it["final"], 4)
+            it["art"].metadata["score_reason"] = it.get("reason", "")
+        return ScoringResult(selected=[it["art"] for it in chosen], report=report)
 
-    def _keyword_relevance(self, title: str, content: str) -> float:
-        combined = f"{title} {content}".lower()
-        pos = sum(1 for kw in AI_KEYWORDS if kw in combined)
-        neg = sum(1 for kw in NEGATIVE_KEYWORDS if kw in combined)
-        return min(1.0, max(0.0, pos * 0.15 - neg * 0.3))
+    @staticmethod
+    def _row(it) -> dict:
+        a = it["art"]
+        return {"title": a.title, "source": a.source_name,
+                "final": round(it["final"], 4),
+                "llm": (round(it["llm"], 4) if it.get("llm_ran") else None),
+                "source_w": round(it["source_w"], 4), "recency": round(it["recency"], 4),
+                "keyword": round(it["keyword"], 4), "rule": round(it["rule"], 4),
+                "reason": it.get("reason", ""), "tags": it.get("tags", []),
+                "llm_ran": bool(it.get("llm_ran")), "selected": bool(it.get("selected"))}

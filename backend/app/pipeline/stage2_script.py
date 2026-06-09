@@ -153,7 +153,7 @@ async def _run_aihot_direct(articles: list, tp, language: str = "zh") -> dict:
     """AI HOT 直用：归一候选 → ScoringService 选 top N → 每条 1 scene（不 AI 生成旁白）。"""
     candidates = _aihot_candidates(articles)
     top_n = config.get_settings().pipeline.aihot_top_n
-    selected = ScoringService().select_top(candidates, n=top_n)  # 规则分；将来换 select_top_with_llm
+    selected = (await ScoringService().select_top(candidates, None, language, n=top_n)).selected  # 规则分；S8 再正式接 tp
     scenes: list[dict] = []
     groups: list[dict] = []
     titles: list[str] = []
