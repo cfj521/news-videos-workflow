@@ -142,9 +142,6 @@ async def test_gen_article_scenes_english_directive(monkeypatch):
     assert "English" in sp and "Western" in sp  # 英文模式注入英文 + 西方场景指令
 
 
-from unittest.mock import patch
-
-
 def _aihot_daily_article():
     daily_sections = [
         {"label": "模型", "items": [{"title": f"模型{i}", "summary": f"摘要{i}"} for i in range(5)]},
