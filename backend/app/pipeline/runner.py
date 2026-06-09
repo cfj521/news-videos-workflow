@@ -740,7 +740,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
         if run.video_route == "hyperframes":
             _update(db, run, progress_detail="S4 生成 Hyperframes 预览...")
-            composer = HyperframesComposer()
+            composer = HyperframesComposer(overlay=cfg.overlay)
             try:
                 hyperframes_html = composer._render_html(
                     timeline, resolution, run_dir, transition=cfg.hyperframes.transition,
@@ -810,7 +810,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                     from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
                     from app.providers.video import build_video_provider
                     vp = build_video_provider(cfg)
-                    result = await ComfyUIVideoComposer(vp, fps=cfg.pipeline.video_fps).compose(
+                    result = await ComfyUIVideoComposer(vp, fps=cfg.pipeline.video_fps, overlay=cfg.overlay).compose(
                         timeline_json=timeline, assets_dir=str(assets_dir),
                         output_path=output_mp4, resolution=resolution,
                     )
@@ -819,11 +819,11 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 except Exception as e:
                     log.warning("[S5] ComfyUI failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
-                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps)
+                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps, overlay=cfg.overlay)
             else:
                 _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
                 log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
-                composer = HyperframesComposer()
+                composer = HyperframesComposer(overlay=cfg.overlay)
                 try:
                     result = await run_stage5(
                         timeline=timeline, composer=composer, assets_dir=str(assets_dir),
@@ -833,7 +833,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 except Exception as e:
                     log.warning("[S5] Hyperframes failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 Hyperframes 失败，FFmpeg 合成中...")
-                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps)
+                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps, overlay=cfg.overlay)
 
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
