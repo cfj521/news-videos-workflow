@@ -198,3 +198,13 @@ async def test_aihot_image_prompt_fallback_to_title(monkeypatch):
                                json.dumps({"title": "t", "description": "d", "tags": []})]
     script = await run_stage2_multi([_aihot_daily_article()], tp)
     assert script["scenes"][0]["image_prompt"] == script["scenes"][0]["title"]  # 退化为 title
+
+
+def test_aihot_candidates_fill_published_at():
+    from app.pipeline.stage2_script import _aihot_candidates
+    daily = RawArticleData(title="日报", content="c", source_url="u", source_name="AI HOT 日报",
+        metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": "2026-06-01",
+                  "daily_sections": [{"label": "模型", "items": [{"title": "x", "summary": "s"}]}]})
+    cands = _aihot_candidates([daily])
+    assert cands and cands[0].published_at is not None
+    assert cands[0].published_at.year == 2026 and cands[0].published_at.month == 6
