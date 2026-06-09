@@ -44,3 +44,30 @@ def test_save_and_reload_preserves_daily_sections(tmp_path):
     assert raw[0]["daily_sections"] == secs
     reloaded = _load_articles(tmp_path)
     assert reloaded[0].metadata["daily_sections"] == secs
+
+
+def test_save_and_reload_preserves_source_group(tmp_path):
+    """source_group 经 _save_articles/_load_articles 往返后必须保留，否则 AI HOT 直用路由永不触发。"""
+    from app.providers.base import RawArticleData
+    from app.pipeline.runner import _save_articles, _load_articles
+    import json
+
+    secs = [{"label": "热点", "items": [{"title": "T", "summary": "s", "sourceUrl": "u", "sourceName": "n"}]}]
+    art = RawArticleData(
+        title="AI 日报",
+        content="c",
+        source_url="https://aihot.example.com",
+        source_name="AI HOT 日报",
+        metadata={"source_group": "aihot", "aihot_method": "daily", "daily_sections": secs},
+    )
+    _save_articles([art], tmp_path)
+
+    # 中间文件验证：source_group 应写入 JSON
+    raw = json.loads((tmp_path / "articles.json").read_text(encoding="utf-8"))
+    assert raw[0].get("source_group") == "aihot", "articles.json 未保存 source_group"
+
+    # 往返验证：重载后 metadata 必须还原 source_group
+    reloaded = _load_articles(tmp_path)
+    assert reloaded[0].metadata.get("source_group") == "aihot", "重载后 source_group 丢失"
+    assert reloaded[0].metadata.get("aihot_method") == "daily"
+    assert reloaded[0].metadata.get("daily_sections") == secs

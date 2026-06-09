@@ -269,6 +269,7 @@ def _save_articles(articles, run_dir):
             "source": a.source_name,
             "content": a.content or "",
             "summary": a.summary,
+            "source_group": a.metadata.get("source_group"),
             "aihot_method": a.metadata.get("aihot_method"),
             "daily_sections": a.metadata.get("daily_sections"),
         })
@@ -280,6 +281,8 @@ def _save_articles(articles, run_dir):
 def _article_from_dict(d: dict):
     from app.providers.base import RawArticleData
     metadata = {}
+    if d.get("source_group"):
+        metadata["source_group"] = d["source_group"]
     if d.get("aihot_method"):
         metadata["aihot_method"] = d["aihot_method"]
     if d.get("daily_sections"):
