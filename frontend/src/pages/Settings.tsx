@@ -329,6 +329,20 @@ const EMPTY_SETTINGS: AppSettings = {
     "edge-tts": { base_url: "", api_key: "", max_output_tokens: 65535, models: { text: [], image: [], vision: [], tts: [] } },
   },
   collectors: { tavily_key: "", brave_key: "", serper_key: "" },
+  scoring: {
+    w_final_llm: 0.6,
+    w_final_rule: 0.4,
+    w_source: 0.4,
+    w_recency: 0.2,
+    w_keyword: 0.4,
+    concurrency: 5,
+    llm_candidate_cap: 25,
+    min_score: 0.35,
+    fresh_full_days: 7,
+    fresh_week_end: 0.9,
+    fresh_floor_days: 30,
+    fresh_floor: 0.3,
+  },
   pipeline: {
     default_time_range: "7d", default_max_articles: 5, default_video_route: "comfyui",
     default_language: "zh", dedup_lookback: "30d", resolution: "1080x1920", max_images: 10,
@@ -619,7 +633,7 @@ export function SettingsPage() {
   const { data: promptDefs } = useSWR("prompt-defaults", api.settings.promptDefaults);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<"pipeline" | "models" | "comfyui" | "prompts" | "users">("pipeline");
+  const [activeTab, setActiveTab] = useState<"pipeline" | "models" | "comfyui" | "scoring" | "prompts" | "users">("pipeline");
   const [modelSel, setModelSel] = useState<Record<string, string>>({});  // 每个类型分组当前选中的供应商
   const [imgWf, setImgWf] = useState<string>("z_image_turbo");
   const [vidWf, setVidWf] = useState<string>("wan2.2_5b");
@@ -806,7 +820,7 @@ export function SettingsPage() {
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-2">
-        {([["pipeline", "流水线配置"], ["models", "模型配置"], ["comfyui", "ComfyUI 参数"], ["prompts", "提示词配置"], ["users", "用户管理"]] as const).map(([k, label]) => (
+        {([["pipeline", "流水线配置"], ["models", "模型配置"], ["comfyui", "ComfyUI 参数"], ["scoring", "评分配置"], ["prompts", "提示词配置"], ["users", "用户管理"]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setActiveTab(k)}
             className={`px-3 py-1.5 text-sm rounded-md transition ${activeTab === k ? "bg-white/10 text-white" : "text-white/66 hover:text-white/92"}`}>
             {label}
@@ -1050,6 +1064,101 @@ export function SettingsPage() {
             return <ParamFields meta={meta} params={p}
               onChange={(next) => patch("comfyui", { video_params: { ...settings.comfyui.video_params, [vidWf]: { ...p, ...next } } })} />;
           })()}
+        </Section>
+      </>)}
+
+      {activeTab === "scoring" && (<>
+        <Section title="评分权重" desc="最终分 = LLM 分（或规则分）+ 来源权重 + 新鲜度 + 关键词分。各权重影响各项在综合分中的比例。">
+          <Field label="LLM 分权重" desc="LLM 跑完时：最终分 = LLM分×w_final_llm + 规则分×(1-w_final_llm)" center>
+            <div className="flex items-center gap-3">
+              <input type="number" step={0.05} min={0} max={1} value={settings.scoring.w_final_llm}
+                onChange={(e) => patch("scoring", { w_final_llm: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">0–1，默认 0.6</span>
+            </div>
+          </Field>
+          <Field label="规则分权重" desc="LLM 未跑时：最终分 = 规则分×w_final_rule + 来源等分项" center>
+            <div className="flex items-center gap-3">
+              <input type="number" step={0.05} min={0} max={1} value={settings.scoring.w_final_rule}
+                onChange={(e) => patch("scoring", { w_final_rule: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">0–1，默认 0.4</span>
+            </div>
+          </Field>
+          <Field label="来源权重 w_source" desc="来源优先级分项在综合分中的权重" center>
+            <div className="flex items-center gap-3">
+              <input type="number" step={0.05} min={0} max={1} value={settings.scoring.w_source}
+                onChange={(e) => patch("scoring", { w_source: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">0–1，默认 0.4</span>
+            </div>
+          </Field>
+          <Field label="新鲜度权重 w_recency" desc="文章发布时间新鲜度分项权重" center>
+            <div className="flex items-center gap-3">
+              <input type="number" step={0.05} min={0} max={1} value={settings.scoring.w_recency}
+                onChange={(e) => patch("scoring", { w_recency: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">0–1，默认 0.2</span>
+            </div>
+          </Field>
+          <Field label="关键词权重 w_keyword" desc="关键词命中分项权重" center>
+            <div className="flex items-center gap-3">
+              <input type="number" step={0.05} min={0} max={1} value={settings.scoring.w_keyword}
+                onChange={(e) => patch("scoring", { w_keyword: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">0–1，默认 0.4</span>
+            </div>
+          </Field>
+        </Section>
+
+        <Section title="LLM 评分参数" desc="LLM 打分的并发控制与候选上限。">
+          <Field label="LLM 并发数" desc="同时调 LLM 评分的并发请求数，过高可能触发限流" center>
+            <div className="flex items-center gap-3">
+              <input type="number" min={1} max={20} value={settings.scoring.concurrency}
+                onChange={(e) => patch("scoring", { concurrency: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">默认 5</span>
+            </div>
+          </Field>
+          <Field label="LLM 候选上限" desc="最多对多少条候选文章调用 LLM 打分（规则预筛后取前 N）" center>
+            <div className="flex items-center gap-3">
+              <input type="number" min={1} max={200} value={settings.scoring.llm_candidate_cap}
+                onChange={(e) => patch("scoring", { llm_candidate_cap: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">默认 25</span>
+            </div>
+          </Field>
+        </Section>
+
+        <Section title="入选门槛与新鲜度" desc="最低评分及新鲜度衰减曲线参数。">
+          <Field label="入选最低分 min_score" desc="低于此分的候选不会被选入最终文章列表" center>
+            <div className="flex items-center gap-3">
+              <input type="number" step={0.05} min={0} max={1} value={settings.scoring.min_score}
+                onChange={(e) => patch("scoring", { min_score: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">0–1，默认 0.35</span>
+            </div>
+          </Field>
+          <Field label="新鲜满分天数 fresh_full_days" desc="发布后多少天内新鲜度满分（1.0）" center>
+            <div className="flex items-center gap-3">
+              <input type="number" min={1} max={30} value={settings.scoring.fresh_full_days}
+                onChange={(e) => patch("scoring", { fresh_full_days: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">天，默认 7</span>
+            </div>
+          </Field>
+          <Field label="满分期末新鲜度 fresh_week_end" desc="刚过满分天数时的新鲜度值（线性衰减起点）" center>
+            <div className="flex items-center gap-3">
+              <input type="number" step={0.05} min={0} max={1} value={settings.scoring.fresh_week_end}
+                onChange={(e) => patch("scoring", { fresh_week_end: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">0–1，默认 0.9</span>
+            </div>
+          </Field>
+          <Field label="新鲜地板天数 fresh_floor_days" desc="发布后超过多少天后新鲜度固定为地板值" center>
+            <div className="flex items-center gap-3">
+              <input type="number" min={1} max={365} value={settings.scoring.fresh_floor_days}
+                onChange={(e) => patch("scoring", { fresh_floor_days: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">天，默认 30</span>
+            </div>
+          </Field>
+          <Field label="新鲜度地板 fresh_floor" desc="超过地板天数后的最低新鲜度值" center>
+            <div className="flex items-center gap-3">
+              <input type="number" step={0.05} min={0} max={1} value={settings.scoring.fresh_floor}
+                onChange={(e) => patch("scoring", { fresh_floor: Number(e.target.value) })} className={inputCls} />
+              <span className="text-xs text-white/60">0–1，默认 0.3</span>
+            </div>
+          </Field>
         </Section>
       </>)}
 

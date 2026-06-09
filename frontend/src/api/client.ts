@@ -54,10 +54,48 @@ export interface OpenAIAuthStatus {
   expires_at?: string;
 }
 
+export interface ScoringCandidate {
+  title: string;
+  source: string;
+  final: number;
+  llm: number | null;
+  source_w: number;
+  recency: number;
+  keyword: number;
+  rule: number;
+  reason: string;
+  tags: string[];
+  llm_ran: boolean;
+  selected: boolean;
+}
+
+export interface ScoringData {
+  pool?: number;
+  n?: number;
+  k?: number;
+  min_score?: number;
+  source_type?: string;
+  candidates: ScoringCandidate[];
+}
+
 export interface AppSettings {
   // 供应商参数库：各供应商的连接凭证；当前用哪个由 pipeline 选型决定
   providers: Record<string, ProviderCreds>;
   collectors: { tavily_key: string; brave_key: string; serper_key: string };
+  scoring: {
+    w_final_llm: number;
+    w_final_rule: number;
+    w_source: number;
+    w_recency: number;
+    w_keyword: number;
+    concurrency: number;
+    llm_candidate_cap: number;
+    min_score: number;
+    fresh_full_days: number;
+    fresh_week_end: number;
+    fresh_floor_days: number;
+    fresh_floor: number;
+  };
   pipeline: {
     default_time_range: string; default_max_articles: number; default_video_route: string;
     default_language: string; dedup_lookback: string; resolution: string; max_images: number;
@@ -103,6 +141,8 @@ export interface ArticleData {
   source: string;
   content?: string;
   summary?: string;
+  score_final?: number;
+  score_reason?: string;
 }
 
 export interface PublishResultRec {
@@ -163,6 +203,7 @@ export const api = {
     script: (id: number) => fetchJSON<ScriptData>(`/pipeline/runs/${id}/script`),
     timeline: (id: number) => fetchJSON<TimelineData>(`/pipeline/runs/${id}/timeline`),
     articles: (id: number) => fetchJSON<ArticleData[]>(`/pipeline/runs/${id}/articles`),
+    scoring: (id: number) => fetchJSON<ScoringData>(`/runs/${id}/scoring`),
     regenAudio: (runId: number, sceneId: number, narration: string) =>
       fetchJSON<{ status: string }>(`/pipeline/runs/${runId}/scenes/${sceneId}/audio`, {
         method: "POST",
