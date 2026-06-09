@@ -1,9 +1,11 @@
 import json
 import time
 
+from app import config
 from app.logging import get_logger
 from app.prompts import resolve_prompt
 from app.providers.base import RawArticleData, TextProvider
+from app.services.scoring import ScoringService
 
 log = get_logger("stage2")
 
@@ -69,19 +71,6 @@ async def distill_weekly_sections(weekly_items: list[dict], text_provider, langu
     return sections
 
 
-def _batch_items(n: int) -> list[int]:
-    """把 n 条 items 切成每批 2~4（以 3 为主，无尾批 1）；n==1→[1]。"""
-    if n <= 0:
-        return []
-    sizes: list[int] = []
-    remaining = n
-    while remaining > 4:
-        sizes.append(3)
-        remaining -= 3
-    sizes.append(remaining)
-    return sizes
-
-
 def _is_en(language: str) -> bool:
     return (language or "zh").lower().startswith("en")
 
@@ -116,19 +105,6 @@ async def _gen_article_scenes(article, tp, language: str = "zh") -> list[dict]:
     return scenes[:3]
 
 
-async def _gen_daily_batch_scenes(items: list[dict], tp, language: str = "zh") -> list[dict]:
-    lines = [f"{i + 1}. 「{it.get('title', '')}」{it.get('summary', '')}" for i, it in enumerate(items)]
-    resp = await tp.generate(prompt="本组资讯：\n" + "\n".join(lines), system_prompt=resolve_prompt("daily_batch", language))
-    try:
-        scenes = _parse_json(resp).get("scenes", [])
-    except Exception:
-        log.warning("[S2] parse daily batch scenes failed")
-        scenes = []
-    if not scenes:
-        scenes = [{"narration": it.get("title", ""), "image_prompt": it.get("title", ""), "motion_prompt": "", "duration_hint": 5} for it in items]
-    return scenes
-
-
 async def _gen_summary_meta(titles: list[str], tp, language: str = "zh") -> dict:
     resp = await tp.generate(prompt="各条资讯标题：\n" + "\n".join(f"- {t}" for t in titles), system_prompt=resolve_prompt("summary_meta", language))
     try:
@@ -138,7 +114,68 @@ async def _gen_summary_meta(titles: list[str], tp, language: str = "zh") -> dict
     return {"title": m.get("title", "资讯汇总"), "description": m.get("description", ""), "tags": m.get("tags", [])}
 
 
+def _aihot_candidates(articles: list) -> list:
+    """把 AI HOT 三种模式归一为 RawArticleData 候选列表（供 ScoringService 评分）。"""
+    out: list = []
+    for art in articles:
+        method = art.metadata.get("aihot_method", "items")
+        sections = art.metadata.get("daily_sections")
+        if method in ("daily", "weekly") and sections:
+            for sec in sections:
+                label = sec.get("label", "")
+                for it in sec.get("items", []):
+                    out.append(RawArticleData(
+                        title=it.get("title", ""), content=it.get("summary", ""),
+                        summary=it.get("summary", ""), source_url=art.source_url,
+                        source_name=art.source_name, published_at=art.published_at,
+                        category=label, metadata={}))
+        else:  # items 模式：article 本身即一条 item
+            out.append(art)
+    return out
+
+
+async def _gen_image_prompt(cand, tp, language: str = "zh") -> str:
+    """把新闻 title+summary 转成一句视觉画面描述供文生图（非重写旁白）。失败退化为 title。"""
+    sys = ("Turn the news into ONE concise visual scene description for image generation "
+           "(subject + setting + style). Output the description only, no quotes."
+           if _is_en(language) else
+           "把这条新闻转成一句用于文生图的画面描述（主体+场景+风格），只输出该句，不要引号。")
+    try:
+        resp = await tp.generate(prompt=f"{cand.title}。{cand.summary}", system_prompt=sys)
+        text = resp.strip().strip('"').strip("「」")
+        return text or cand.title
+    except Exception:
+        log.warning("[S2] image prompt gen failed for '%s' — fallback to title", cand.title[:40])
+        return cand.title
+
+
+async def _run_aihot_direct(articles: list, tp, language: str = "zh") -> dict:
+    """AI HOT 直用：归一候选 → ScoringService 选 top N → 每条 1 scene（不 AI 生成旁白）。"""
+    candidates = _aihot_candidates(articles)
+    top_n = config.get_settings().pipeline.aihot_top_n
+    selected = ScoringService().select_top(candidates, n=top_n)  # 规则分；将来换 select_top_with_llm
+    scenes: list[dict] = []
+    groups: list[dict] = []
+    titles: list[str] = []
+    for i, cand in enumerate(selected, start=1):
+        image_prompt = await _gen_image_prompt(cand, tp, language)
+        scenes.append({
+            "id": i, "group_id": i, "group_title": cand.title, "title": cand.title,
+            "narration": cand.summary or cand.content, "image_prompt": image_prompt,
+            "motion_prompt": "", "duration_hint": 5,
+        })
+        groups.append({"id": i, "title": cand.title, "source_index": 0})
+        titles.append(cand.title)
+    meta = await _gen_summary_meta(titles, tp, language)
+    log.info("[S2] AI HOT direct: %d candidates → %d scenes (top_n=%d)", len(candidates), len(scenes), top_n)
+    return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"],
+            "groups": groups, "scenes": scenes}
+
+
 async def run_stage2_multi(articles: list, text_provider, language: str = "zh") -> dict:
+    if articles and articles[0].metadata.get("source_group") == "aihot":
+        return await _run_aihot_direct(articles, text_provider, language)
+
     scenes: list[dict] = []
     groups: list[dict] = []
     next_id = 1
@@ -146,43 +183,18 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
     titles: list[str] = []
 
     for idx, article in enumerate(articles):
-        sections = article.metadata.get("daily_sections")
-        if article.metadata.get("aihot_method") in ("daily", "weekly") and sections:
-            for section in sections:
-                label = section.get("label", "")
-                items = section.get("items", [])
-                sizes = _batch_items(len(items))
-                multi = len(sizes) > 1
-                start = 0
-                for bi, size in enumerate(sizes):
-                    batch = items[start:start + size]
-                    start += size
-                    gid = next_gid
-                    next_gid += 1
-                    gtitle = label if not multi else f"{label} ({bi + 1})"
-                    batch_scenes = await _gen_daily_batch_scenes(batch, text_provider, language)
-                    if len(batch_scenes) != len(batch):
-                        log.warning("[S2] daily batch returned %d scenes for %d items", len(batch_scenes), len(batch))
-                    for sc in batch_scenes:
-                        sc["id"] = next_id
-                        next_id += 1
-                        sc["group_id"] = gid
-                        sc["group_title"] = gtitle
-                        scenes.append(sc)
-                    groups.append({"id": gid, "title": gtitle, "source_index": idx})
-                    titles.extend(it.get("title", "") for it in batch)
-        else:
-            gid = next_gid
-            next_gid += 1
-            art_scenes = await _gen_article_scenes(article, text_provider, language)
-            for sc in art_scenes:
-                sc["id"] = next_id
-                next_id += 1
-                sc["group_id"] = gid
-                sc["group_title"] = article.title
-                scenes.append(sc)
-            groups.append({"id": gid, "title": article.title, "source_index": idx})
-            titles.append(article.title)
+        gid = next_gid
+        next_gid += 1
+        art_scenes = await _gen_article_scenes(article, text_provider, language)
+        for sc in art_scenes:
+            sc["id"] = next_id
+            next_id += 1
+            sc["group_id"] = gid
+            sc["group_title"] = article.title
+            sc["title"] = article.title
+            scenes.append(sc)
+        groups.append({"id": gid, "title": article.title, "source_index": idx})
+        titles.append(article.title)
 
     # 英文模式：子标题（分组名，可能来自数据源中文分类）翻成英文
     if _is_en(language) and groups:

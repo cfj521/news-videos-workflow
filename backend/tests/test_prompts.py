@@ -6,7 +6,7 @@ def test_settings_has_empty_prompts_by_default():
     s = Settings()
     assert s.prompts.roundup_article == ""
     assert s.prompts.news_scoring == ""
-    for k in ("roundup_article", "daily_batch", "summary_meta", "weekly_digest",
+    for k in ("roundup_article", "summary_meta", "weekly_digest",
               "image_regen", "article_summary", "news_scoring"):
         assert hasattr(s.prompts, k)
 
@@ -21,15 +21,15 @@ from app.prompts import DEFAULTS, PROMPTS, resolve_prompt
 from app import config
 
 
-def test_defaults_have_8_entries():
-    assert len(PROMPTS) == 8
-    assert set(DEFAULTS) == {"roundup_article", "daily_batch", "summary_meta",
+def test_defaults_have_7_entries():
+    assert len(PROMPTS) == 7
+    assert set(DEFAULTS) == {"roundup_article", "summary_meta",
                              "weekly_digest", "image_regen", "scene_replan",
                              "article_summary", "news_scoring"}
 
 
 def test_default_content_enforces_asian_chinese():
-    for key in ("roundup_article", "daily_batch", "image_regen"):
+    for key in ("roundup_article", "image_regen"):
         text = DEFAULTS[key]
         assert "Asian" in text or "Chinese" in text
 

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.pipeline.stage2_script import _batch_items, replan_scenes_to_limit, run_stage2_multi
+from app.pipeline.stage2_script import replan_scenes_to_limit, run_stage2_multi
 from app.providers.base import RawArticleData
 
 
@@ -46,20 +46,6 @@ async def test_replan_truncates_if_ai_returns_too_many():
     assert len(out["scenes"]) == 3  # 严格不超过上限
 
 
-def test_batch_items():
-    assert _batch_items(0) == []
-    assert _batch_items(1) == [1]
-    assert _batch_items(2) == [2]
-    assert _batch_items(4) == [4]
-    assert _batch_items(5) == [3, 2]
-    assert _batch_items(7) == [3, 4]
-    assert _batch_items(8) == [3, 3, 2]
-    for n in range(2, 31):
-        sizes = _batch_items(n)
-        assert sum(sizes) == n
-        assert all(2 <= s <= 4 for s in sizes)
-
-
 def _scenes_json(*narrations):
     return json.dumps({"scenes": [{"narration": n, "image_prompt": "p", "motion_prompt": "m", "duration_hint": 5} for n in narrations]})
 
@@ -82,28 +68,7 @@ async def test_multi_normal_articles_group_per_article():
     assert [g["source_index"] for g in script["groups"]] == [0, 1]
     assert [s["id"] for s in script["scenes"]] == [1, 2, 3]
     assert [s["group_id"] for s in script["scenes"]] == [1, 1, 2]
-
-
-@pytest.mark.asyncio
-async def test_multi_daily_groups_by_category():
-    tp = AsyncMock()
-    tp.generate.side_effect = [
-        _scenes_json("m1", "m2", "m3"),
-        _scenes_json("m4", "m5"),
-        _scenes_json("i1", "i2"),
-        json.dumps({"title": "日报汇总", "description": "d", "tags": []}),
-    ]
-    daily_sections = [
-        {"label": "模型", "items": [{"title": f"模型{i}", "summary": "s"} for i in range(5)]},
-        {"label": "行业", "items": [{"title": f"行业{i}", "summary": "s"} for i in range(2)]},
-    ]
-    art = RawArticleData(title="日报", content="c", source_url="u", source_name="AI HOT 日报",
-                         metadata={"aihot_method": "daily", "daily_sections": daily_sections})
-    script = await run_stage2_multi([art], tp)
-    assert [g["title"] for g in script["groups"]] == ["模型 (1)", "模型 (2)", "行业"]
-    assert all(g["source_index"] == 0 for g in script["groups"])
-    assert len(script["scenes"]) == 7
-    assert [s["id"] for s in script["scenes"]] == list(range(1, 8))
+    assert all(s["title"] == s["group_title"] for s in script["scenes"])
 
 
 @pytest.mark.asyncio
@@ -151,27 +116,6 @@ async def test_distill_weekly_falls_back_on_bad_json():
         assert all("title" in it and "summary" in it for it in s["items"])
 
 
-@pytest.mark.asyncio
-async def test_multi_weekly_groups_like_daily():
-    tp = AsyncMock()
-    tp.generate.side_effect = [
-        _scenes_json("w1"),                                  # 主题1 一条
-        _scenes_json("w2", "w3"),                            # 主题2 两条
-        json.dumps({"title": "周报汇总", "description": "d", "tags": []}),
-    ]
-    sections = [
-        {"label": "大模型进展", "items": [{"title": "GPT", "summary": "s"}]},
-        {"label": "行业动态", "items": [{"title": "融资", "summary": "s"}, {"title": "收购", "summary": "s"}]},
-    ]
-    art = RawArticleData(title="本周回顾", content="c", source_url="u", source_name="AI HOT 周报",
-                         metadata={"aihot_method": "weekly", "daily_sections": sections})
-    script = await run_stage2_multi([art], tp)
-    assert [g["title"] for g in script["groups"]] == ["大模型进展", "行业动态"]
-    assert all(g["source_index"] == 0 for g in script["groups"])
-    assert len(script["scenes"]) == 3
-    assert len(script["scenes"]) <= 10
-
-
 from app import config
 from app.pipeline.stage2_script import _gen_article_scenes
 
@@ -196,3 +140,64 @@ async def test_gen_article_scenes_english_directive(monkeypatch):
     await _gen_article_scenes(art, tp, language="en")
     sp = tp.generate.call_args.kwargs["system_prompt"]
     assert "English" in sp and "Western" in sp  # 英文模式注入英文 + 西方场景指令
+
+
+from unittest.mock import patch
+
+
+def _aihot_daily_article():
+    daily_sections = [
+        {"label": "模型", "items": [{"title": f"模型{i}", "summary": f"摘要{i}"} for i in range(5)]},
+        {"label": "行业", "items": [{"title": f"行业{i}", "summary": f"摘要{i}"} for i in range(2)]},
+    ]
+    return RawArticleData(title="日报", content="c", source_url="u", source_name="AI HOT 日报",
+                          metadata={"source_group": "aihot", "aihot_method": "daily",
+                                    "daily_sections": daily_sections})
+
+
+@pytest.mark.asyncio
+async def test_aihot_daily_direct_use(monkeypatch):
+    # aihot_top_n=3 → 7 条 item 选 3 条，1 item→1 scene；narration=summary 原样，不调 AI 生成旁白
+    monkeypatch.setattr(config, "_settings",
+                        config.Settings(pipeline=config.PipelineCfg(aihot_top_n=3)))
+    tp = AsyncMock()
+    # 出图 prompt（每条1次）+ summary_meta（1次）会调 AI；旁白不调
+    tp.generate.side_effect = ["画面A", "画面B", "画面C",
+                               json.dumps({"title": "日报汇总", "description": "d", "tags": []})]
+    script = await run_stage2_multi([_aihot_daily_article()], tp)
+
+    assert len(script["scenes"]) == 3
+    assert [s["id"] for s in script["scenes"]] == [1, 2, 3]
+    assert [s["group_id"] for s in script["scenes"]] == [1, 2, 3]   # 每条 item 自成一组
+    for s in script["scenes"]:
+        assert s["title"] == s["group_title"]                       # 烧录文字 = item.title
+        assert s["narration"].startswith("摘要")                    # 旁白 = summary 原样
+        assert s["title"].startswith(("模型", "行业"))
+    assert tp.generate.call_count == 4                              # 3 出图 prompt + 1 meta，无旁白生成
+
+
+@pytest.mark.asyncio
+async def test_aihot_items_direct_use(monkeypatch):
+    monkeypatch.setattr(config, "_settings",
+                        config.Settings(pipeline=config.PipelineCfg(aihot_top_n=10)))
+    tp = AsyncMock()
+    tp.generate.side_effect = ["画面1", "画面2",
+                               json.dumps({"title": "动态", "description": "d", "tags": []})]
+    arts = [RawArticleData(title=f"动态{i}", content=f"内容{i}", summary=f"摘要{i}",
+                           source_url="u", source_name="AI HOT",
+                           metadata={"source_group": "aihot", "aihot_method": "items"}) for i in range(2)]
+    script = await run_stage2_multi(arts, tp)
+    assert len(script["scenes"]) == 2
+    assert {s["title"] for s in script["scenes"]} == {"动态0", "动态1"}
+    assert all(s["narration"].startswith("摘要") for s in script["scenes"])
+
+
+@pytest.mark.asyncio
+async def test_aihot_image_prompt_fallback_to_title(monkeypatch):
+    monkeypatch.setattr(config, "_settings",
+                        config.Settings(pipeline=config.PipelineCfg(aihot_top_n=1)))
+    tp = AsyncMock()
+    tp.generate.side_effect = [Exception("出图prompt失败"),
+                               json.dumps({"title": "t", "description": "d", "tags": []})]
+    script = await run_stage2_multi([_aihot_daily_article()], tp)
+    assert script["scenes"][0]["image_prompt"] == script["scenes"][0]["title"]  # 退化为 title

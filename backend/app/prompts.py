@@ -115,7 +115,6 @@ Output PURE JSON (no markdown): {"score": <0-10 int>, "reason": "<one sentence>"
 
 PROMPTS: list[PromptDef] = [
     PromptDef("roundup_article", "资讯分镜（单条）", "每条资讯→1~3 个分镜（旁白+画面提示词）", _ROUNDUP, _ROUNDUP_EN),
-    PromptDef("daily_batch", "日报/周报分镜（成组）", "同类目若干条→每条 1 个分镜", _DAILY_BATCH, _DAILY_BATCH_EN),
     PromptDef("summary_meta", "汇总标题/简介", "整片标题、简介、标签", _SUMMARY_META, _SUMMARY_META_EN),
     PromptDef("weekly_digest", "周报主题提炼", "一周条目→3~5 个主题", _WEEKLY_DIGEST, _WEEKLY_DIGEST_EN),
     PromptDef("image_regen", "旁白→图片提示词", "单分镜重生成图片提示词", _IMAGE_REGEN, _IMAGE_REGEN_EN),
