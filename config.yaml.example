@@ -60,7 +60,7 @@ overlay:
   enabled: true
   font_file: "C:/Windows/Fonts/msyh.ttc"   # 仅 FFmpeg(comfyui/兜底)路烧标题需要；HTML 路不读
   font_size_ratio: 0.035
-  color: "white"
+  color: "#FFFFFF"
   bg_opacity: 0.45
   margin_ratio: 0.03
 

@@ -146,7 +146,7 @@ class OverlayCfg(BaseModel):
     enabled: bool = True
     font_file: str = "C:/Windows/Fonts/msyh.ttc"  # FFmpeg drawtext 必需的 CJK 字体文件
     font_size_ratio: float = 0.035   # 相对画面高度
-    color: str = "white"
+    color: str = "#FFFFFF"
     bg_opacity: float = 0.45
     margin_ratio: float = 0.03       # 距右/上边距，相对画面短边
 

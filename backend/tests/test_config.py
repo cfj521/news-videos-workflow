@@ -90,4 +90,5 @@ def test_overlay_defaults():
     assert s.overlay.font_file.endswith("msyh.ttc")
     assert s.overlay.font_size_ratio == 0.035
     assert s.overlay.bg_opacity == 0.45
+    assert s.overlay.color == "#FFFFFF"
     assert s.pipeline.aihot_top_n == 10

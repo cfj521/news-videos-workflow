@@ -343,7 +343,7 @@ const EMPTY_SETTINGS: AppSettings = {
   storage: { work_dir: "", output_dir: "" },
   hyperframes: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
-  overlay: { enabled: true, font_file: "", font_size_ratio: 0.045, color: "#FFFFFF", bg_opacity: 0.55, margin_ratio: 0.03 },
+  overlay: { enabled: true, font_file: "C:/Windows/Fonts/msyh.ttc", font_size_ratio: 0.035, color: "#FFFFFF", bg_opacity: 0.45, margin_ratio: 0.03 },
   prompts: {},
 };
 
