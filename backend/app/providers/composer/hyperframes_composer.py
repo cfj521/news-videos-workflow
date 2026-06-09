@@ -110,12 +110,13 @@ class HyperframesComposer(ComposerProvider):
         for e in entries:
             gid = e.get("group_id")
             title = e.get("title", "")
-            if title and title_overlays and title_overlays[-1]["group_id"] == gid:
+            if title and gid is not None and title_overlays and title_overlays[-1]["group_id"] == gid:
                 title_overlays[-1]["end_s"] = e["end_s"]       # 同组连续 → 延长
             elif title:
                 title_overlays.append({"group_id": gid, "title": title,
                                        "start_s": e["start_s"], "end_s": e["end_s"]})
         title_font_size = max(20, int(height * self._overlay.font_size_ratio))
+        title_margin_px = int(min(width, height) * self._overlay.margin_ratio)
 
         env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
         template = env.get_template("composition.html.j2")
@@ -123,6 +124,7 @@ class HyperframesComposer(ComposerProvider):
                                entries=entries, prev_scene_ids=prev_scene_ids, transition=transition,
                                subtitle_font_size=subtitle_font_size,
                                title_overlays=title_overlays, title_font_size=title_font_size,
+                               title_margin_px=title_margin_px,
                                overlay=self._overlay)
 
     def _extract_thumbnail(self, video_path: str, thumb_path: str) -> None:

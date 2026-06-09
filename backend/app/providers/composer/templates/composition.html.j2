@@ -17,8 +17,8 @@
       opacity: 0;
     }
     .group-title {
-      position: absolute; top: {{ (height * overlay.margin_ratio) | int }}px;
-      right: {{ (height * overlay.margin_ratio) | int }}px;
+      position: absolute; top: {{ title_margin_px }}px;
+      right: {{ title_margin_px }}px;
       font-size: {{ title_font_size | default(48) }}px; color: {{ overlay.color | default('white') }};
       background: rgba(0,0,0,{{ overlay.bg_opacity | default(0.45) }});
       padding: 8px 16px; border-radius: 12px; max-width: 60%;
