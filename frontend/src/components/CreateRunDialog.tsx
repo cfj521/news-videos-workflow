@@ -215,54 +215,57 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
         <h2 className="text-lg font-semibold mb-4">{edit ? "编辑计划任务" : isSchedule ? "新建计划任务" : "新建任务"}</h2>
 
         {isSchedule && (
-          <div className="mb-5 rounded-lg border border-white/[0.06] p-3 grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>间隔</label>
-              <Select value={freq} onChange={(v) => setFreq(v as typeof freq)} options={[
-                { value: "once", label: "单次" },
-                { value: "daily", label: "每日" },
-                { value: "weekly", label: "每周" },
-                { value: "monthly", label: "每月" },
-              ]} />
-            </div>
-            <div>
-              <label className={labelCls}>执行时间</label>
-              {freq === "once" && (
-                <input type="datetime-local" value={onceAt} onChange={(e) => setOnceAt(e.target.value)} className={inputCls} />
-              )}
-              {freq === "daily" && (
-                <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
-              )}
-              {freq === "weekly" && (
-                <div className="flex gap-2">
-                  <Select value={String(weekday)} onChange={(v) => setWeekday(Number(v))} options={[
-                    { value: "0", label: "周一" }, { value: "1", label: "周二" }, { value: "2", label: "周三" },
-                    { value: "3", label: "周四" }, { value: "4", label: "周五" }, { value: "5", label: "周六" }, { value: "6", label: "周日" },
-                  ]} />
-                  <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
-                </div>
-              )}
-              {freq === "monthly" && (
-                <div className="flex gap-2">
-                  <Select value={typeof monthDay === "number" ? String(monthDay) : "last"}
-                    onChange={(v) => setMonthDay(v === "last" ? "last" : Number(v))}
-                    options={[...Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} 号` })), { value: "last", label: "月末（最后一天）" }]} />
-                  <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
-                </div>
-              )}
-            </div>
-            <div className="col-span-2">
+          <>
+            <div className="mb-3">
               <label className={labelCls}>名称（可空，默认用规则摘要）</label>
               <input type="text" value={scheduleName} onChange={(e) => setScheduleName(e.target.value)}
                 placeholder={timeReady ? formatScheduleSummary(freq, composeRunAt(freq, { onceAt, tod, weekday, monthDay })) : "如：每日AI日报"} className={inputCls} />
             </div>
-            <p className="col-span-2 text-[11px] text-white/40 leading-snug">
-              {freq === "once"
-                ? "在所选时刻执行一次。"
-                : "按所选间隔在该时间重复执行。"}
-              {freq === "monthly" && monthDay === "last" && " 每月最后一天执行（短月自动顺延，如 2 月跑 28/29 号）。"}
-            </p>
-          </div>
+            <div className="mb-5 rounded-lg border border-white/[0.06] p-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>间隔</label>
+                <Select value={freq} onChange={(v) => setFreq(v as typeof freq)} options={[
+                  { value: "once", label: "单次" },
+                  { value: "daily", label: "每日" },
+                  { value: "weekly", label: "每周" },
+                  { value: "monthly", label: "每月" },
+                ]} />
+              </div>
+              <div>
+                <label className={labelCls}>执行时间</label>
+                {freq === "once" && (
+                  <input type="datetime-local" value={onceAt} onChange={(e) => setOnceAt(e.target.value)} className={inputCls} />
+                )}
+                {freq === "daily" && (
+                  <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
+                )}
+                {freq === "weekly" && (
+                  <div className="flex gap-2">
+                    <Select value={String(weekday)} onChange={(v) => setWeekday(Number(v))} className="min-w-[5.5rem]" options={[
+                      { value: "0", label: "周一" }, { value: "1", label: "周二" }, { value: "2", label: "周三" },
+                      { value: "3", label: "周四" }, { value: "4", label: "周五" }, { value: "5", label: "周六" }, { value: "6", label: "周日" },
+                    ]} />
+                    <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
+                  </div>
+                )}
+                {freq === "monthly" && (
+                  <div className="flex gap-2">
+                    <Select value={typeof monthDay === "number" ? String(monthDay) : "last"}
+                      onChange={(v) => setMonthDay(v === "last" ? "last" : Number(v))}
+                      className="min-w-[5.5rem]"
+                      options={[...Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} 日` })), { value: "last", label: "月末（最后一天）" }]} />
+                    <input type="time" value={tod} onChange={(e) => setTod(e.target.value)} className={inputCls} />
+                  </div>
+                )}
+              </div>
+              <p className="col-span-2 text-[11px] text-white/40 leading-snug">
+                {freq === "once"
+                  ? "在所选时刻执行一次。"
+                  : "按所选间隔在该时间重复执行。"}
+                {freq === "monthly" && monthDay === "last" && " 每月最后一天执行（短月自动顺延，如 2 月跑 28/29 日）。"}
+              </p>
+            </div>
+          </>
         )}
 
         <div className="flex gap-5">
