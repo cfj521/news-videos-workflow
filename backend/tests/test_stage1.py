@@ -122,3 +122,19 @@ async def test_stage1_weekly_single_passthrough_ignores_max():
     out = await run_stage1(sources=sources, collectors=collectors, time_range="7d", max_articles=0)
     assert len(out) == 1
     assert out[0].metadata["aihot_method"] == "weekly"
+
+
+@pytest.mark.asyncio
+async def test_aihot_items_passthrough_all(monkeypatch):
+    from app.pipeline.stage1_collect import run_stage1
+    from app.providers.base import RawArticleData
+
+    arts = [RawArticleData(title=f"i{i}", content="c", source_url="u", source_name="AI HOT",
+                           metadata={"source_group": "aihot", "aihot_method": "items"}) for i in range(15)]
+
+    class Col:
+        async def collect(self, source_config, time_range): return arts
+
+    out = await run_stage1(sources=[{"type": "aihot", "name": "AI HOT"}],
+                           collectors={"aihot": Col()}, max_articles=5)
+    assert len(out) == 15  # 不再被 max_articles 截断，全量交给 stage2 评分选取

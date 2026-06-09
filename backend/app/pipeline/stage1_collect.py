@@ -67,8 +67,8 @@ async def run_stage1(
         if method in ("daily", "weekly"):
             log.info("AI HOT %s — single-doc passthrough (curated, no dedup/scoring/compliance)", method)
             return all_articles[:1]
-        log.info("AI HOT items — taking top %d (curated, no dedup/scoring/compliance)", max_articles)
-        return all_articles[:max_articles]
+        log.info("AI HOT items — passthrough %d (选取交给 stage2 评分)", len(all_articles))
+        return all_articles
 
     # 普通源：始终去重 → 合规 → 评分挑 top N
     dedup = DedupService()
