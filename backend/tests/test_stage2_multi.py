@@ -157,9 +157,12 @@ async def test_aihot_daily_direct_use(monkeypatch):
     # aihot_top_n=3 → 7 条 item 选 3 条，1 item→1 scene；narration=summary 原样，不调 AI 生成旁白
     monkeypatch.setattr(config, "_settings",
                         config.Settings(pipeline=config.PipelineCfg(aihot_top_n=3)))
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
     tp = AsyncMock()
-    # 出图 prompt（每条1次）+ summary_meta（1次）会调 AI；旁白不调
-    tp.generate.side_effect = ["画面A", "画面B", "画面C",
+    # 新调用顺序：先 7 条 LLM 评分 JSON（并发，每候选1次）→ 再 3 条出图 prompt → 再 1 条 meta
+    llm_scores = [json.dumps({"score": s, "reason": "r", "tags": []}) for s in [9, 8, 7, 6, 5, 4, 3]]
+    tp.generate.side_effect = llm_scores + ["画面A", "画面B", "画面C",
                                json.dumps({"title": "日报汇总", "description": "d", "tags": []})]
     script = await run_stage2_multi([_aihot_daily_article()], tp)
 
@@ -170,15 +173,19 @@ async def test_aihot_daily_direct_use(monkeypatch):
         assert s["title"] == s["group_title"]                       # 烧录文字 = item.title
         assert s["narration"].startswith("摘要")                    # 旁白 = summary 原样
         assert s["title"].startswith(("模型", "行业"))
-    assert tp.generate.call_count == 4                              # 3 出图 prompt + 1 meta，无旁白生成
+    assert tp.generate.call_count == 11                             # 7 LLM 评分 + 3 出图 prompt + 1 meta，无旁白生成
 
 
 @pytest.mark.asyncio
 async def test_aihot_items_direct_use(monkeypatch):
     monkeypatch.setattr(config, "_settings",
                         config.Settings(pipeline=config.PipelineCfg(aihot_top_n=10)))
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
     tp = AsyncMock()
-    tp.generate.side_effect = ["画面1", "画面2",
+    # 新调用顺序：先 2 条 LLM 评分 JSON → 再 2 条出图 prompt → 再 1 条 meta
+    llm_scores = [json.dumps({"score": s, "reason": "r", "tags": []}) for s in [8, 7]]
+    tp.generate.side_effect = llm_scores + ["画面1", "画面2",
                                json.dumps({"title": "动态", "description": "d", "tags": []})]
     arts = [RawArticleData(title=f"动态{i}", content=f"内容{i}", summary=f"摘要{i}",
                            source_url="u", source_name="AI HOT",
@@ -193,8 +200,12 @@ async def test_aihot_items_direct_use(monkeypatch):
 async def test_aihot_image_prompt_fallback_to_title(monkeypatch):
     monkeypatch.setattr(config, "_settings",
                         config.Settings(pipeline=config.PipelineCfg(aihot_top_n=1)))
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
     tp = AsyncMock()
-    tp.generate.side_effect = [Exception("出图prompt失败"),
+    # 新调用顺序：先 7 条 LLM 评分 JSON → 再 1 条出图 prompt（抛 Exception）→ 再 1 条 meta
+    llm_scores = [json.dumps({"score": s, "reason": "r", "tags": []}) for s in [9, 8, 7, 6, 5, 4, 3]]
+    tp.generate.side_effect = llm_scores + [Exception("出图prompt失败"),
                                json.dumps({"title": "t", "description": "d", "tags": []})]
     script = await run_stage2_multi([_aihot_daily_article()], tp)
     assert script["scenes"][0]["image_prompt"] == script["scenes"][0]["title"]  # 退化为 title
@@ -208,3 +219,23 @@ def test_aihot_candidates_fill_published_at():
     cands = _aihot_candidates([daily])
     assert cands and cands[0].published_at is not None
     assert cands[0].published_at.year == 2026 and cands[0].published_at.month == 6
+
+
+@pytest.mark.asyncio
+async def test_aihot_direct_uses_scoring_and_reports(monkeypatch):
+    monkeypatch.setattr(config, "_settings",
+                        config.Settings(pipeline=config.PipelineCfg(aihot_top_n=2)))
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.side_effect = ['{"score": 9, "reason": "a", "tags": []}',
+                               '{"score": 5, "reason": "b", "tags": []}',
+                               '{"score": 7, "reason": "c", "tags": []}',
+                               "画面A", "画面B",
+                               json.dumps({"title": "汇总", "description": "d", "tags": []})]
+    daily = RawArticleData(title="日报", content="c", source_url="u", source_name="AI HOT 日报",
+        metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": "2026-06-01",
+                  "daily_sections": [{"label": "模型", "items": [{"title": f"i{i}", "summary": f"s{i}"} for i in range(3)]}]})
+    script = await run_stage2_multi([daily], tp)
+    assert len(script["scenes"]) == 2
+    assert script.get("scoring_report") and len(script["scoring_report"]["candidates"]) == 3

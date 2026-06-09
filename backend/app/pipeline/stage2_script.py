@@ -165,7 +165,8 @@ async def _run_aihot_direct(articles: list, tp, language: str = "zh") -> dict:
     """AI HOT 直用：归一候选 → ScoringService 选 top N → 每条 1 scene（不 AI 生成旁白）。"""
     candidates = _aihot_candidates(articles)
     top_n = config.get_settings().pipeline.aihot_top_n
-    selected = (await ScoringService().select_top(candidates, None, language, n=top_n)).selected  # 规则分；S8 再正式接 tp
+    res = await ScoringService().select_top(candidates, tp, language, n=top_n)
+    selected = res.selected
     scenes: list[dict] = []
     groups: list[dict] = []
     titles: list[str] = []
@@ -181,7 +182,7 @@ async def _run_aihot_direct(articles: list, tp, language: str = "zh") -> dict:
     meta = await _gen_summary_meta(titles, tp, language)
     log.info("[S2] AI HOT direct: %d candidates → %d scenes (top_n=%d)", len(candidates), len(scenes), top_n)
     return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"],
-            "groups": groups, "scenes": scenes}
+            "groups": groups, "scenes": scenes, "scoring_report": res.report}
 
 
 async def run_stage2_multi(articles: list, text_provider, language: str = "zh") -> dict:
