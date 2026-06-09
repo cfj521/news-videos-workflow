@@ -65,6 +65,8 @@ def run_stage4(
             "audio_duration_ms": audio_duration,
             "subtitle_text": narration,
             "subtitle_lines": subtitle_lines,
+            "title": scene_data.get("title") or scene_data.get("group_title", ""),
+            "group_id": scene_data.get("group_id"),
         }
         entries.append(entry)
         log.debug("S%d: %dms–%dms (%dms, %d subtitle lines)", scene_id, current_ms, current_ms + duration_ms, duration_ms, len(subtitle_lines))
