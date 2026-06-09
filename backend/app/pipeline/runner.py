@@ -541,7 +541,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
             if history_fps:
                 log.info("[S1] Loaded %d history fingerprints (recent issues) for dedup",
                          len(history_fps))
-            articles = await run_stage1(
+            articles, _scoring_report = await run_stage1(
                 sources=source_configs, collectors=collectors,
                 time_range=run.time_range, max_articles=run.max_articles,
                 history_fingerprints=history_fps,

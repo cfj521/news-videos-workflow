@@ -28,7 +28,9 @@ async def run_stage1(
     time_range: str = "7d",
     max_articles: int = 5,
     history_fingerprints: list[str] | None = None,
-) -> list[RawArticleData]:
+    text_provider=None,
+    language: str = "zh",
+) -> tuple[list[RawArticleData], dict | None]:
     all_articles: list[RawArticleData] = []
     errors: list[tuple[str, Exception]] = []
     for source in sources:
@@ -66,9 +68,9 @@ async def run_stage1(
         method = all_articles[0].metadata.get("aihot_method", "items")
         if method in ("daily", "weekly"):
             log.info("AI HOT %s — single-doc passthrough (curated, no dedup/scoring/compliance)", method)
-            return all_articles[:1]
+            return all_articles[:1], None
         log.info("AI HOT items — passthrough %d (选取交给 stage2 评分)", len(all_articles))
-        return all_articles
+        return all_articles, None
 
     # 普通源：始终去重 → 合规 → 评分挑 top N
     dedup = DedupService()
@@ -76,6 +78,6 @@ async def run_stage1(
     log.info("After dedup: %d (removed %d)", len(deduplicated), len(all_articles) - len(deduplicated))
     compliant = _filter_compliant(deduplicated)
     scoring = ScoringService()
-    selected = (await scoring.select_top(compliant, None, "zh", n=max_articles)).selected
-    log.info("Selected top %d articles (from %d compliant)", len(selected), len(compliant))
-    return selected
+    res = await scoring.select_top(compliant, text_provider, language, n=max_articles)
+    log.info("Selected top %d (from %d compliant)", len(res.selected), len(compliant))
+    return res.selected, res.report
