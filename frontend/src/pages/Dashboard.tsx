@@ -162,18 +162,18 @@ function ArticleDialog({ initial, onSave, onClose }: { initial: ArticleRec | nul
   const [url, setUrl] = useState(String(initial?.url ?? ""));
   return (
     <div className={dialogOverlayCls}>
-      <div className={`${dialogPanelCls} w-[560px]`}>
+      <div className={`${dialogPanelCls} w-[760px] max-w-[92vw]`}>
         <h2 className="text-lg font-semibold mb-4">{initial ? "编辑文章" : "添加文章"}</h2>
         <label className={labelCls}>标题</label>
         <input value={title} onChange={(e) => setTitle(e.target.value)} className={`${inputCls} mb-3`} />
         <label className={labelCls}>正文</label>
-        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={8} className={`${inputCls} mb-3 text-[13px]`} />
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={16} className={`${inputCls} mb-3 text-[13px]`} />
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div><label className={labelCls}>来源</label><input value={source} onChange={(e) => setSource(e.target.value)} className={inputCls} /></div>
           <div><label className={labelCls}>原文链接</label><input value={url} onChange={(e) => setUrl(e.target.value)} className={inputCls} /></div>
         </div>
         <label className={labelCls}>摘要</label>
-        <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className={`${inputCls} mb-4 text-[13px]`} />
+        <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} className={`${inputCls} mb-4 text-[13px]`} />
         <div className="flex justify-end gap-3">
           <button onClick={onClose} className={btnCompact}>取消</button>
           <button onClick={() => onSave({ ...(initial ?? {}), title, content, summary, source, url })} className={btnPrimary}>保存</button>
@@ -284,9 +284,11 @@ function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
             <div key={i} className={`${cardCls} p-4`}>
               <div className="flex justify-between items-start gap-3">
                 <div className="min-w-0">
-                  {mainLink ? <a href={mainLink} target="_blank" rel="noreferrer" className="text-sm text-white/96 font-medium hover:text-blue-300 transition">{String(a.title ?? "")}</a>
-                    : <span className="text-sm text-white/96 font-medium">{String(a.title ?? "")}</span>}
+                  <button onClick={() => setEditing({ idx: i, rec: a })} title="点击编辑"
+                    className="block w-full text-left text-sm text-white/96 font-medium hover:text-blue-300 transition truncate">{String(a.title ?? "")}</button>
                   <div className="text-[11px] text-white/52 mt-1">{String(a.source ?? "")}</div>
+                  {mainLink ? <a href={mainLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                    className="inline-block max-w-full truncate text-[11px] text-blue-300/80 hover:text-blue-300 transition mt-0.5">↗ {mainLink}</a> : null}
                   {a.summary ? <p className="text-xs text-white/66 mt-2 leading-relaxed">{String(a.summary)}</p> : null}
                 </div>
                 <div className="flex gap-1 shrink-0">

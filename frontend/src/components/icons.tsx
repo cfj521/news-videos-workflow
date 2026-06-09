@@ -28,8 +28,9 @@ export const RefreshIcon = ({ size, className }: IconProps) =>
 export const ResetIcon = ({ size, className }: IconProps) =>
   svg(<><path d="M3 2v6h6" /><path d="M3 13a9 9 0 1 0 3-7.7L3 8" /></>, size, className);
 
+// 导入文章：箭头横向「进入容器」，明确区别于下载（托盘+下箭头）
 export const ImportIcon = ({ size, className }: IconProps) =>
-  svg(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></>, size, className);
+  svg(<><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><path d="m10 17 5-5-5-5" /><path d="M15 12H3" /></>, size, className);
 
 // 用于「AI 重新生成提示词」，区别于 RefreshIcon
 export const SparklesIcon = ({ size, className }: IconProps) =>
