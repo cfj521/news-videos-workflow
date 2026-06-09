@@ -1,15 +1,18 @@
 import json
 import math
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from app.config import get_settings
 from app.logging import get_logger
 from app.prompts import resolve_prompt
 from app.providers.base import RawArticleData
+from app.services import scoring_constants as C
 
 log = get_logger("service.scoring")
 
-# ── Keyword lists ────────────────────────────────────────
+# ── Keyword lists（旧版兼容，供旧 _legacy_rule_score 使用）────────────────────────────────────────
 
 AI_KEYWORDS = [
     "ai", "artificial intelligence", "llm", "gpt", "claude", "machine learning",
@@ -81,12 +84,74 @@ def _parse_json_response(text: str) -> dict | None:
     return None
 
 
+# ── ScoringResult 数据类 ───────────────────────────────────────────────────────
+
+@dataclass
+class ScoringResult:
+    selected: list
+    report: dict = field(default_factory=dict)
+
+
 class ScoringService:
     def __init__(self, source_weights: dict[str, float] | None = None):
+        # source_weights 参数保留以向后兼容旧调用方，但新子评分器统一走 cfg
         self.source_weights = source_weights or DEFAULT_SOURCE_WEIGHTS
+        self.cfg = get_settings().scoring
+
+    # ── 新子评分器（0–1 纯函数）────────────────────────────────────────────────
+
+    def _source_score(self, a: RawArticleData) -> float:
+        hay = f"{a.source_url} {a.source_name}".lower()
+        for pat, w in C.SOURCE_TIERS:
+            if re.search(pat, hay):
+                return w
+        return C.DEFAULT_SOURCE_WEIGHT
+
+    def _recency_score(self, published_at: datetime | None) -> float:
+        if not published_at:
+            return self.cfg.fresh_floor
+        days = (datetime.now(timezone.utc) - published_at).total_seconds() / 86400
+        full, we, floor_d, floor = (self.cfg.fresh_full_days, self.cfg.fresh_week_end,
+                                    self.cfg.fresh_floor_days, self.cfg.fresh_floor)
+        if days <= 0:
+            return 1.0
+        if days <= full:
+            return 1.0 - (1.0 - we) * (days / full)
+        if days <= floor_d:
+            return we - (we - floor) * ((days - full) / (floor_d - full))
+        return floor
+
+    def _keyword_score(self, title: str, content: str, language: str) -> float:
+        text = f"{title} {content}".lower()
+        is_en = (language or "zh").lower().startswith("en")
+        score = C.KW_BASE
+        for kw in C.POSITIVE_ENTITIES + C.POSITIVE_LEADERS:
+            if kw in text:
+                score += C.KW_ENTITY
+        for kw in C.TECH_TERMS:
+            if kw in text:
+                score += C.KW_TERM
+        if not is_en:
+            for kw in C.CHINA_TERMS:
+                if kw in text:
+                    score += C.KW_ENTITY
+        for kw in C.NEGATIVE_TERMS:
+            if kw in text:
+                score -= C.KW_NEG
+        return max(0.0, min(1.0, score))
+
+    def _rule_score(self, a: RawArticleData, language: str) -> float:
+        """新版规则评分（接受 language 参数），0–1。"""
+        ws, wr, wk = self.cfg.w_source, self.cfg.w_recency, self.cfg.w_keyword
+        tot = ws + wr + wk or 1.0
+        return (ws * self._source_score(a)
+                + wr * self._recency_score(a.published_at)
+                + wk * self._keyword_score(a.title, a.content or "", language)) / tot
+
+    # ── 旧版方法（保留以兼容 stage1/stage2 调用的 select_top）────────────────────
 
     def score(self, article: RawArticleData) -> float:
-        rule = self._rule_score(article)
+        rule = self._legacy_rule_score(article)
         data = self._data_signal_score(article)
         return 0.6 * rule + 0.4 * data
 
@@ -100,7 +165,7 @@ class ScoringService:
             return final, llm_result
         except Exception:
             log.warning("LLM scoring failed for '%s', falling back to rules", article.title[:40])
-            rule = self._rule_score(article)
+            rule = self._legacy_rule_score(article)
             return 0.6 * rule + 0.4 * data, {}
 
     def select_top(self, articles: list[RawArticleData], n: int = 5) -> list[RawArticleData]:
@@ -124,9 +189,9 @@ class ScoringService:
             log.info("Score %.3f: '%s' (%s) %s", s, a.title[:50], a.source_name, a.metadata.get("ai_reason", ""))
         return [a for _, a in scored[:n]]
 
-    # ── Rule-based score (fallback) ──────────────────────
+    # ── 旧版规则评分（内部，供旧 score() 调用）───────────────────────────────────
 
-    def _rule_score(self, article: RawArticleData) -> float:
+    def _legacy_rule_score(self, article: RawArticleData) -> float:
         source_w = self.source_weights.get(article.source_name, 0.5)
         recency_w = self._recency_weight(article.published_at)
         relevance_w = self._keyword_relevance(article.title, article.content)
@@ -215,7 +280,7 @@ class ScoringService:
                 return {"score": v, "reason": "", "tags": []}
         return {"score": 5, "reason": "parse_failed", "tags": []}
 
-    # ── Helpers ──────────────────────────────────────────
+    # ── Helpers（旧版，供 _legacy_rule_score 使用）────────────────────────────────
 
     def _recency_weight(self, published_at: datetime | None) -> float:
         if not published_at:

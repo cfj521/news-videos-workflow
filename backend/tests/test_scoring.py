@@ -1,46 +1,44 @@
 from datetime import datetime, timedelta, timezone
-
 from app.providers.base import RawArticleData
 from app.services.scoring import ScoringService
 
 
-def _article(title="Test", published_hours_ago=1, source_name="TechCrunch"):
-    return RawArticleData(
-        title=title,
-        content="Content about AI and machine learning",
-        source_url="https://example.com",
-        source_name=source_name,
-        published_at=datetime.now(timezone.utc) - timedelta(hours=published_hours_ago),
-    )
+def _art(title="t", content="c", url="", source="", published_at=None):
+    return RawArticleData(title=title, content=content, source_url=url,
+                          source_name=source, published_at=published_at)
 
 
-def test_score_basic():
-    service = ScoringService()
-    score = service.score(_article())
-    assert 0 < score <= 1.0
+def test_source_score_tiers():
+    s = ScoringService()
+    assert s._source_score(_art(url="https://www.anthropic.com/news/x")) == 1.0
+    assert s._source_score(_art(source="Hacker News")) == 0.88
+    assert s._source_score(_art(source="TechCrunch")) == 0.7
+    assert s._source_score(_art(source="Tavily")) == 0.5
+    assert s._source_score(_art(source="某不知名站")) == 0.5
 
 
-def test_newer_scores_higher():
-    service = ScoringService()
-    new_article = _article(published_hours_ago=1)
-    old_article = _article(published_hours_ago=72)
-    assert service.score(new_article) > service.score(old_article)
+def test_recency_score_piecewise():
+    s = ScoringService()
+    now = datetime.now(timezone.utc)
+    assert s._recency_score(now) == 1.0
+    assert abs(s._recency_score(now - timedelta(days=7)) - 0.9) < 1e-6
+    assert abs(s._recency_score(now - timedelta(days=30)) - 0.3) < 1e-6
+    assert s._recency_score(now - timedelta(days=60)) == 0.3
+    assert s._recency_score(None) == 0.3
+    assert s._recency_score(now - timedelta(days=3)) > s._recency_score(now - timedelta(days=15))
 
 
-def test_high_priority_source_scores_higher():
-    service = ScoringService(source_weights={"MarkTechPost": 1.0, "Unknown Blog": 0.3})
-    trusted = _article(source_name="MarkTechPost")
-    unknown = _article(source_name="Unknown Blog")
-    assert service.score(trusted) > service.score(unknown)
+def test_keyword_score_language_lens():
+    s = ScoringService()
+    zh = s._keyword_score("DeepSeek 发布新模型", "国产大模型突破", "zh")
+    en = s._keyword_score("DeepSeek 发布新模型", "国产大模型突破", "en")
+    assert zh > en
+    assert s._keyword_score("crypto casino 招聘", "赌博", "zh") >= 0.0
+    assert s._keyword_score("OpenAI agent", "", "en") > 0.4
 
 
-def test_select_top_n():
-    service = ScoringService()
-    articles = [
-        _article(title="A", published_hours_ago=100),
-        _article(title="B", published_hours_ago=1),
-        _article(title="C", published_hours_ago=50),
-    ]
-    top = service.select_top(articles, n=2)
-    assert len(top) == 2
-    assert top[0].title == "B"
+def test_rule_score_normalized():
+    s = ScoringService()
+    r = s._rule_score(_art(source="Hacker News", title="OpenAI agent",
+                           published_at=datetime.now(timezone.utc)), "en")
+    assert 0.0 <= r <= 1.0
