@@ -333,7 +333,7 @@ function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
             {(!scoring?.candidates || scoring.candidates.length === 0) ? (
               <p className="text-xs text-white/52 pl-1">暂无评分数据</p>
             ) : (
-              scoring.candidates.map((c, idx) => (
+              [...scoring.candidates].sort((a, b) => b.final - a.final).map((c, idx) => (
                 <div key={idx} className={`${cardCls} p-3 ${c.selected ? "border-blue-500/30" : ""}`}>
                   <div className="flex items-start gap-2">
                     {/* 最终分徽标 */}

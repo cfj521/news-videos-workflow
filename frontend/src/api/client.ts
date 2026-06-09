@@ -203,7 +203,7 @@ export const api = {
     script: (id: number) => fetchJSON<ScriptData>(`/pipeline/runs/${id}/script`),
     timeline: (id: number) => fetchJSON<TimelineData>(`/pipeline/runs/${id}/timeline`),
     articles: (id: number) => fetchJSON<ArticleData[]>(`/pipeline/runs/${id}/articles`),
-    scoring: (id: number) => fetchJSON<ScoringData>(`/runs/${id}/scoring`),
+    scoring: (id: number) => fetchJSON<ScoringData>(`/pipeline/runs/${id}/scoring`),
     regenAudio: (runId: number, sceneId: number, narration: string) =>
       fetchJSON<{ status: string }>(`/pipeline/runs/${runId}/scenes/${sceneId}/audio`, {
         method: "POST",
