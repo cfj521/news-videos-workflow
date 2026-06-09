@@ -97,3 +97,25 @@ def test_generate_srt():
     srt = generate_srt(timeline)
     assert "1\n00:00:00,000 --> 00:00:05,000\n第一段" in srt
     assert "2\n00:00:05,000 --> 00:00:10,000\n第二段" in srt
+
+
+def test_stage4_entry_carries_title_and_group_id():
+    scene_assets = [
+        {"scene_id": 1, "image": {"file_path": "i1.png"}, "audio": {"file_path": "a1.mp3", "duration_ms": 4000}},
+        {"scene_id": 2, "image": {"file_path": "i2.png"}, "audio": {"file_path": "a2.mp3", "duration_ms": 4000}},
+    ]
+    script = {"scenes": [
+        {"id": 1, "narration": "n1", "title": "标题1", "group_id": 1, "duration_hint": 5},
+        {"id": 2, "narration": "n2", "title": "标题2", "group_id": 2, "duration_hint": 5},
+    ]}
+    timeline = run_stage4(script=script, scene_assets=scene_assets, scene_gap_ms=0)
+    assert [e["title"] for e in timeline["entries"]] == ["标题1", "标题2"]
+    assert [e["group_id"] for e in timeline["entries"]] == [1, 2]
+
+
+def test_stage4_title_falls_back_to_group_title():
+    scene_assets = [{"scene_id": 1, "image": {"file_path": "i.png"}, "audio": {"file_path": "a.mp3", "duration_ms": 3000}}]
+    script = {"scenes": [{"id": 1, "narration": "n", "group_title": "组标题", "group_id": 7, "duration_hint": 5}]}
+    timeline = run_stage4(script=script, scene_assets=scene_assets, scene_gap_ms=0)
+    assert timeline["entries"][0]["title"] == "组标题"
+    assert timeline["entries"][0]["group_id"] == 7

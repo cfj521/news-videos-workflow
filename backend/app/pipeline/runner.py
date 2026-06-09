@@ -25,6 +25,7 @@ from app.pipeline.stage5_compose import run_stage5
 from app.providers.base import ImageProvider, ProviderError
 from app.providers.collector.hackernews import HackerNewsCollector
 from app.providers.composer.hyperframes_composer import HyperframesComposer
+from app.providers.composer.overlay import build_drawtext
 
 
 def _build_text_provider():
@@ -268,6 +269,7 @@ def _save_articles(articles, run_dir):
             "source": a.source_name,
             "content": a.content or "",
             "summary": a.summary,
+            "source_group": a.metadata.get("source_group"),
             "aihot_method": a.metadata.get("aihot_method"),
             "daily_sections": a.metadata.get("daily_sections"),
         })
@@ -279,6 +281,8 @@ def _save_articles(articles, run_dir):
 def _article_from_dict(d: dict):
     from app.providers.base import RawArticleData
     metadata = {}
+    if d.get("source_group"):
+        metadata["source_group"] = d["source_group"]
     if d.get("aihot_method"):
         metadata["aihot_method"] = d["aihot_method"]
     if d.get("daily_sections"):
@@ -739,7 +743,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
         if run.video_route == "hyperframes":
             _update(db, run, progress_detail="S4 生成 Hyperframes 预览...")
-            composer = HyperframesComposer()
+            composer = HyperframesComposer(overlay=cfg.overlay)
             try:
                 hyperframes_html = composer._render_html(
                     timeline, resolution, run_dir, transition=cfg.hyperframes.transition,
@@ -809,7 +813,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                     from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
                     from app.providers.video import build_video_provider
                     vp = build_video_provider(cfg)
-                    result = await ComfyUIVideoComposer(vp, fps=cfg.pipeline.video_fps).compose(
+                    result = await ComfyUIVideoComposer(vp, fps=cfg.pipeline.video_fps, overlay=cfg.overlay).compose(
                         timeline_json=timeline, assets_dir=str(assets_dir),
                         output_path=output_mp4, resolution=resolution,
                     )
@@ -818,11 +822,11 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 except Exception as e:
                     log.warning("[S5] ComfyUI failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
-                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps)
+                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps, overlay=cfg.overlay)
             else:
                 _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
                 log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
-                composer = HyperframesComposer()
+                composer = HyperframesComposer(overlay=cfg.overlay)
                 try:
                     result = await run_stage5(
                         timeline=timeline, composer=composer, assets_dir=str(assets_dir),
@@ -832,7 +836,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 except Exception as e:
                     log.warning("[S5] Hyperframes failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 Hyperframes 失败，FFmpeg 合成中...")
-                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps)
+                    final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps, overlay=cfg.overlay)
 
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
@@ -1004,10 +1008,14 @@ def _run_ffmpeg(cmd, service: str, shell: bool = False) -> None:
         raise ProviderError(service=service, provider="ffmpeg", cause=RuntimeError(msg))
 
 
-def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) -> str:
+def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str, overlay=None) -> str:
     output_path = str((run_dir / "output.mp4").resolve())
     entries = timeline["entries"]
     w, h = resolution.split("x")
+
+    from app.config import OverlayCfg
+    overlay = overlay or OverlayCfg()
+    wi, hi = int(w), int(h)
 
     inputs = []
     filter_parts = []
@@ -1021,9 +1029,13 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) ->
         inputs.extend(["-loop", "1", "-t", str(dur_s), "-i", entry["image_path"]])
         inputs.extend(["-i", entry["audio_path"]])
         vi, ai = idx * 2, idx * 2 + 1
-        filter_parts.append(
-            f"[{vi}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
-            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}[v{idx}]")
+        draw = build_drawtext(entry.get("title", ""), wi, hi, overlay,
+                              str(Path(run_dir) / f"title_{idx}.txt"))
+        chain = (f"[{vi}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
+                 f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}")
+        if draw:
+            chain += "," + draw
+        filter_parts.append(chain + f"[v{idx}]")
         filter_parts.append(f"[{ai}:a]apad=whole_dur={dur_s}[a{idx}]")
         concat_inputs.append(f"[v{idx}][a{idx}]")
 

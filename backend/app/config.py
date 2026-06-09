@@ -110,6 +110,7 @@ class SummaryCfg(BaseModel):
 class PipelineCfg(BaseModel):
     default_time_range: str = "7d"
     default_max_articles: int = 5
+    aihot_top_n: int = 10  # AI HOT 直用模式：经 ScoringService 选取的 item 上限（1 item→1 分镜）
     default_video_route: str = "comfyui"
     default_language: str = "zh"
     dedup_lookback: str = "30d"
@@ -140,6 +141,16 @@ class HyperframesCfg(BaseModel):
     subtitle_max_lines: int = 2  # 单条字幕最多显示行数，用于自动切分长句
 
 
+class OverlayCfg(BaseModel):
+    """画面标题烧录样式（右上角）。font_file 仅 FFmpeg 两路使用；HTML 路走 CSS 字体。"""
+    enabled: bool = True
+    font_file: str = "C:/Windows/Fonts/msyh.ttc"  # FFmpeg drawtext 必需的 CJK 字体文件
+    font_size_ratio: float = 0.035   # 相对画面高度
+    color: str = "#FFFFFF"
+    bg_opacity: float = 0.45
+    margin_ratio: float = 0.03       # 距右/上边距，相对画面短边
+
+
 class InfraCfg(BaseModel):
     database_url: str = "sqlite:///../data/news_videos.db"
     data_dir: str = "../data"
@@ -156,7 +167,6 @@ class StorageCfg(BaseModel):
 class PromptsCfg(BaseModel):
     # 中文（默认语言）一套 + 英文（语言=en）一套；留空回退内置默认
     roundup_article: str = ""
-    daily_batch: str = ""
     summary_meta: str = ""
     weekly_digest: str = ""
     image_regen: str = ""
@@ -164,7 +174,6 @@ class PromptsCfg(BaseModel):
     article_summary: str = ""
     news_scoring: str = ""
     roundup_article_en: str = ""
-    daily_batch_en: str = ""
     summary_meta_en: str = ""
     weekly_digest_en: str = ""
     image_regen_en: str = ""
@@ -207,6 +216,7 @@ class Settings(BaseModel):
     collectors: CollectorsCfg = CollectorsCfg()
     pipeline: PipelineCfg = PipelineCfg()
     hyperframes: HyperframesCfg = HyperframesCfg()
+    overlay: OverlayCfg = OverlayCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
     prompts: PromptsCfg = PromptsCfg()
 

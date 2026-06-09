@@ -1,8 +1,10 @@
 import subprocess
 from pathlib import Path
 
+from app.config import OverlayCfg
 from app.logging import get_logger
 from app.providers.base import ComposerProvider, VideoResult
+from app.providers.composer.overlay import build_drawtext
 
 log = get_logger("composer.comfyui")
 
@@ -10,9 +12,10 @@ log = get_logger("composer.comfyui")
 class ComfyUIVideoComposer(ComposerProvider):
     """逐分镜调 ComfyUI 视频 provider 出 clip，加各分镜 TTS 音轨，拼接成最终 mp4。全新实现，不复用 LTX。"""
 
-    def __init__(self, video_provider, fps: int = 24):
+    def __init__(self, video_provider, fps: int = 24, overlay: OverlayCfg | None = None):
         self._video = video_provider
         self._fps = fps
+        self._overlay = overlay or OverlayCfg()
 
     async def compose(self, timeline_json: dict, assets_dir: str, output_path: str, resolution: str = "704x480") -> VideoResult:
         run_dir = Path(assets_dir).parent
@@ -38,7 +41,9 @@ class ComfyUIVideoComposer(ComposerProvider):
                 log.exception("[CFY] Scene %d clip 失败，静态兜底", sid)
                 _static_clip(image_path, dur, w, h, self._fps, raw)
             seg = str(clips_dir / f"seg_{sid:02d}.mp4")
-            _mux_segment(raw, audio_path, dur, w, h, self._fps, seg)
+            draw = build_drawtext(entry.get("title", ""), w, h, self._overlay,
+                                  str(clips_dir / f"title_{sid:02d}.txt"))
+            _mux_segment(raw, audio_path, dur, w, h, self._fps, seg, draw)
             segs.append(seg)
 
         _concat(segs, clips_dir, output_path)
@@ -58,10 +63,12 @@ def _static_clip(image_path: str, dur: float, w: int, h: int, fps: int, out: str
          "-r", str(fps), "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "fast", out])
 
 
-def _mux_segment(clip: str, audio: str, dur: float, w: int, h: int, fps: int, out: str) -> None:
+def _mux_segment(clip: str, audio: str, dur: float, w: int, h: int, fps: int, out: str, draw: str | None = None) -> None:
     # tpad=stop_mode=clone 把视频补到 -t dur（clip 比时长短时克隆末帧），保证每段恰好 dur、拼接不漂移
     vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
           f"setsar=1,fps={fps},tpad=stop_mode=clone:stop_duration={dur}")
+    if draw:
+        vf = vf + "," + draw
     if audio and Path(audio).exists():
         cmd = ["ffmpeg", "-y", "-i", clip, "-i", audio,
                "-filter_complex", f"[0:v]{vf}[v];[1:a]apad[a]",

@@ -36,7 +36,7 @@ def test_prompt_defaults_endpoint(client):
     r = client.get("/api/settings/prompts/defaults")
     assert r.status_code == 200
     data = r.json()
-    assert len(data) == 8
+    assert len(data) == 7
     assert "label" in data["roundup_article"] and "default" in data["roundup_article"]
 
 

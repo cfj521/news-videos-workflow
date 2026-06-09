@@ -70,3 +70,20 @@ def test_render_html_single_scene():
     assert 'data-width="1920"' in html
     assert 'data-height="1080"' in html
     assert "autoAlpha: 0" not in html  # first scene should NOT have hide toggle
+
+
+def test_render_html_group_title_overlays():
+    from app.config import OverlayCfg
+    composer = HyperframesComposer(overlay=OverlayCfg())
+    timeline = {"entries": [
+        {"scene_id": 1, "start_ms": 0, "end_ms": 4000, "image_path": "i1.png", "audio_path": "a1.mp3",
+         "audio_duration_ms": 4000, "subtitle_lines": [], "title": "标题甲", "group_id": 1},
+        {"scene_id": 2, "start_ms": 4000, "end_ms": 8000, "image_path": "i2.png", "audio_path": "a2.mp3",
+         "audio_duration_ms": 4000, "subtitle_lines": [], "title": "标题甲", "group_id": 1},
+        {"scene_id": 3, "start_ms": 8000, "end_ms": 12000, "image_path": "i3.png", "audio_path": "a3.mp3",
+         "audio_duration_ms": 4000, "subtitle_lines": [], "title": "标题乙", "group_id": 2},
+    ], "total_duration_ms": 12000}
+    html = composer._render_html(timeline, resolution="1080x1920", run_dir=Path("."))
+    assert "group-title" in html
+    assert html.count('class="group-title"') == 2     # 2 组 → 2 个标题块（首组跨两镜合并）
+    assert "标题甲" in html and "标题乙" in html

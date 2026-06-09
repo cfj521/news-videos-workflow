@@ -338,10 +338,12 @@ const EMPTY_SETTINGS: AppSettings = {
     vision_provider: "openai", vision_model: "gpt-4o",
     tts_provider: "edge-tts", tts_model: "", tts_voice: "zh-CN-XiaoxiaoNeural",
     video_model: "wan2.2_5b", video_fps: 24,
+    aihot_top_n: 10,
   },
   storage: { work_dir: "", output_dir: "" },
   hyperframes: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
+  overlay: { enabled: true, font_file: "C:/Windows/Fonts/msyh.ttc", font_size_ratio: 0.035, color: "#FFFFFF", bg_opacity: 0.45, margin_ratio: 0.03 },
   prompts: {},
 };
 
@@ -946,6 +948,61 @@ export function SettingsPage() {
           <Select value={String(settings.hyperframes.subtitle_max_lines)} onChange={(v) => patch("hyperframes", { subtitle_max_lines: Number(v) })} options={[
             { value: "1", label: "1 行" }, { value: "2", label: "2 行" }, { value: "3", label: "3 行" },
           ]} />
+        </Field>
+      </Section>
+
+      <Section title="画面标题" desc="在合成视频的每张画面上烧录标题文字；需后端字体文件配置正确才会生效。">
+        <Field label="画面标题烧录" center>
+          <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" checked={settings.overlay.enabled}
+              onChange={(e) => patch("overlay", { enabled: e.target.checked })}
+              className="w-4 h-4 accent-blue-500 rounded" />
+            <span className="text-sm text-white/76">{settings.overlay.enabled ? "已开启" : "已关闭"}</span>
+          </label>
+        </Field>
+        <Field label="字体文件路径" desc="绝对路径或相对于后端工作目录的路径，留空使用内置字体">
+          <input value={settings.overlay.font_file} onChange={(e) => patch("overlay", { font_file: e.target.value })}
+            placeholder="如 C:\Windows\Fonts\msyh.ttc 或 assets/NotoSansSC.otf" className={monoInputCls} />
+        </Field>
+        <Field label="字号比例" desc="相对于画面高度的比例（0.01–0.15），如 0.045 = 4.5%">
+          <div className="flex items-center gap-3">
+            <input type="number" value={settings.overlay.font_size_ratio} min={0.01} max={0.15} step={0.005}
+              onChange={(e) => patch("overlay", { font_size_ratio: Number(e.target.value) })} className={inputCls} />
+            <span className="text-xs text-white/60">{(settings.overlay.font_size_ratio * 100).toFixed(1)}%</span>
+          </div>
+        </Field>
+        <Field label="文字颜色" desc="十六进制颜色值，如 #FFFFFF">
+          <div className="flex items-center gap-2">
+            <input type="color" value={settings.overlay.color}
+              onChange={(e) => patch("overlay", { color: e.target.value })}
+              className="w-9 h-8 rounded cursor-pointer border border-white/[0.08] bg-transparent" />
+            <input value={settings.overlay.color} onChange={(e) => patch("overlay", { color: e.target.value })}
+              placeholder="#FFFFFF" className={`${inputCls} w-32`} />
+          </div>
+        </Field>
+        <Field label="背景不透明度" desc="文字底部半透明背景，0=无背景，1=全不透明">
+          <div className="flex items-center gap-3">
+            <input type="range" value={settings.overlay.bg_opacity} min={0} max={1} step={0.05}
+              onChange={(e) => patch("overlay", { bg_opacity: Number(e.target.value) })} className="flex-1 accent-blue-500" />
+            <span className="text-sm text-white/76 tabular-nums w-12 text-right">{settings.overlay.bg_opacity.toFixed(2)}</span>
+          </div>
+        </Field>
+        <Field label="边距比例" desc="相对于画面高度的上下边距比例（0–0.1）">
+          <div className="flex items-center gap-3">
+            <input type="number" value={settings.overlay.margin_ratio} min={0} max={0.1} step={0.005}
+              onChange={(e) => patch("overlay", { margin_ratio: Number(e.target.value) })} className={inputCls} />
+            <span className="text-xs text-white/60">{(settings.overlay.margin_ratio * 100).toFixed(1)}%</span>
+          </div>
+        </Field>
+      </Section>
+
+      <Section title="AI HOT 配置" desc="AI HOT 聚合源相关参数">
+        <Field label="AI HOT 取前 N 条" desc="从 AI HOT 聚合源中最多取前 N 条热点，超出部分忽略（默认 10）">
+          <div className="flex items-center gap-3">
+            <input type="number" value={settings.pipeline.aihot_top_n} min={1} max={50}
+              onChange={(e) => patch("pipeline", { aihot_top_n: Number(e.target.value) })} className={inputCls} />
+            <span className="text-xs text-white/60">条</span>
+          </div>
         </Field>
       </Section>
 

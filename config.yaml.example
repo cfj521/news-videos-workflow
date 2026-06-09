@@ -46,6 +46,7 @@ pipeline:
   tts_voice: zh-CN-XiaoxiaoNeural
   video_model: wan2.2_5b                # comfyui 视频 workflow：wan2.2_5b | wan2.2_14b | wan2.2_14b_lightx2v | ltx_2.3
   video_fps: 24                         # comfyui 视频帧率
+  aihot_top_n: 10                       # AI HOT 直用模式：经 ScoringService 选取的 item 上限（1 item→1 分镜）
 
 # ---- Hyperframes 渲染配置（分辨率以任务级 run.resolution 为准，不在此处）----
 hyperframes:
@@ -54,6 +55,14 @@ hyperframes:
   transition: crossfade                 # crossfade | fade | slide | cut
   subtitle_font_size: 48                 # 字幕字号（px，按渲染分辨率计）
   subtitle_max_lines: 2                  # 单条字幕最多行数，超长旁白据此自动切分
+
+overlay:
+  enabled: true
+  font_file: "C:/Windows/Fonts/msyh.ttc"   # 仅 FFmpeg(comfyui/兜底)路烧标题需要；HTML 路不读
+  font_size_ratio: 0.035
+  color: "#FFFFFF"
+  bg_opacity: 0.45
+  margin_ratio: 0.03
 
 # ---- ComfyUI 参数库（image_provider 或 video_route 选 comfyui 时生效）----
 #      当前用哪个图片/视频 workflow 由 pipeline.image_model / video_model 决定，这里只配参数。
@@ -64,7 +73,7 @@ comfyui:
 
 # ---- 可编辑提示词：以下为中文默认（与 backend/app/prompts.py 同步）；可在「设置 → 提示词配置」页编辑，留空则回退内置默认 ----
 #      中英两套：每个键再加 `<key>_en` 即为英文版（任务语言=en 时用）；留空则回退内置英文默认。
-#      例如 roundup_article_en / daily_batch_en / summary_meta_en / weekly_digest_en / image_regen_en / article_summary_en / news_scoring_en。
+#      例如 roundup_article_en / summary_meta_en / weekly_digest_en / image_regen_en / article_summary_en / news_scoring_en。
 prompts:
   roundup_article: |-
     你是新闻短视频的分镜脚本编写者。下面给你一条资讯，为它生成 1~3 个分镜（内容多/重要则多，简短则 1 个）。
@@ -74,14 +83,6 @@ prompts:
     - narration：像新闻主播口播的通俗中文，简单易懂，少用生僻词和英文。
     - image_prompt / motion_prompt：用英文（English only）；画面人物必须是亚洲/中国人面孔（East Asian / Chinese faces），场景与背景为中式真实环境，避免出现欧美面孔。
     - 分镜数不超过 3。
-  daily_batch: |-
-    你是 AI 资讯日报短视频的分镜脚本编写者。下面给你同一类目下的若干条资讯，请每条资讯生成 1 个分镜，顺序与给定一致。
-    输出纯 JSON（无 markdown 标记）：
-    {"scenes":[{"narration":"口语化中文旁白","image_prompt":"English scene description","motion_prompt":"English camera motion","duration_hint":5}]}
-    要求：
-    - narration：通俗易懂的中文口播，少用英文。
-    - image_prompt / motion_prompt：用英文（English only）；人物为亚洲/中国人面孔（East Asian / Chinese faces）、中式场景背景，避免欧美面孔。
-    - 分镜数量须等于给定资讯条数。
   summary_meta: |-
     你是短视频运营。下面给你一条汇总视频包含的各条资讯标题，生成整条视频的吸睛标题与简介。
     输出纯 JSON（无 markdown 标记）：{"title":"中文标题","description":"1-2句中文简介","tags":["标签1","标签2"]}

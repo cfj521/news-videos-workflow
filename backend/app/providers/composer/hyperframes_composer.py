@@ -18,6 +18,10 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
 class HyperframesComposer(ComposerProvider):
+    def __init__(self, overlay=None):
+        from app.config import OverlayCfg
+        self._overlay = overlay or OverlayCfg()
+
     async def compose(self, timeline_json: dict, assets_dir: str, output_path: str, resolution: str = "1080x1920") -> VideoResult:
         run_dir = Path(assets_dir).parent
         log.info("compose() entries=%d resolution=%s run_dir=%s", len(timeline_json.get("entries", [])), resolution, run_dir)
@@ -98,11 +102,30 @@ class HyperframesComposer(ComposerProvider):
                 "audio_duration_s": round(entry.get("audio_duration_ms", 0) / 1000, 3),
                 "subtitle_text": entry.get("subtitle_text", ""),
                 "subtitle_lines": template_lines,
+                "group_id": entry.get("group_id"),
+                "title": entry.get("title", ""),
             })
+
+        title_overlays = []
+        for e in entries:
+            gid = e.get("group_id")
+            title = e.get("title", "")
+            if title and gid is not None and title_overlays and title_overlays[-1]["group_id"] == gid:
+                title_overlays[-1]["end_s"] = e["end_s"]       # 同组连续 → 延长
+            elif title:
+                title_overlays.append({"group_id": gid, "title": title,
+                                       "start_s": e["start_s"], "end_s": e["end_s"]})
+        title_font_size = max(20, int(height * self._overlay.font_size_ratio))
+        title_margin_px = int(min(width, height) * self._overlay.margin_ratio)
 
         env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
         template = env.get_template("composition.html.j2")
-        return template.render(width=width, height=height, total_duration_s=round(total_s, 3), entries=entries, prev_scene_ids=prev_scene_ids, transition=transition, subtitle_font_size=subtitle_font_size)
+        return template.render(width=width, height=height, total_duration_s=round(total_s, 3),
+                               entries=entries, prev_scene_ids=prev_scene_ids, transition=transition,
+                               subtitle_font_size=subtitle_font_size,
+                               title_overlays=title_overlays, title_font_size=title_font_size,
+                               title_margin_px=title_margin_px,
+                               overlay=self._overlay)
 
     def _extract_thumbnail(self, video_path: str, thumb_path: str) -> None:
         try:
