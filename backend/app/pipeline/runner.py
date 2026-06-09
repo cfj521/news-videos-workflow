@@ -25,6 +25,7 @@ from app.pipeline.stage5_compose import run_stage5
 from app.providers.base import ImageProvider, ProviderError
 from app.providers.collector.hackernews import HackerNewsCollector
 from app.providers.composer.hyperframes_composer import HyperframesComposer
+from app.providers.composer.overlay import build_drawtext
 
 
 def _build_text_provider():
@@ -1004,10 +1005,14 @@ def _run_ffmpeg(cmd, service: str, shell: bool = False) -> None:
         raise ProviderError(service=service, provider="ffmpeg", cause=RuntimeError(msg))
 
 
-def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) -> str:
+def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str, overlay=None) -> str:
     output_path = str((run_dir / "output.mp4").resolve())
     entries = timeline["entries"]
     w, h = resolution.split("x")
+
+    from app.config import OverlayCfg
+    overlay = overlay or OverlayCfg()
+    wi, hi = int(w), int(h)
 
     inputs = []
     filter_parts = []
@@ -1021,9 +1026,13 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str) ->
         inputs.extend(["-loop", "1", "-t", str(dur_s), "-i", entry["image_path"]])
         inputs.extend(["-i", entry["audio_path"]])
         vi, ai = idx * 2, idx * 2 + 1
-        filter_parts.append(
-            f"[{vi}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
-            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}[v{idx}]")
+        draw = build_drawtext(entry.get("title", ""), wi, hi, overlay,
+                              str(Path(run_dir) / f"title_{idx}.txt"))
+        chain = (f"[{vi}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
+                 f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}")
+        if draw:
+            chain += "," + draw
+        filter_parts.append(chain + f"[v{idx}]")
         filter_parts.append(f"[{ai}:a]apad=whole_dur={dur_s}[a{idx}]")
         concat_inputs.append(f"[v{idx}][a{idx}]")
 

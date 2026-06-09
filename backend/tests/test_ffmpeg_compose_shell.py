@@ -50,3 +50,22 @@ def test_ffmpeg_compose_does_not_use_shell(tmp_path, monkeypatch):
     assert isinstance(captured["args"], list)
     assert captured["args"][0] == "ffmpeg"
     assert not captured["shell"]
+
+
+def test_ffmpeg_compose_inserts_per_scene_drawtext(tmp_path, monkeypatch):
+    from app.config import OverlayCfg
+    from app.pipeline import runner
+    font = tmp_path / "f.ttc"; font.write_bytes(b"F")
+    captured = {}
+
+    def fake_run_ffmpeg(cmd, service=""):
+        captured["fc"] = cmd[cmd.index("-filter_complex") + 1]
+        open(cmd[-1], "wb").write(b"OUT")
+    monkeypatch.setattr(runner, "_run_ffmpeg", fake_run_ffmpeg)
+
+    timeline = {"entries": [
+        {"scene_id": 1, "image_path": "a.png", "audio_path": "x.mp3", "start_ms": 0, "end_ms": 2000, "title": "甲"},
+        {"scene_id": 2, "image_path": "b.png", "audio_path": "y.mp3", "start_ms": 2000, "end_ms": 4000, "title": "乙"},
+    ]}
+    runner._ffmpeg_compose(timeline, tmp_path, "1080x1920", "30", overlay=OverlayCfg(font_file=str(font)))
+    assert captured["fc"].count("drawtext=") == 2  # 每镜一个，文本各异
