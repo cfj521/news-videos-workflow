@@ -102,7 +102,7 @@ pnpm test                        # Vitest
 - `comfyui` — 本地图片/视频生成的 workflow 与每流 steps/cfg
 - `hyperframes` — Hyperframes 视频路线的渲染参数（fps / 转场 / 字幕等；原 `video` 段，已重命名）
 - 发布平台凭证不在此文件，存仓库根的 `publish_targets.yaml`（按账号，「发布管理」页配置）
-- `overlay` — 分镜标题烧录样式（`font_file` / `font_size` / `position` 等）；`pipeline.aihot_top_n` 控制 AI HOT 直用模式经 ScoringService 筛选后实际进入流水线的 item 上限
+- `overlay` — 分镜标题烧录样式（`font_file` / `font_size_ratio` / `color` / `bg_opacity` / `margin_ratio` 等；仅 FFmpeg 两路读 `font_file`，HTML 路走 CSS 字体）；`pipeline.aihot_top_n` 控制 AI HOT 直用模式经 ScoringService 筛选后实际进入流水线的 item 上限
 - 计划任务排期不在 `config.yaml`，存仓库根 `schedule.yaml`（不入库，模板见 `schedule.yaml.example`）
 
 ## Conventions
