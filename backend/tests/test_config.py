@@ -92,3 +92,19 @@ def test_overlay_defaults():
     assert s.overlay.bg_opacity == 0.45
     assert s.overlay.color == "#FFFFFF"
     assert s.pipeline.aihot_top_n == 10
+
+
+def test_scoring_cfg_defaults():
+    from app.config import Settings
+    s = Settings()
+    assert s.scoring.w_final_llm == 0.6 and s.scoring.w_final_rule == 0.4
+    assert s.scoring.concurrency == 5 and s.scoring.llm_candidate_cap == 25
+    assert s.scoring.min_score == 0.35
+    assert s.scoring.fresh_full_days == 7 and s.scoring.fresh_floor_days == 30
+    assert s.scoring.fresh_week_end == 0.9 and s.scoring.fresh_floor == 0.3
+
+
+def test_scoring_cfg_validation_rejects_bad_curve():
+    from app.config import ScoringCfg
+    c = ScoringCfg(fresh_floor=0.95, fresh_week_end=0.9)
+    assert c.fresh_floor <= c.fresh_week_end

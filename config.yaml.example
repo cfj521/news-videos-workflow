@@ -64,6 +64,21 @@ overlay:
   bg_opacity: 0.45
   margin_ratio: 0.03
 
+# ---- 评分系统参数（评分权重、并发、新鲜度衰减曲线）----
+scoring:
+  w_final_llm: 0.6          # LLM 分 在最终分 中的权重
+  w_final_rule: 0.4          # 规则分在最终分中的权重
+  w_source: 0.4              # 规则分内：来源权威度权重
+  w_recency: 0.2             # 规则分内：新鲜度权重
+  w_keyword: 0.4             # 规则分内：关键词命中权重
+  concurrency: 5             # LLM 评分并发数
+  llm_candidate_cap: 25      # 进入 LLM 评分的候选上限
+  min_score: 0.35            # 最终分低于此值则过滤（0=关闭）
+  fresh_full_days: 7         # 新鲜度满分区间（天）
+  fresh_week_end: 0.9        # 第 7 天的新鲜度值（弱衰减终点）
+  fresh_floor_days: 30       # 新鲜度衰减到 fresh_floor 所需天数
+  fresh_floor: 0.3           # 超过 fresh_floor_days 后的新鲜度下限
+
 # ---- ComfyUI 参数库（image_provider 或 video_route 选 comfyui 时生效）----
 #      当前用哪个图片/视频 workflow 由 pipeline.image_model / video_model 决定，这里只配参数。
 comfyui:
