@@ -72,8 +72,9 @@ class ScoringResult:
 
 
 class ScoringService:
-    def __init__(self, source_weights: dict[str, float] | None = None):
-        self.cfg = get_settings().scoring
+    def __init__(self):
+        # model_copy 浅拷贝隔离：各实例各持一份 cfg，避免测试/运行时改写全局单例
+        self.cfg = get_settings().scoring.model_copy()
 
     # ── 新子评分器（0–1 纯函数）────────────────────────────────────────────────
 
