@@ -296,7 +296,7 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
                 )}
                 {aihotCfg.method === "weekly" && (
                   <Select value={aihotCfg.week_start ?? ""} onChange={(v) => setAihotCfg((c) => ({ ...c, week_start: v }))}
-                    options={[{ value: "", label: "自动（最近有数据的周）" }, ...(weeks ?? []).map((w) => ({ value: w.week_start, label: `${w.week_start.slice(5)}~${w.week_end.slice(5)}（${w.days}天）` }))]} />
+                    options={[{ value: "", label: "自动（上一个完整自然周）" }, ...(weeks ?? []).map((w) => ({ value: w.week_start, label: `${w.week_start.slice(5)}~${w.week_end.slice(5)}（${w.days}天）` }))]} />
                 )}
               </div>
             ) : (

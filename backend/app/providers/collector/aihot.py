@@ -115,8 +115,9 @@ class AIHotCollector(CollectorProvider):
     async def _collect_weekly(self, source_config: dict) -> list[RawArticleData]:
         """聚合某一自然周（周一~周日）的每日日报，扁平汇总条目供 Stage1 提炼。
 
-        source_config["week_start"]（YYYY-MM-DD，须为周一）指定具体周；
-        缺省（自动）取 /dailies 中「最近有数据」的那一周。
+        source_config["week_start"]（YYYY-MM-DD，须为周一）指定具体周（可含本周）；
+        缺省（自动）取「上一个完整自然周」——排除未完成的本周，正常即上周，
+        上周无数据时回退到更早的、最近有数据的完整周。
         """
         t0 = _time.time()
         today = date.today()
@@ -144,9 +145,14 @@ class AIHotCollector(CollectorProvider):
                 except (ValueError, TypeError):
                     week_start = this_monday - timedelta(days=7)
             elif all_dates:
-                # 自动：取「最近有数据」的那一周（该日期所属周的周一），而非死板的上一日历周
-                latest = max(all_dates)
-                week_start = latest - timedelta(days=latest.weekday())
+                # 自动：上一个完整自然周——只看严格早于本周的日期（排除未完成的本周），
+                # 取其中最近一天所属的那一周。正常情况下即上周；上周无数据时回退到更早的完整周。
+                past = [d for d in all_dates if d < this_monday]
+                if past:
+                    latest = max(past)
+                    week_start = latest - timedelta(days=latest.weekday())
+                else:
+                    week_start = this_monday - timedelta(days=7)
             else:
                 week_start = this_monday - timedelta(days=7)
             week_end = week_start + timedelta(days=6)

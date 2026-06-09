@@ -218,8 +218,8 @@ async def test_aihot_weekly_uses_configured_week_start():
 
 
 @pytest.mark.asyncio
-async def test_aihot_weekly_auto_picks_latest_data_week():
-    """自动（无 week_start）应取最近有数据的周，而非死板的上一日历周。"""
+async def test_aihot_weekly_auto_picks_most_recent_complete_week():
+    """自动（无 week_start）取上一个完整自然周；多周有数据时取最近的完整周（仍排除本周）。"""
     today = date.today()
     this_monday = today - timedelta(days=today.weekday())
     prev = this_monday - timedelta(days=7)
@@ -233,7 +233,27 @@ async def test_aihot_weekly_auto_picks_latest_data_week():
         _mock_router(mock_cls, routes)
         articles = await collector.collect(source_config={"method": "weekly"}, time_range="7d")
     assert len(articles) == 1
-    assert articles[0].metadata["week_start"] == prev.isoformat()  # 最近有数据的周
+    assert articles[0].metadata["week_start"] == prev.isoformat()  # 最近的完整周
+
+
+@pytest.mark.asyncio
+async def test_aihot_weekly_auto_excludes_current_week():
+    """回归：本周已有日报时，自动仍取上一个完整自然周，绝不取未完成的本周。"""
+    today = date.today()
+    this_monday = today - timedelta(days=today.weekday())
+    prev = this_monday - timedelta(days=7)            # 上一个完整自然周（周一）
+    in_current = this_monday                          # 本周一：本周已有数据
+    archive = {"items": [{"date": prev.isoformat()}, {"date": in_current.isoformat()}]}
+    routes = {"/dailies": (archive, 200),
+              f"/daily/{prev.isoformat()}": (_daily_for(prev.isoformat()), 200),
+              f"/daily/{in_current.isoformat()}": (_daily_for(in_current.isoformat()), 200)}
+    collector = AIHotCollector()
+    with patch("app.providers.collector.aihot.httpx.AsyncClient") as mock_cls:
+        _mock_router(mock_cls, routes)
+        articles = await collector.collect(source_config={"method": "weekly"}, time_range="7d")
+    assert len(articles) == 1
+    assert articles[0].metadata["week_start"] == prev.isoformat()              # 上一个完整周，非本周
+    assert articles[0].metadata["week_end"] == (prev + timedelta(days=6)).isoformat()
 
 
 @pytest.mark.asyncio
