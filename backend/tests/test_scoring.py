@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 from datetime import datetime, timedelta, timezone
 from app.providers.base import RawArticleData
 from app.services.scoring import ScoringService
@@ -42,3 +44,42 @@ def test_rule_score_normalized():
     r = s._rule_score(_art(source="Hacker News", title="OpenAI agent",
                            published_at=datetime.now(timezone.utc)), "en")
     assert 0.0 <= r <= 1.0
+
+
+@pytest.mark.asyncio
+async def test_llm_score_parses_and_passes_language(monkeypatch):
+    import app.services.scoring as scoring
+    from app import config
+    # 强制走内置默认 prompt（绕过本地 config.yaml 可能的覆盖值）
+    monkeypatch.setattr(config, "_settings", config.Settings())
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.return_value = '{"score": 8, "reason": "重要", "tags": ["模型"]}'
+    s = ScoringService()
+    out = await s._llm_score(_art(title="GPT-5", content="发布"), tp, "zh")
+    assert out["score"] == 8 and out["tags"] == ["模型"]
+    assert "中国" in tp.generate.call_args.kwargs["system_prompt"]  # zh rubric
+
+
+@pytest.mark.asyncio
+async def test_llm_score_cache_hits():
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.return_value = '{"score": 5, "reason": "", "tags": []}'
+    s = ScoringService()
+    a = _art(title="same", content="same")
+    await s._llm_score(a, tp, "zh")
+    await s._llm_score(a, tp, "zh")
+    assert tp.generate.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_score_bad_json_fallback():
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.return_value = "评分：7 分，不错"
+    s = ScoringService()
+    out = await s._llm_score(_art(), tp, "zh")
+    assert out["score"] == 7

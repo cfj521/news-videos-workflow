@@ -440,4 +440,9 @@ def save_settings(settings: Settings) -> None:
 def reload_settings() -> Settings:
     global _settings
     _settings = None
+    try:
+        from app.services.scoring import _LLM_CACHE
+        _LLM_CACHE.clear()
+    except Exception:
+        pass
     return get_settings()

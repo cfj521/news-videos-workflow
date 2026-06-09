@@ -1,3 +1,5 @@
+import asyncio
+import hashlib
 import json
 import math
 import re
@@ -36,6 +38,9 @@ DEFAULT_SOURCE_WEIGHTS = {
 
 FATIGUE_FACTOR = 0.003462767
 PRIOR_WEIGHT = 0.75
+
+# ── 模块级 LLM 评分缓存（reload_settings() 时清空）────────────────────────────
+_LLM_CACHE: dict[str, dict] = {}
 
 # ── JSON parsing (5-layer fallback, from Horizon) ────────
 
@@ -231,54 +236,38 @@ class ScoringService:
 
         return rate_norm * 0.7 + comment_norm * 0.3
 
-    # ── LLM score (structured JSON) ──────────────────────
+    # ── LLM score (structured JSON, with cache + language + timeout/retry) ────
 
-    async def _llm_score(self, article: RawArticleData, text_provider) -> dict:
-        meta = article.metadata
-        content_section = (article.content or "")[:1000]
-
-        # Build engagement section (like Horizon)
-        engagement_parts = []
-        if meta.get("points"):
-            engagement_parts.append(f"Points: {meta['points']}")
-        if meta.get("num_comments"):
-            engagement_parts.append(f"Comments: {meta['num_comments']}")
-        if meta.get("upvote_ratio"):
-            engagement_parts.append(f"Upvote ratio: {meta['upvote_ratio']}")
-        engagement_section = "\n".join(engagement_parts)
-
-        prompt_parts = [
-            f"标题：{article.title}",
-            f"来源：{article.source_name}",
-        ]
-        if content_section:
-            prompt_parts.append(f"内容：{content_section}")
-        if engagement_section:
-            prompt_parts.append(f"社区互动：\n{engagement_section}")
-
-        result_text = await text_provider.generate(
-            prompt="\n".join(prompt_parts),
-            system_prompt=resolve_prompt("news_scoring"),
-        )
-
-        parsed = _parse_json_response(result_text)
-        if parsed and "score" in parsed:
-            score = parsed["score"]
-            if isinstance(score, (int, float)) and 0 <= score <= 10:
-                return parsed
+    async def _llm_score(self, a: RawArticleData, text_provider, language: str = "zh") -> dict:
+        sys_prompt = resolve_prompt("news_scoring", language)
+        content = (a.content or "")[:1000]
+        key = hashlib.sha256(f"{a.title}{content}{language}{sys_prompt}".encode()).hexdigest()
+        if key in _LLM_CACHE:
+            return {**_LLM_CACHE[key], "_cached": True}
+        parts = [f"标题：{a.title}", f"来源：{a.source_name}"]
+        if content:
+            parts.append(f"内容：{content}")
+        meta = a.metadata or {}
+        eng = [f"{k}: {meta[k]}" for k in ("points", "num_comments", "upvote_ratio") if meta.get(k)]
+        if eng:
+            parts.append("社区互动：\n" + "\n".join(eng))
+        last_exc = None
+        for _ in range(C.LLM_RETRIES + 1):
             try:
-                parsed["score"] = max(0, min(10, int(float(score))))
-                return parsed
-            except (ValueError, TypeError):
-                pass  # score 非数值（如 "高"）→ 落到下面的数字提取兜底，而非丢弃整条结果
-
-        # Last resort: extract number
-        nums = re.findall(r"\b(\d+)\b", result_text)
-        for n in nums:
-            v = int(n)
-            if 0 <= v <= 10:
-                return {"score": v, "reason": "", "tags": []}
-        return {"score": 5, "reason": "parse_failed", "tags": []}
+                resp = await asyncio.wait_for(
+                    text_provider.generate(prompt="\n".join(parts), system_prompt=sys_prompt),
+                    timeout=C.LLM_TIMEOUT_S)
+                parsed = _parse_json_response(resp) or {}
+                score = parsed.get("score")
+                if not isinstance(score, (int, float)) or not (0 <= score <= 10):
+                    nums = [int(x) for x in re.findall(r"\b(\d+)\b", resp or "") if 0 <= int(x) <= 10]
+                    score = nums[0] if nums else 5
+                out = {"score": float(score), "reason": parsed.get("reason", ""), "tags": parsed.get("tags", [])}
+                _LLM_CACHE[key] = out
+                return out
+            except Exception as e:
+                last_exc = e
+        raise last_exc or RuntimeError("llm score failed")
 
     # ── Helpers（旧版，供 _legacy_rule_score 使用）────────────────────────────────
 
