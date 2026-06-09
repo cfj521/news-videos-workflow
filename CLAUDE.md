@@ -87,6 +87,7 @@ pnpm test                        # Vitest
 
 - **Scrapling**: 新闻抓取框架，需 Python 3.10+，安装时用 `pip install "scrapling[all]"`，首次运行 `scrapling install` 下载浏览器
 - **FFmpeg**: 视频合成必须在系统 PATH 中可用（也是 Hyperframes/ComfyUI 渲染失败时的兜底合成器）
+- **CJK 字体（标题烧录，仅 FFmpeg 路）**: comfyui / FFmpeg 兜底路用 `drawtext` 把分镜标题烧到画面右上角，需一个可用的中日韩字体文件。Windows 默认 `C:/Windows/Fonts/msyh.ttc`（微软雅黑，系统自带）；其它平台在 `config.yaml` 的 `overlay.font_file` 指定（如 `/usr/share/fonts/.../NotoSansCJK-Regular.ttc`）。缺失时仅跳过烧录、不影响出片。hyperframes(HTML) 路不依赖此项（走 CSS 字体）。
 - **Hyperframes**（hyperframes 视频路线）: 需 Node.js + `npx hyperframes`（npm 包，非 Python 依赖，不在 requirements.txt）。首次渲染由 npx 联网拉取，或预装 `npm i -g hyperframes`。缺失时自动回退到 FFmpeg 合成。
 - **ComfyUI**（可选，本地图片/视频生成）: 默认视频路线，需本机运行 ComfyUI（默认 `http://127.0.0.1:8188`）+ 下载模型（见 `scripts/download-comfyui-models.ps1`）。工作流 JSON 在 `comfyui/workflows/api/`，配置在设置页「ComfyUI」标签。
 - **发布可选依赖**（按需）: B站投稿用 `biliup`；YouTube 用 `google-api-python-client` / `google-auth` / `google-auth-oauthlib`。均已列入 `requirements.txt`。发布平台凭证在「发布管理」页配置，详见 `docs/video-publish-guide.md`。
@@ -101,6 +102,7 @@ pnpm test                        # Vitest
 - `comfyui` — 本地图片/视频生成的 workflow 与每流 steps/cfg
 - `hyperframes` — Hyperframes 视频路线的渲染参数（fps / 转场 / 字幕等；原 `video` 段，已重命名）
 - 发布平台凭证不在此文件，存仓库根的 `publish_targets.yaml`（按账号，「发布管理」页配置）
+- `overlay` — 分镜标题烧录样式（`font_file` / `font_size` / `position` 等）；`pipeline.aihot_top_n` 控制 AI HOT 直用模式经 ScoringService 筛选后实际进入流水线的 item 上限
 - 计划任务排期不在 `config.yaml`，存仓库根 `schedule.yaml`（不入库，模板见 `schedule.yaml.example`）
 
 ## Conventions
