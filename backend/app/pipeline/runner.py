@@ -258,6 +258,18 @@ def _no_article_message(digest_method) -> str:
     return "No articles collected"
 
 
+def _write_scoring_json(run_dir, report):
+    """将评分报告写入 run_dir/scoring.json；report 为 None 时静默跳过。"""
+    if not report:
+        return
+    import json
+    try:
+        (Path(run_dir) / "scoring.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        get_logger("runner").warning("write scoring.json failed", exc_info=True)
+
+
 def _save_articles(articles, run_dir):
     import json
     data = []
@@ -272,6 +284,8 @@ def _save_articles(articles, run_dir):
             "source_group": a.metadata.get("source_group"),
             "aihot_method": a.metadata.get("aihot_method"),
             "daily_sections": a.metadata.get("daily_sections"),
+            "score_final": a.metadata.get("score_final"),
+            "score_reason": a.metadata.get("score_reason"),
         })
     (run_dir / "articles.json").write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -287,6 +301,10 @@ def _article_from_dict(d: dict):
         metadata["aihot_method"] = d["aihot_method"]
     if d.get("daily_sections"):
         metadata["daily_sections"] = d["daily_sections"]
+    if d.get("score_final") is not None:
+        metadata["score_final"] = d["score_final"]
+    if d.get("score_reason"):
+        metadata["score_reason"] = d["score_reason"]
     return RawArticleData(
         title=d.get("title", ""),
         content=d.get("content", ""),
@@ -517,6 +535,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
     scene_assets = []
     timeline = None
     rendered = False  # 本次是否成功出片/成品音频（S5）；仅出片后才计入去重历史
+    text_provider = None  # 提前声明，保证人工导入跳过采集时 stage2 也能拿到
 
     # ─── Stage 1: 搜索整理 ─────────────────────────────────
     if 1 in selected:
@@ -541,11 +560,13 @@ async def _run_inner(run_id: int, db: Session) -> None:
             if history_fps:
                 log.info("[S1] Loaded %d history fingerprints (recent issues) for dedup",
                          len(history_fps))
-            articles, _scoring_report = await run_stage1(
+            text_provider = _build_text_provider()   # 提前构造，评分用；stage2 复用
+            articles, scoring_report = await run_stage1(
                 sources=source_configs, collectors=collectors,
                 time_range=run.time_range, max_articles=run.max_articles,
                 history_fingerprints=history_fps,
-            )
+                text_provider=text_provider, language=(run.language or cfg.pipeline.default_language))
+            _write_scoring_json(run_dir, scoring_report)   # 普通源评分明细
             for i, a in enumerate(articles, 1):
                 log.info("[S1]   [%d] %s (%s)", i, a.title, a.source_name)
             if articles and articles[0].metadata.get("source_group") != "aihot":
@@ -588,7 +609,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 progress_detail=f"S2 生成脚本 — {len(articles)} 篇文章...")
         log.info("[S2] Generating multi-article script for %d articles", len(articles))
 
-        text_provider = _build_text_provider()
+        text_provider = text_provider or _build_text_provider()   # 复用 stage1 已构造的 tp（人工导入时重建）
         log.info("[S2] Provider: %s / %s", cfg.pipeline.script_provider, cfg.pipeline.script_model)
 
         from app.pipeline.stage2_script import run_stage2_multi
@@ -606,6 +627,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
         (run_dir / "script.json").write_text(
             json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_scoring_json(run_dir, script.get("scoring_report"))   # AI HOT 评分明细（如有）
         scene_count = len(script.get("scenes", []))
         elapsed = time.time() - t0
         detail = f"S2 完成 — 《{script.get('title', '')}》{scene_count} 个分镜 ({elapsed:.1f}s)"

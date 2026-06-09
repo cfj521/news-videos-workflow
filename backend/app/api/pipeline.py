@@ -256,6 +256,14 @@ async def run_events(run_id: int):
 
 # ─── Stage data ───────────────────────────────────────────
 
+@router.get("/runs/{run_id}/scoring")
+def get_scoring(run_id: int):
+    p = _run_dir(run_id) / "scoring.json"
+    if not p.exists():
+        return {"candidates": []}
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
 @router.get("/runs/{run_id}/articles")
 def get_articles(run_id: int):
     path = _run_dir(run_id) / "articles.json"
