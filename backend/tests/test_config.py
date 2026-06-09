@@ -81,3 +81,13 @@ def test_migrate_legacy_config():
     assert s.providers["openai"].api_key == "k-sum"
     assert s.pipeline.video_model == "wan14b"
     assert s.pipeline.video_fps == 30
+
+
+def test_overlay_defaults():
+    from app.config import Settings
+    s = Settings()
+    assert s.overlay.enabled is True
+    assert s.overlay.font_file.endswith("msyh.ttc")
+    assert s.overlay.font_size_ratio == 0.035
+    assert s.overlay.bg_opacity == 0.45
+    assert s.pipeline.aihot_top_n == 10

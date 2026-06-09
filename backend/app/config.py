@@ -110,6 +110,7 @@ class SummaryCfg(BaseModel):
 class PipelineCfg(BaseModel):
     default_time_range: str = "7d"
     default_max_articles: int = 5
+    aihot_top_n: int = 10  # AI HOT 直用模式：经 ScoringService 选取的 item 上限（1 item→1 分镜）
     default_video_route: str = "comfyui"
     default_language: str = "zh"
     dedup_lookback: str = "30d"
@@ -138,6 +139,16 @@ class HyperframesCfg(BaseModel):
     transition: str = "crossfade"
     subtitle_font_size: int = 48  # 字幕字号（px，按渲染分辨率计）
     subtitle_max_lines: int = 2  # 单条字幕最多显示行数，用于自动切分长句
+
+
+class OverlayCfg(BaseModel):
+    """画面标题烧录样式（右上角）。font_file 仅 FFmpeg 两路使用；HTML 路走 CSS 字体。"""
+    enabled: bool = True
+    font_file: str = "C:/Windows/Fonts/msyh.ttc"  # FFmpeg drawtext 必需的 CJK 字体文件
+    font_size_ratio: float = 0.035   # 相对画面高度
+    color: str = "white"
+    bg_opacity: float = 0.45
+    margin_ratio: float = 0.03       # 距右/上边距，相对画面短边
 
 
 class InfraCfg(BaseModel):
@@ -207,6 +218,7 @@ class Settings(BaseModel):
     collectors: CollectorsCfg = CollectorsCfg()
     pipeline: PipelineCfg = PipelineCfg()
     hyperframes: HyperframesCfg = HyperframesCfg()
+    overlay: OverlayCfg = OverlayCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
     prompts: PromptsCfg = PromptsCfg()
 

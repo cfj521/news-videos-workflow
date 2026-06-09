@@ -46,6 +46,7 @@ pipeline:
   tts_voice: zh-CN-XiaoxiaoNeural
   video_model: wan2.2_5b                # comfyui 视频 workflow：wan2.2_5b | wan2.2_14b | wan2.2_14b_lightx2v | ltx_2.3
   video_fps: 24                         # comfyui 视频帧率
+  aihot_top_n: 10                       # AI HOT 直用模式：经 ScoringService 选取的 item 上限（1 item→1 分镜）
 
 # ---- Hyperframes 渲染配置（分辨率以任务级 run.resolution 为准，不在此处）----
 hyperframes:
@@ -54,6 +55,14 @@ hyperframes:
   transition: crossfade                 # crossfade | fade | slide | cut
   subtitle_font_size: 48                 # 字幕字号（px，按渲染分辨率计）
   subtitle_max_lines: 2                  # 单条字幕最多行数，超长旁白据此自动切分
+
+overlay:
+  enabled: true
+  font_file: "C:/Windows/Fonts/msyh.ttc"   # 仅 FFmpeg(comfyui/兜底)路烧标题需要；HTML 路不读
+  font_size_ratio: 0.035
+  color: "white"
+  bg_opacity: 0.45
+  margin_ratio: 0.03
 
 # ---- ComfyUI 参数库（image_provider 或 video_route 选 comfyui 时生效）----
 #      当前用哪个图片/视频 workflow 由 pipeline.image_model / video_model 决定，这里只配参数。
