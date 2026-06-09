@@ -285,6 +285,9 @@ def _save_articles(articles, run_dir):
             "daily_sections": a.metadata.get("daily_sections"),
             "score_final": a.metadata.get("score_final"),
             "score_reason": a.metadata.get("score_reason"),
+            "report_date": a.metadata.get("report_date"),
+            "week_end": a.metadata.get("week_end"),
+            "published_at": a.published_at.isoformat() if a.published_at else None,
         })
     (run_dir / "articles.json").write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -304,6 +307,17 @@ def _article_from_dict(d: dict):
         metadata["score_final"] = d["score_final"]
     if d.get("score_reason"):
         metadata["score_reason"] = d["score_reason"]
+    if d.get("report_date"):
+        metadata["report_date"] = d["report_date"]
+    if d.get("week_end"):
+        metadata["week_end"] = d["week_end"]
+    from datetime import datetime
+    pub = None
+    if d.get("published_at"):
+        try:
+            pub = datetime.fromisoformat(d["published_at"])
+        except (ValueError, TypeError):
+            pub = None
     return RawArticleData(
         title=d.get("title", ""),
         content=d.get("content", ""),
@@ -311,6 +325,7 @@ def _article_from_dict(d: dict):
         source_name=d.get("source", ""),
         summary=d.get("summary", ""),
         aggregator_url=d.get("aggregator_url", ""),
+        published_at=pub,
         metadata=metadata,
     )
 

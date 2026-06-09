@@ -91,3 +91,18 @@ def test_save_articles_preserves_score_fields(tmp_path):
     back = _load_articles(tmp_path)
     assert back[0].metadata.get("score_final") == 0.81
     assert back[0].metadata.get("score_reason") == "重要"
+
+
+def test_save_load_preserves_aihot_dates(tmp_path):
+    from app.pipeline.runner import _save_articles, _load_articles
+    from app.providers.base import RawArticleData
+    from datetime import datetime, timezone
+    daily = RawArticleData(title="日报", content="c", source_url="u", source_name="AI HOT 日报",
+        metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": "2026-06-01"})
+    item = RawArticleData(title="动态", content="c", source_url="u2", source_name="AI HOT",
+        metadata={"source_group": "aihot", "aihot_method": "items"},
+        published_at=datetime(2026, 6, 5, tzinfo=timezone.utc))
+    _save_articles([daily, item], tmp_path)
+    back = _load_articles(tmp_path)
+    assert back[0].metadata.get("report_date") == "2026-06-01"
+    assert back[1].published_at is not None and back[1].published_at.year == 2026
