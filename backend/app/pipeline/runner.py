@@ -259,10 +259,9 @@ def _no_article_message(digest_method) -> str:
 
 
 def _write_scoring_json(run_dir, report):
-    """将评分报告写入 run_dir/scoring.json；report 为 None 时静默跳过。"""
-    if not report:
+    """将评分报告写入 run_dir/scoring.json；report 为 None 时静默跳过（空 dict 仍写盘，便于调试）。"""
+    if report is None:
         return
-    import json
     try:
         (Path(run_dir) / "scoring.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

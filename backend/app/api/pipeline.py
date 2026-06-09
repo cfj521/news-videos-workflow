@@ -16,7 +16,7 @@ from app.config import get_settings, reload_settings
 from app.logging import get_logger
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
-from app.pipeline.runner import execute_pipeline, _collectors_for_run, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final, run_pipeline_bg
+from app.pipeline.runner import execute_pipeline, _collectors_for_run, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final, run_pipeline_bg, _write_scoring_json
 from app.pipeline.serial_executor import submit as serial_submit
 from app.schemas.pipeline import PipelineRunCreate, PipelineRunRead
 
@@ -372,6 +372,7 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
     log.info("Regenerating multi-article script for run #%d (%d articles)", run_id, len(arts))
     script = await run_stage2_multi(arts, tp, language=(run.language or cfg.pipeline.default_language))
     (rd / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
+    _write_scoring_json(rd, script.get("scoring_report"))   # AI HOT 评分明细同步刷新（非 aihot 为 None→不写）
     return script
 
 
