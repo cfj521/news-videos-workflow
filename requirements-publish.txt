@@ -1,0 +1,16 @@
+# 抖音/快手 浏览器自动化扫码登录 + 发布（social-auto-upload）。可选，仅在用抖音/快手发布时装。
+#
+# ⚠ 必须在 `pip install -r requirements.txt` 装完之后，再单独装本文件：
+#     pip install -r requirements-publish.txt
+#   原因：social-auto-upload 把若干依赖精确钉死（requests==2.32.3 / patchright / qrcode 等），
+#   与主 requirements 一起解析会让 pip 在 biliup/streamlink/Mako 等子树上疯狂回溯、退到无法构建的
+#   古董版本而失败。分两步装时，pip 只需在已装好的基础环境上解析它这一小撮依赖，干净利落。
+#   （非 PyPI，故用 git+ 钉 commit 保证可复现；它靠 DOM 选择器，易随抖音/快手改版失效。）
+#
+# 装完还需两步（pip 装不了，按平台）：
+#   1) patchright install chromium        # 下载浏览器内核
+#   2) 机器上装 Google Chrome              # uploader 用 channel="chrome"；或在 sau_conf/conf.py 设 LOCAL_CHROME_PATH
+#   Ubuntu Server 额外：patchright install-deps chromium   # 装 headless chromium 所需系统库（需 sudo）
+#   并装中日韩字体：sudo apt install fonts-noto-cjk
+
+social-auto-upload @ git+https://github.com/dreammis/social-auto-upload.git@90e01c0106cb73c17a1d8f00d67ebe084c850732

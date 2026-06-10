@@ -66,7 +66,6 @@ yt-dlp==2026.3.17
 google-api-python-client
 google-auth
 google-auth-oauthlib
-# 抖音/快手 扫码登录 + 发布（浏览器自动化 social-auto-upload，非 PyPI，钉 commit 可复现；
-# 会带入 patchright + opencv-python 等重依赖）。装完还需两步（pip 装不了）：
-#   1) patchright install chromium      2) 机器上装 Google Chrome（uploader 用 channel="chrome"）
-social-auto-upload @ git+https://github.com/dreammis/social-auto-upload.git@90e01c0106cb73c17a1d8f00d67ebe084c850732
+# 抖音/快手 浏览器自动化发布（social-auto-upload）单独放在 requirements-publish.txt：
+#   它的精确钉死依赖（requests==2.32.3 / patchright / qrcode 等）与本文件一起解析会让 pip 回溯爆炸、
+#   退到无法构建的古董版本。务必先 `pip install -r requirements.txt`，再 `pip install -r requirements-publish.txt`。
