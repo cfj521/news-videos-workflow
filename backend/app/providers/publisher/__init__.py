@@ -38,4 +38,10 @@ def _build_one(platform: str, cfg: dict):
         from app.providers.publisher.youtube import YouTubePublisher
         return YouTubePublisher(client_id=cfg.get("client_id", ""), client_secret=cfg.get("client_secret", ""),
                                 refresh_token=cfg.get("refresh_token", ""))
+    if platform == "douyin":
+        from app.providers.publisher.douyin import DouyinPublisher
+        return DouyinPublisher(account=cfg.get("account", ""))
+    if platform == "kuaishou":
+        from app.providers.publisher.kuaishou import KuaishouPublisher
+        return KuaishouPublisher(account=cfg.get("account", ""))
     return None
