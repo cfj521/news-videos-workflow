@@ -60,10 +60,10 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
   const [monthDay, setMonthDay] = useState<number | "last">(tparts?.monthDay ?? 1);
   const [scheduleName, setScheduleName] = useState(edit?.name ?? "");
   const timeReady = freq === "once" ? !!onceAt : !!tod;
-  const [timeRange, setTimeRange] = useState(init?.timeRange ?? "7d");
-  const [maxArticles, setMaxArticles] = useState(init?.maxArticles ?? 5);
+  const [timeRange, setTimeRange] = useState(init?.timeRange ?? "");
+  const [maxArticles, setMaxArticles] = useState<number | null>(init?.maxArticles ?? null);
   const [autoCollect, setAutoCollect] = useState(init?.autoCollect ?? true);
-  const [videoRoute, setVideoRoute] = useState(init?.videoRoute ?? "hyperframes");
+  const [videoRoute, setVideoRoute] = useState(init?.videoRoute ?? "");
   const [selectedVisual, setSelectedVisual] = useState<Set<number>>(init?.selectedVisual ?? new Set([1, 2, 4, 5, 6]));
   // null = 用户尚未手动改动 → 默认全选所有可用账号；非 null = 用户的具体选择
   const [targetIds, setTargetIds] = useState<Set<string> | null>(init?.targetIds ?? null);
@@ -83,8 +83,10 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
   const effRes = resolution || settings?.pipeline?.resolution || "1080x1920";
   const effLang = language || settings?.pipeline?.default_language || "zh";
   const effMaxImages = maxImages ?? settings?.pipeline?.max_images ?? 10;
-  // 新建任务默认 hyperframes；用户可在弹窗内切换
+  // 默认取流水线配置 default_video_route；用户可在弹窗内切换
   const effVideoRoute = videoRoute || settings?.pipeline?.default_video_route || "comfyui";
+  const effTimeRange = timeRange || settings?.pipeline?.default_time_range || "7d";
+  const effMaxArticles = maxArticles ?? settings?.pipeline?.default_max_articles ?? 5;
   const resOptions = (RES_PRESETS_DLG.some((o) => o.value === effRes)
     ? RES_PRESETS_DLG
     : [{ value: effRes, label: effRes }, ...RES_PRESETS_DLG]
@@ -174,8 +176,8 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
       const payload = {
         mode: isSchedule ? "auto" : mode,
         video_route: effVideoRoute,
-        time_range: timeRange,
-        max_articles: maxArticles,
+        time_range: effTimeRange,
+        max_articles: effMaxArticles,
         selected_stages: toBackendStages(effectiveVisual),
         publish_platforms: Array.from(effectiveTargetIds),
         resolution: effRes,
@@ -388,7 +390,7 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
               </div>
               <div>
                 <label className={labelCls}>最大文章数</label>
-                <input type="number" value={maxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
+                <input type="number" value={effMaxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
                 <p className="text-[11px] text-white/40 mt-1 leading-snug">评分后进入视频的内容条数上限</p>
               </div>
             </div>
@@ -427,7 +429,7 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
               {autoCollect && !isAihotDigest && (
                 <div>
                   <label className={labelCls}>时间范围</label>
-                  <Select value={timeRange} onChange={setTimeRange} options={[
+                  <Select value={effTimeRange} onChange={setTimeRange} options={[
                     { value: "1d", label: "最近 1 天" },
                     { value: "3d", label: "最近 3 天" },
                     { value: "7d", label: "最近 7 天" },
