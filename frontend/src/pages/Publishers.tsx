@@ -111,8 +111,6 @@ function ScanLoginButton({ platform, account }: {
   // 组件卸载时清理定时器（直接操作 ref，不依赖 stopPolling 函数引用）
   useEffect(() => () => { if (pollRef.current != null) clearInterval(pollRef.current); }, []);
 
-  const isTerminal = ["success", "failed", "timeout", "error"].includes(state.status);
-
   const statusLabel: Record<string, string> = {
     idle: "扫码登录",
     starting: "正在启动…",
@@ -122,11 +120,6 @@ function ScanLoginButton({ platform, account }: {
     timeout: "已超时",
     error: "出错了",
   };
-
-  const btnLabel = state.status === "starting" ? "生成中…"
-    : state.status === "qr_ready" ? "重新生成二维码"
-    : isTerminal ? "重新扫码"
-    : "扫码登录";
 
   return (
     <div>
@@ -176,10 +169,16 @@ function ScanLoginButton({ platform, account }: {
         type="button"
         onClick={(e) => { e.stopPropagation(); startLogin(); }}
         disabled={state.status === "starting"}
-        className={`${btnRegen} w-full`}
-        title="扫码登录"
+        className={`${btnRegen} inline-flex items-center gap-1.5`}
+        title="生成二维码"
       >
-        {btnLabel}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+             className={state.status === "starting" ? "animate-spin" : ""}>
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <polyline points="21 3 21 9 15 9" />
+        </svg>
+        生成二维码
       </button>
     </div>
   );
