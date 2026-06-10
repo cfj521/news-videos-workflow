@@ -147,3 +147,28 @@ async def run_upload(platform: str, account: str, file_path: str,
     if proc.returncode == 0:
         return True, (out or b"").decode("utf-8", "ignore").strip()
     return False, classify_upload_error((err or b"").decode("utf-8", "ignore"))
+
+
+async def check_login(platform: str, account: str, deep: bool = False) -> bool:
+    """登录态：浅查 cookie 文件存在；deep=True 跑 `sau <p> check`（exit 0=valid）。"""
+    acct = safe_account(account)
+    if not acct:
+        return False
+    if not deep:
+        return cookie_path(platform, acct).exists()
+    sau = resolve_sau()
+    if not sau:
+        return False
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sau, platform, "check", "--account", acct,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            env=subprocess_env(), **_spawn_kwargs())
+    except FileNotFoundError:
+        return False
+    try:
+        await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        kill_process_tree(proc)
+        return False
+    return proc.returncode == 0
