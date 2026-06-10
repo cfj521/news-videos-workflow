@@ -352,7 +352,6 @@ const EMPTY_SETTINGS: AppSettings = {
     vision_provider: "openai", vision_model: "gpt-4o",
     tts_provider: "edge-tts", tts_model: "", tts_voice: "zh-CN-XiaoxiaoNeural",
     video_model: "wan2.2_5b", video_fps: 24,
-    aihot_top_n: 10,
   },
   storage: { work_dir: "", output_dir: "" },
   hyperframes: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
@@ -1007,16 +1006,6 @@ export function SettingsPage() {
             <input type="number" value={settings.overlay.margin_ratio} min={0} max={0.1} step={0.005}
               onChange={(e) => patch("overlay", { margin_ratio: Number(e.target.value) })} className={inputCls} />
             <span className="text-xs text-white/60">{(settings.overlay.margin_ratio * 100).toFixed(1)}%</span>
-          </div>
-        </Field>
-      </Section>
-
-      <Section title="AI HOT 配置" desc="AI HOT 聚合源相关参数">
-        <Field label="AI HOT 取前 N 条" desc="从 AI HOT 聚合源中最多取前 N 条热点，超出部分忽略（默认 10）">
-          <div className="flex items-center gap-3">
-            <input type="number" value={settings.pipeline.aihot_top_n} min={1} max={50}
-              onChange={(e) => patch("pipeline", { aihot_top_n: Number(e.target.value) })} className={inputCls} />
-            <span className="text-xs text-white/60">条</span>
           </div>
         </Field>
       </Section>

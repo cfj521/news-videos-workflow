@@ -370,7 +370,12 @@ async def regen_script(run_id: int, db: Session = Depends(get_db)):
 
     from app.pipeline.stage2_script import run_stage2_multi
     log.info("Regenerating multi-article script for run #%d (%d articles)", run_id, len(arts))
-    script = await run_stage2_multi(arts, tp, language=(run.language or cfg.pipeline.default_language))
+    lang = run.language or cfg.pipeline.default_language
+    script = await run_stage2_multi(arts, tp, language=lang, max_articles=run.max_articles)
+    limit = run.max_images if run.max_images is not None else cfg.pipeline.max_images
+    if run.video_route != "audio" and limit and len(script.get("scenes", [])) > limit:
+        from app.pipeline.stage2_script import cap_scenes_by_score
+        script = cap_scenes_by_score(script, limit)
     (rd / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
     _write_scoring_json(rd, script.get("scoring_report"))   # AI HOT 评分明细同步刷新（非 aihot 为 None→不写）
     return script

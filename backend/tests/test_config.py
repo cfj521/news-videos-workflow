@@ -91,7 +91,11 @@ def test_overlay_defaults():
     assert s.overlay.font_size_ratio == 0.035
     assert s.overlay.bg_opacity == 0.45
     assert s.overlay.color == "#FFFFFF"
-    assert s.pipeline.aihot_top_n == 10
+
+
+def test_pipeline_cfg_has_no_aihot_top_n():
+    from app.config import PipelineCfg
+    assert not hasattr(PipelineCfg(), "aihot_top_n")
 
 
 def test_scoring_cfg_defaults():
