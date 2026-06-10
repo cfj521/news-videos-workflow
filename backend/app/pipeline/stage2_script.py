@@ -224,42 +224,46 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
     return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"], "groups": groups, "scenes": scenes}
 
 
-async def replan_scenes_to_limit(script: dict, limit: int, text_provider, language: str = "zh") -> dict:
-    """分镜数超过图片上限时，调 AI 把零碎/简短/相近的分镜合并成 ≤limit 个（合并旁白+单图）。
+def cap_scenes_by_score(script: dict, limit: int) -> dict:
+    """分镜数超 limit 时，按组分数降序保留高分组前缀(不拆组)，淘汰低分整组；保留原序、id/group_id 连续重编。
 
-    失败或无需合并则原样返回。重建后每个合并分镜各自一组，id/group_id 连续。
+    无 AI 调用。≤limit 或 limit<=0 原样返回。最高分组单组就超 limit 时截断该组到 limit（避免空）。
     """
+    from collections import OrderedDict
     scenes = script.get("scenes", [])
     if limit <= 0 or len(scenes) <= limit:
         return script
 
-    lines = [
-        f"S{sc.get('id')} [{sc.get('group_title', '')}] 旁白:{sc.get('narration', '')} | 画面:{sc.get('image_prompt', '')}"
-        for sc in scenes
-    ]
-    user = f"图片数量上限：{limit}。当前分镜共 {len(scenes)} 个：\n" + "\n".join(lines)
-    try:
-        resp = await text_provider.generate(prompt=user, system_prompt=resolve_prompt("scene_replan", language))
-        new_scenes = _parse_json(resp).get("scenes", [])
-    except Exception:
-        log.exception("[S2] scene replan failed, keep original script")
-        return script
-    if not new_scenes:
-        log.warning("[S2] scene replan returned empty, keep original")
-        return script
+    groups_map: "OrderedDict[object, list]" = OrderedDict()
+    for sc in scenes:
+        groups_map.setdefault(sc.get("group_id"), []).append(sc)
+    group_list = [(gid, members, max((s.get("score", 0.0) for s in members), default=0.0))
+                  for gid, members in groups_map.items()]
 
-    new_scenes = new_scenes[:limit]
-    out: list[dict] = []
-    groups: list[dict] = []
-    for i, sc in enumerate(new_scenes, start=1):
-        gtitle = sc.get("group_title") or f"分镜 {i}"
-        out.append({
-            "id": i, "group_id": i, "group_title": gtitle,
-            "narration": sc.get("narration", ""),
-            "image_prompt": sc.get("image_prompt", ""),
-            "motion_prompt": sc.get("motion_prompt", ""),
-            "duration_hint": sc.get("duration_hint", 5),
-        })
-        groups.append({"id": i, "title": gtitle, "source_index": i - 1})
-    log.info("[S2] replan: %d scenes → %d (limit %d)", len(scenes), len(out), limit)
-    return {**script, "groups": groups, "scenes": out}
+    kept_gids: set = set()
+    total = 0
+    for gid, members, _ in sorted(group_list, key=lambda x: x[2], reverse=True):
+        if total + len(members) > limit:
+            break
+        kept_gids.add(gid)
+        total += len(members)
+
+    if kept_gids:
+        kept_scenes = [sc for sc in scenes if sc.get("group_id") in kept_gids]
+    else:
+        top_gid, top_members, _ = max(group_list, key=lambda x: x[2])
+        kept_scenes = top_members[:limit]
+
+    new_scenes: list[dict] = []
+    new_groups: list[dict] = []
+    gid_remap: dict = {}
+    for sc in kept_scenes:
+        old_gid = sc.get("group_id")
+        if old_gid not in gid_remap:
+            gid_remap[old_gid] = len(gid_remap) + 1
+            new_groups.append({"id": gid_remap[old_gid], "title": sc.get("group_title", ""),
+                               "source_index": len(new_groups)})
+        new_scenes.append({**sc, "id": len(new_scenes) + 1, "group_id": gid_remap[old_gid]})
+
+    log.info("[S2] cap scenes %d → %d (limit %d)", len(scenes), len(new_scenes), limit)
+    return {**script, "scenes": new_scenes, "groups": new_groups}

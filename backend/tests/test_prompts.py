@@ -21,10 +21,10 @@ from app.prompts import DEFAULTS, PROMPTS, resolve_prompt
 from app import config
 
 
-def test_defaults_have_7_entries():
-    assert len(PROMPTS) == 7
+def test_defaults_have_6_entries():
+    assert len(PROMPTS) == 6
     assert set(DEFAULTS) == {"roundup_article", "summary_meta",
-                             "weekly_digest", "image_regen", "scene_replan",
+                             "weekly_digest", "image_regen",
                              "article_summary", "news_scoring"}
 
 

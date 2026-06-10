@@ -630,14 +630,13 @@ async def _run_inner(run_id: int, db: Session) -> None:
         script = await run_stage2_multi(
             articles, text_provider, language=(run.language or cfg.pipeline.default_language))
 
-        # 图片数量上限：分镜数超过则在生图前用 AI 重规划合并（仅出图路线需要）
+        # 图片数量上限：分镜数超过则按评分裁剪（丢弃低分整组，无 AI 调用）
         limit = run.max_images if run.max_images is not None else cfg.pipeline.max_images
         if run.video_route != "audio" and limit and len(script.get("scenes", [])) > limit:
-            from app.pipeline.stage2_script import replan_scenes_to_limit
-            _update(db, run, progress_detail=f"S2 分镜 {len(script['scenes'])} 超图片上限 {limit}，AI 重规划合并中...")
-            log.info("[S2] %d scenes > limit %d → replanning", len(script["scenes"]), limit)
-            script = await replan_scenes_to_limit(
-                script, limit, text_provider, run.language or cfg.pipeline.default_language)
+            from app.pipeline.stage2_script import cap_scenes_by_score
+            _update(db, run, progress_detail=f"S2 分镜 {len(script['scenes'])} 超图片上限 {limit}，按评分裁剪中...")
+            log.info("[S2] %d scenes > limit %d → cap by score", len(script["scenes"]), limit)
+            script = cap_scenes_by_score(script, limit)
 
         (run_dir / "script.json").write_text(
             json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
