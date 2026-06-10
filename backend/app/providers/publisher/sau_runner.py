@@ -74,3 +74,12 @@ def subprocess_env() -> dict:
     env["PYTHONPATH"] = str(_SAU_CONF_DIR) + (os.pathsep + prev if prev else "")
     env["PYTHONIOENCODING"] = "utf-8"
     return env
+
+
+def classify_upload_error(stderr: str) -> str:
+    """把 sau 子进程 stderr 映射成可操作中文。未登录关键字来自 SAU 源码英文消息。"""
+    s = (stderr or "")
+    if "missing or expired" in s.lower():
+        return "登录态失效，请重新扫码登录"
+    tail = "\n".join(line for line in s.strip().splitlines() if line.strip())[-500:]
+    return tail or "发布失败"
