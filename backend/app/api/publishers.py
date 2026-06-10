@@ -21,7 +21,8 @@ _LOGIN_TASKS: set = set()  # 持有后台任务引用，防被 GC
 
 
 class LoginStartBody(BaseModel):
-    slug: str  # 账号自身的 slug（= 登录态标识 / cookie 文件名）
+    platform: str
+    account: str  # 账号的内部标识（前端自动生成的 UUID，= cookie 文件名）；保存前即可扫码
 
 
 def _to_read(t) -> PublishTargetRead:
@@ -113,15 +114,12 @@ def delete_target(slug: str):
 async def login_start(body: LoginStartBody, db: Session = Depends(get_db)):
     from datetime import datetime, timedelta, timezone
 
-    t = targets_store.get_target(body.slug)
-    if t is None:
-        raise HTTPException(status_code=404, detail="账号不存在")
-    if t.platform not in _LOGIN_PLATFORMS:
+    if body.platform not in _LOGIN_PLATFORMS:
         raise HTTPException(status_code=422, detail="仅支持抖音/快手扫码登录")
-    platform = t.platform
-    account = sau_runner.safe_account(body.slug)  # slug 即登录态标识
+    platform = body.platform
+    account = sau_runner.safe_account(body.account)
     if not account:
-        raise HTTPException(status_code=422, detail="账号 slug 非法")
+        raise HTTPException(status_code=422, detail="账号标识非法")
 
     # 清理本账号旧的非进行中会话（终态：success/failed/timeout）
     db.query(BrowserLoginSession).filter_by(platform=platform, account=account)\
@@ -167,8 +165,7 @@ async def target_login_status(slug: str, deep: bool = False):
         raise HTTPException(status_code=404, detail="Target not found")
     if t.platform not in _LOGIN_PLATFORMS:
         raise HTTPException(status_code=422, detail="该平台不支持扫码登录态查询")
-    # 登录态标识就是账号自身的 slug（cookie 文件名），无需单独的 account 字段
-    account = sau_runner.safe_account(slug)
+    account = sau_runner.safe_account((t.config or {}).get("account", ""))
     if not account:
         return {"logged_in": False}
     logged_in = await sau_runner.check_login(t.platform, account, deep=deep)

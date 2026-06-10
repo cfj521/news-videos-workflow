@@ -49,16 +49,15 @@ def _make_target(c, tok, name, platform, slug, config_json=None):
     return r.json()["id"]  # slug
 
 
-def test_login_start_rejects_unknown_slug(client):
+def test_login_start_rejects_bad_platform(client):
     c, tok = client
-    r = c.post("/api/publishers/login/start", json={"slug": "nope"}, headers=_h(tok))
-    assert r.status_code == 404
+    r = c.post("/api/publishers/login/start", json={"platform": "weibo", "account": "uuid1"}, headers=_h(tok))
+    assert r.status_code == 422
 
 
-def test_login_start_rejects_non_scan_platform(client):
+def test_login_start_rejects_bad_account(client):
     c, tok = client
-    slug = _make_target(c, tok, "B站", "bilibili", "bili1", config_json='{"sessdata": "s"}')
-    r = c.post("/api/publishers/login/start", json={"slug": slug}, headers=_h(tok))
+    r = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "../bad"}, headers=_h(tok))
     assert r.status_code == 422
 
 
@@ -70,8 +69,8 @@ def test_login_start_creates_session_row(client, monkeypatch):
         return None
     monkeypatch.setattr(route, "_run_login_flow", noop)
 
-    slug = _make_target(c, tok, "抖音", "douyin", "dy1")
-    r = c.post("/api/publishers/login/start", json={"slug": slug}, headers=_h(tok))
+    # 保存前即可扫码：直接用 (platform, account=UUID)，无需先建账号
+    r = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "uuid1"}, headers=_h(tok))
     assert r.status_code == 200
     sid = r.json()["sid"]
 
@@ -88,7 +87,7 @@ def test_login_status_unknown_sid(client):
 
 def test_login_status_for_target(client, monkeypatch):
     c, tok = client
-    slug = _make_target(c, tok, "抖音", "douyin", "dy1")
+    slug = _make_target(c, tok, "抖音", "douyin", "dy1", config_json='{"account": "uuid1"}')
     from app.api import publishers as route
 
     async def fake_check(platform, account, deep=False):
@@ -114,14 +113,11 @@ def test_login_start_rejects_concurrent(client, monkeypatch):
         return None
     monkeypatch.setattr(route, "_run_login_flow", noop)
 
-    slug = _make_target(c, tok, "抖音", "douyin", "dy1")
-    slug2 = _make_target(c, tok, "抖音小号", "douyin", "dy2")
-
-    r1 = c.post("/api/publishers/login/start", json={"slug": slug}, headers=_h(tok))
+    r1 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "uuid1"}, headers=_h(tok))
     assert r1.status_code == 200
     # 同账号再次发起：第一个仍 starting（noop 未推进）→ 409
-    r2 = c.post("/api/publishers/login/start", json={"slug": slug}, headers=_h(tok))
+    r2 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "uuid1"}, headers=_h(tok))
     assert r2.status_code == 409
     # 不同账号不受影响
-    r3 = c.post("/api/publishers/login/start", json={"slug": slug2}, headers=_h(tok))
+    r3 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "uuid2"}, headers=_h(tok))
     assert r3.status_code == 200

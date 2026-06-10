@@ -48,9 +48,15 @@ interface LoginState {
   errorMsg: string | null;
 }
 
-function ScanLoginButton({ platform, slug }: {
+/** 账号内部标识（cookie 文件名用）：自动生成，对用户不可见，用户只关心「名称」。 */
+function genAccountId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return "acct-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+}
+
+function ScanLoginButton({ platform, account }: {
   platform: string;
-  slug: string;
+  account: string;
 }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<LoginState>({
@@ -75,7 +81,7 @@ function ScanLoginButton({ platform, slug }: {
     setState({ status: "starting", sid: null, qrBase64: null, errorMsg: null });
     setOpen(true);
     try {
-      const { sid } = await api.publishers.loginStart(slug);
+      const { sid } = await api.publishers.loginStart(platform, account);
       setState((prev) => ({ ...prev, sid }));
       // 开始轮询
       pollRef.current = setInterval(async () => {
@@ -229,6 +235,8 @@ function TargetDialog({ target, onSave, onClose }: {
   // 启用/禁用不在本窗口内改，由列表外侧的开关按 target 控制；这里仅在保存时透传原值
   const [enabled] = useState(target?.enabled ?? true);
   const [fields, setFields] = useState<Record<string, string>>(() => parseConfig(target?.config_json ?? null));
+  // 抖音/快手账号的内部标识：编辑时取已存的，新建时立即生成 UUID（无需先保存即可扫码）
+  const [accountId] = useState<string>(() => parseConfig(target?.config_json ?? null).account || genAccountId());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -246,7 +254,9 @@ function TargetDialog({ target, onSave, onClose }: {
     if (!name.trim()) { setError("名称为必填项"); return; }
     setLoading(true);
     try {
-      const body = { name, platform, enabled, config_json: buildConfig(fields) };
+      // 扫码平台把自动生成的 account 写进 config（cookie 标识），其它平台不动
+      const cfgObj = SCAN_LOGIN_PLATFORMS.has(platform) ? { ...fields, account: accountId } : fields;
+      const body = { name, platform, enabled, config_json: buildConfig(cfgObj) };
       if (isEdit) await api.publishers.update(target!.id, body);
       else await api.publishers.create(body);
       onSave();
@@ -294,14 +304,12 @@ function TargetDialog({ target, onSave, onClose }: {
               <span className="text-[13px] font-medium text-white/80">扫码登录</span>
               {isEdit && <LoginBadge slug={target!.id} />}
             </div>
-            {isEdit ? (
-              <div className="mt-2">
-                <ScanLoginButton platform={platform} slug={target!.id} />
-                <p className="text-[11px] text-white/40 mt-2">用 App 扫码登录该账号；登录态自动保存，失效后重新扫码即可。</p>
-              </div>
-            ) : (
-              <p className="text-[11px] text-white/52 mt-2">先点「添加」保存账号，再编辑该账号即可扫码登录。</p>
-            )}
+            <div className="mt-2">
+              <ScanLoginButton platform={platform} account={accountId} />
+              <p className="text-[11px] text-white/40 mt-2">
+                用 App 扫码登录该账号；登录态自动保存。{!isEdit && "扫码后填好名称点「添加」即可保存。"}
+              </p>
+            </div>
           </div>
         )}
 

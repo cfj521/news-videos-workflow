@@ -290,11 +290,11 @@ export const api = {
       }),
     remove: (id: string) =>
       fetchJSON<{ status: string }>(`/publishers/${id}`, { method: "DELETE" }),
-    /** 启动扫码登录流程（按账号 slug），返回会话 ID */
-    loginStart: (slug: string) =>
+    /** 启动扫码登录流程（按 平台 + 账号内部标识），返回会话 ID。保存前即可调用。 */
+    loginStart: (platform: string, account: string) =>
       fetchJSON<{ sid: string }>("/publishers/login/start", {
         method: "POST",
-        body: JSON.stringify({ slug }),
+        body: JSON.stringify({ platform, account }),
       }),
     /** 轮询登录状态 */
     loginPoll: (sid: string) =>
