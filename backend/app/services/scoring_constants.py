@@ -39,7 +39,7 @@ CHINA_TERMS = [
     "李彦宏", "王小川", "杨植麟", "梁文锋", "李开复",
 ]
 
-# 默认权重（ScoringCfg 可覆盖）
+# 默认权重（评分参数集中维护于此 const 文件，不再走配置/设置页）
 W_FINAL_LLM, W_FINAL_RULE = 0.6, 0.4
 W_SOURCE, W_RECENCY, W_KEYWORD = 0.4, 0.2, 0.4
 # 关键词分：基线 + 增减
