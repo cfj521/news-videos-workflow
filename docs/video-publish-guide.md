@@ -11,8 +11,8 @@
 | YouTube | 简单 | Google 账号 + 手机验证 | 6 个视频 | 当天 |
 | Instagram Reels | 中等 | Business 账号 + Facebook Page + Meta 审核 | 100 个视频 | 1-3 周 |
 | Bilibili | 简单 | B站账号 + 浏览器 Cookie | 5-10 个视频 | 当天 |
-| 抖音 | 较难 | 企业营业执照 + 开放平台审核 | 无明确限制 | 1-2 周 |
-| 快手 | 较难 | 企业营业执照 + 开放平台审核 | 无明确限制 | 1-2 周 |
+| 抖音 | 简单 | 抖音 App（扫码登录） | 无明确限制 | 当天 |
+| 快手 | 简单 | 快手 App（扫码登录） | 无明确限制 | 当天 |
 
 ---
 
@@ -137,51 +137,45 @@
 
 ## 4. 抖音
 
-### 前置条件
+> 免企业资质，基于 social-auto-upload 扫码登录 + Cookie，与 B 站逆向 Cookie 路线同性质。
 
-- 需要**企业营业执照**（个人无法申请开发者）
+### 前置（一次性，在后端机器）
 
-### 步骤
+1. 在后端 conda 环境安装：`pip install "git+https://github.com/dreammis/social-auto-upload@<锁定commit>"`
+2. **安装 Google Chrome**（uploader 使用 `channel="chrome"`；或在 `backend/app/providers/publisher/sau_conf/conf.py` 填 `LOCAL_CHROME_PATH` 指向 chrome/chromium 可执行文件）。
+3. 后端机器需能启动浏览器（headless 即可）。
 
-1. 打开 [抖音开放平台](https://open.douyin.com)，注册开发者账号（需上传营业执照）
-2. 创建应用，获取 `Client Key` 和 `Client Secret`
-3. 申请 `video.create` 权限（需要单独审批）
-4. 审核通过后，系统会引导用户授权
+### 使用
 
-### 填入配置
+1. 「发布管理」→「+ 添加平台」选 **抖音**，填 **账号标识**（仅 a-z 0-9 _ -，例如 `my_acct`）。
+2. 点账号卡片的「扫码登录」，用抖音 App 扫弹出的二维码。
+3. 卡片显示「已登录」后即可在任务里选该账号发布。Cookie 存仓库根 `publish_cookies/`，失效后重新扫码即可。
 
-- **Client Key**: 开放平台应用的 Client Key
-- **Client Secret**: 开放平台应用的 Client Secret
+### 注意
 
-### 无企业资质的替代方案
-
-如果没有企业资质，系统支持通过浏览器自动化上传（基于 social-auto-upload）：
-1. 在本机安装 Playwright：`pip install playwright && playwright install chromium`
-2. 首次运行时扫码登录抖音网页版
-3. 之后自动上传（速度较慢，每个视频约 1-2 分钟）
+- 无需企业资质；与 B 站逆向 Cookie 路线同类，存在平台改版导致失效的风险，失效时重新扫码。
+- 不上传外挂字幕/自定义封面（字幕在合成阶段已烧入画面，封面由平台自动抽帧）。
 
 ---
 
 ## 5. 快手
 
-### 前置条件
+> 同抖音，基于 social-auto-upload 扫码登录 + Cookie，流程一致。
 
-- 需要**企业营业执照**
+### 前置（一次性，在后端机器）
 
-### 步骤
+同抖音第 1–3 步（安装 social-auto-upload、Chrome、确认可启动浏览器）。
 
-1. 打开 [快手开放平台](https://open.kuaishou.com)，注册应用
-2. 获取 `App ID` 和 `App Secret`
-3. 完成用户授权流程
+### 使用
 
-### 填入配置
+1. 「发布管理」→「+ 添加平台」选 **快手**，填 **账号标识**（仅 a-z 0-9 _ -）。
+2. 点账号卡片的「扫码登录」，用快手 App 扫弹出的二维码。
+3. 卡片显示「已登录」后即可在任务里选该账号发布。Cookie 同样存于 `publish_cookies/`，失效后重新扫码。
 
-- **App ID**: 开放平台应用 ID
-- **App Secret**: 开放平台应用密钥
+### 注意
 
-### 无企业资质的替代方案
-
-同抖音，支持 Playwright 浏览器自动化方案。
+- 同抖音：无需企业资质，存在平台改版失效风险，失效时重新扫码。
+- 不上传外挂字幕/自定义封面。
 
 ---
 

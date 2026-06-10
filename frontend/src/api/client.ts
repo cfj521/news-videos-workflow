@@ -290,6 +290,20 @@ export const api = {
       }),
     remove: (id: string) =>
       fetchJSON<{ status: string }>(`/publishers/${id}`, { method: "DELETE" }),
+    /** 启动扫码登录流程，返回会话 ID */
+    loginStart: (platform: string, account: string) =>
+      fetchJSON<{ sid: string }>("/publishers/login/start", {
+        method: "POST",
+        body: JSON.stringify({ platform, account }),
+      }),
+    /** 轮询登录状态 */
+    loginPoll: (sid: string) =>
+      fetchJSON<{ status: string; qr_base64?: string; error?: string }>(
+        `/publishers/login/status?sid=${encodeURIComponent(sid)}`
+      ),
+    /** 查询账号当前登录状态 */
+    loginStatus: (slug: string) =>
+      fetchJSON<{ logged_in: boolean }>(`/publishers/${slug}/login-status`),
   },
   settings: {
     get: () => fetchJSON<AppSettings>("/settings/"),
