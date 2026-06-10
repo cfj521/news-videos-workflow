@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 # 抖音/快手 SAU 不限标题长度，仅防御性上限避免异常长标题
 TITLE_MAX = 100
@@ -172,3 +174,47 @@ async def check_login(platform: str, account: str, deep: bool = False) -> bool:
         kill_process_tree(proc)
         return False
     return proc.returncode == 0
+
+
+async def run_login(platform: str, account: str,
+                    on_qr: Callable[[str], None]) -> tuple[bool, str]:
+    """起登录 worker 子进程，逐行读 stdout：qr → on_qr(data_url)；result → 终态。
+
+    返回 (ok, status)，status ∈ success|timeout|failed。超时杀进程树。
+    """
+    acct = safe_account(account)
+    if not acct:
+        return False, "failed"
+
+    argv = [sys.executable, "-m", "app.providers.publisher.sau_login_worker", platform, acct]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            env=subprocess_env(), **_spawn_kwargs())
+    except FileNotFoundError:
+        return False, "failed"
+
+    async def _pump() -> str:
+        status = "failed"
+        while True:
+            raw = await proc.stdout.readline()
+            if not raw:
+                break
+            try:
+                msg = json.loads(raw.decode("utf-8", "ignore").strip() or "{}")
+            except json.JSONDecodeError:
+                continue
+            if "qr" in msg:
+                on_qr(msg["qr"])
+            elif "result" in msg:
+                status = msg["result"]
+        await proc.wait()
+        return status
+
+    try:
+        status = await asyncio.wait_for(_pump(), timeout=LOGIN_TIMEOUT)
+    except asyncio.TimeoutError:
+        kill_process_tree(proc)
+        return False, "timeout"
+
+    return status == "success", status
