@@ -13,7 +13,7 @@ def build_publishers(targets) -> list:
     for t in targets:
         if not t.enabled:
             continue
-        adapter = _build_one(t.platform, t.config or {})
+        adapter = _build_one(t.platform, t.config or {}, t.slug)
         if adapter is not None:
             pubs.append((t, adapter))
         else:
@@ -21,7 +21,7 @@ def build_publishers(targets) -> list:
     return pubs
 
 
-def _build_one(platform: str, cfg: dict):
+def _build_one(platform: str, cfg: dict, slug: str = ""):
     if platform == "bilibili":
         from app.providers.publisher.bilibili import BilibiliPublisher
         try:
@@ -38,10 +38,11 @@ def _build_one(platform: str, cfg: dict):
         from app.providers.publisher.youtube import YouTubePublisher
         return YouTubePublisher(client_id=cfg.get("client_id", ""), client_secret=cfg.get("client_secret", ""),
                                 refresh_token=cfg.get("refresh_token", ""))
+    # 抖音/快手用账号自身的 slug 作为登录态标识（cookie 文件名），无需用户单独填账号
     if platform == "douyin":
         from app.providers.publisher.douyin import DouyinPublisher
-        return DouyinPublisher(account=cfg.get("account", ""))
+        return DouyinPublisher(account=slug)
     if platform == "kuaishou":
         from app.providers.publisher.kuaishou import KuaishouPublisher
-        return KuaishouPublisher(account=cfg.get("account", ""))
+        return KuaishouPublisher(account=slug)
     return None

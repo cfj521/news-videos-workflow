@@ -48,9 +48,9 @@ interface LoginState {
   errorMsg: string | null;
 }
 
-function ScanLoginButton({ platform, account }: {
+function ScanLoginButton({ platform, slug }: {
   platform: string;
-  account: string;
+  slug: string;
 }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<LoginState>({
@@ -75,7 +75,7 @@ function ScanLoginButton({ platform, account }: {
     setState({ status: "starting", sid: null, qrBase64: null, errorMsg: null });
     setOpen(true);
     try {
-      const { sid } = await api.publishers.loginStart(platform, account);
+      const { sid } = await api.publishers.loginStart(slug);
       setState((prev) => ({ ...prev, sid }));
       // 开始轮询
       pollRef.current = setInterval(async () => {
@@ -113,7 +113,6 @@ function ScanLoginButton({ platform, account }: {
   useEffect(() => () => { if (pollRef.current != null) clearInterval(pollRef.current); }, []);
 
   const isTerminal = ["success", "failed", "timeout", "error"].includes(state.status);
-  const disabled = !account.trim();
 
   const statusLabel: Record<string, string> = {
     idle: "扫码登录",
@@ -130,9 +129,8 @@ function ScanLoginButton({ platform, account }: {
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); startLogin(); }}
-        disabled={disabled}
         className={btnRegen}
-        title={disabled ? "请先在编辑中填写账号" : "扫码登录"}
+        title="扫码登录"
       >
         扫码登录
       </button>
@@ -345,7 +343,6 @@ export function PublishersPage() {
           const cfg = parseConfig(t.config_json);
           const fieldDefs = PLATFORM_FIELDS[t.platform] ?? [];
           const isScanPlatform = SCAN_LOGIN_PLATFORMS.has(t.platform);
-          const account = cfg["account"] ?? "";
           return (
             <div
               key={t.id}
@@ -379,7 +376,7 @@ export function PublishersPage() {
                 </div>
                 <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                   {isScanPlatform && (
-                    <ScanLoginButton platform={t.platform} account={account} />
+                    <ScanLoginButton platform={t.platform} slug={t.id} />
                   )}
                   <button
                     type="button"

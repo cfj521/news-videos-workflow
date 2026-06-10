@@ -21,8 +21,7 @@ _LOGIN_TASKS: set = set()  # 持有后台任务引用，防被 GC
 
 
 class LoginStartBody(BaseModel):
-    platform: str
-    account: str
+    slug: str  # 账号自身的 slug（= 登录态标识 / cookie 文件名）
 
 
 def _to_read(t) -> PublishTargetRead:
@@ -114,20 +113,24 @@ def delete_target(slug: str):
 async def login_start(body: LoginStartBody, db: Session = Depends(get_db)):
     from datetime import datetime, timedelta, timezone
 
-    if body.platform not in _LOGIN_PLATFORMS:
+    t = targets_store.get_target(body.slug)
+    if t is None:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    if t.platform not in _LOGIN_PLATFORMS:
         raise HTTPException(status_code=422, detail="仅支持抖音/快手扫码登录")
-    account = sau_runner.safe_account(body.account)
+    platform = t.platform
+    account = sau_runner.safe_account(body.slug)  # slug 即登录态标识
     if not account:
-        raise HTTPException(status_code=422, detail="账号标识非法（仅 a-z 0-9 _ -）")
+        raise HTTPException(status_code=422, detail="账号 slug 非法")
 
     # 清理本账号旧的非进行中会话（终态：success/failed/timeout）
-    db.query(BrowserLoginSession).filter_by(platform=body.platform, account=account)\
+    db.query(BrowserLoginSession).filter_by(platform=platform, account=account)\
         .filter(BrowserLoginSession.status.notin_(["starting", "qr_ready"])).delete(synchronize_session=False)
 
     # 并发判据：同账号仍在进行中（starting/qr_ready）且未超 LOGIN_TIMEOUT → 拒绝；
     # 更老的视为僵死，清掉后放行。
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=sau_runner.LOGIN_TIMEOUT)
-    existing = db.query(BrowserLoginSession).filter_by(platform=body.platform, account=account)\
+    existing = db.query(BrowserLoginSession).filter_by(platform=platform, account=account)\
         .filter(BrowserLoginSession.status.in_(["starting", "qr_ready"])).all()
     for row in existing:
         updated = row.updated_at
@@ -140,10 +143,10 @@ async def login_start(body: LoginStartBody, db: Session = Depends(get_db)):
     db.commit()
 
     sid = secrets.token_urlsafe(24)
-    db.add(BrowserLoginSession(sid=sid, platform=body.platform, account=account, status="starting"))
+    db.add(BrowserLoginSession(sid=sid, platform=platform, account=account, status="starting"))
     db.commit()
 
-    task = asyncio.create_task(_run_login_flow(sid, body.platform, account))
+    task = asyncio.create_task(_run_login_flow(sid, platform, account))
     _LOGIN_TASKS.add(task)
     task.add_done_callback(_LOGIN_TASKS.discard)
     return {"sid": sid}
@@ -164,7 +167,8 @@ async def target_login_status(slug: str, deep: bool = False):
         raise HTTPException(status_code=404, detail="Target not found")
     if t.platform not in _LOGIN_PLATFORMS:
         raise HTTPException(status_code=422, detail="该平台不支持扫码登录态查询")
-    account = sau_runner.safe_account((t.config or {}).get("account", ""))
+    # 登录态标识就是账号自身的 slug（cookie 文件名），无需单独的 account 字段
+    account = sau_runner.safe_account(slug)
     if not account:
         return {"logged_in": False}
     logged_in = await sau_runner.check_login(t.platform, account, deep=deep)
