@@ -4,10 +4,10 @@
 # 流水线跑在进程内，无需独立 worker/broker。
 #
 # ┌─ 安装步骤（详见 deploy/README.md）────────────────────────────────────┐
-# │ 1) 仓库部署到 /opt/news-videos-workflow（或改下方所有路径）            │
+# │ 1) 仓库部署到 /data/news-videos-workflow（或改下方所有路径）            │
 # │ 2) conda 环境 + 依赖：                                                 │
-# │      conda create -n env_news_videos_wf python=3.12                    │
-# │      conda run -n env_news_videos_wf pip install -r requirements.txt   │
+# │      conda create -n env_nvw python=3.12                    │
+# │      conda run -n env_nvw pip install -r requirements.txt   │
 # │ 3) 系统依赖： sudo apt install -y ffmpeg fonts-noto-cjk                 │
 # │      （Hyperframes 视频路线另需 Node>=22 + sudo npm i -g hyperframes）  │
 # │ 4) 构建前端： cd frontend && pnpm install && pnpm build                 │
@@ -25,28 +25,33 @@ Description=News Videos Workflow (FastAPI backend + in-process pipeline + fronte
 Documentation=https://github.com/cfj521/news-videos-workflow
 After=network-online.target
 Wants=network-online.target
+# 仓库与数据均在 /data（独立挂载点 data.mount）下：必须等 /data 挂载就绪再启动，
+# 否则挂载未完成时会往裸挂载点写入、随后被真实卷盖住，造成数据/配置"消失"。
+# RequiresMountsFor 会自动对覆盖该路径的挂载单元(data.mount)生成 Requires= + After= 依赖；
+# 若 /data 实际在根分区（无独立挂载）则自动空操作，无副作用。
+RequiresMountsFor=/data
 
 [Service]
 Type=simple
 
 # ── 改这里①：运行用户（非 root，需对仓库目录与 data/ 有读写权限）──
-User=newsvideo
-Group=newsvideo
+User=app_nvw
+Group=sharing
 
 # ── 改这里②：仓库根下的 backend 目录（uvicorn 的工作目录）──
-WorkingDirectory=/opt/news-videos-workflow/backend
+WorkingDirectory=/data/news-videos-workflow/backend
 
 # 监听端口（后端单端口同时托管 API 与前端）
 Environment=APP_PORT=8190
 # 前端构建产物目录（缺省即仓库 frontend/dist，一般无需改）
-Environment=FRONTEND_DIST=/opt/news-videos-workflow/frontend/dist
+Environment=FRONTEND_DIST=/data/news-videos-workflow/frontend/dist
 # ── 改这里③：PATH 需含 conda 环境(uvicorn/python) + 系统(ffmpeg/ffprobe/node/npx)──
-Environment=PATH=/opt/miniconda3/envs/env_news_videos_wf/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PATH=/home/colex/miniconda3/envs/env_nvw/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # 可选：ComfyUI 不在本机默认地址时，覆盖 config.yaml 的 comfyui.server_url
-# Environment=NV_COMFYUI_URL=http://127.0.0.1:8188
+# Environment=NV_COMFYUI_URL=http://192.168.89.3:8188
 
 # ── 改这里④：用 conda 环境里的 uvicorn 绝对路径启动 ──
-ExecStart=/opt/miniconda3/envs/env_news_videos_wf/bin/uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT}
+ExecStart=/home/colex/miniconda3/envs/env_nvw/bin/uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT}
 
 # 优雅停机：uvicorn 收 SIGINT 走 lifespan 清理（注意：进程内排队中的任务会随重启丢失）
 KillSignal=SIGINT

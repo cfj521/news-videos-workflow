@@ -2,6 +2,17 @@
 # conda 用法：
 #   conda create -n env_news_videos_wf python=3.12 && conda activate env_news_videos_wf
 #   pip install -r requirements.txt
+#
+# ---- 系统级前置依赖（非 pip，pip 装不了，需另行安装；下面仅备忘）----
+#   Ubuntu/Debian:  sudo apt install -y ffmpeg fonts-noto-cjk
+#     - ffmpeg        : 视频合成必需（也是 Hyperframes 路兜底器）
+#     - fonts-noto-cjk: 标题烧录用的中日韩字体（FFmpeg 路 drawtext 需要；缺失仅跳过烧录）
+#                       Windows 用系统自带 C:/Windows/Fonts/msyh.ttc，无需安装
+#   Hyperframes 视频路（video_route=hyperframes 时）:  Node >= 22 + hyperframes
+#     - 装 Node 22 (Ubuntu，默认源版本过旧用 NodeSource):
+#         curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
+#     - 再装 hyperframes:  sudo npm i -g hyperframes
+#     - 不装也行：首次渲染由 npx 联网拉取；缺失则自动回退 FFmpeg 合成
 
 # ---- 运行时依赖 ----
 fastapi>=0.115
@@ -31,6 +42,13 @@ scrapling[all]
 # 快速哈希（scrapling / 去重用；缺失会回退 md5 并告警）
 xxhash
 
+# ---- 计划任务依赖 ----
+# 进程内排期调度（「计划任务」页，排期存仓库根 schedule.yaml）+ 本地时区自动识别
+APScheduler>=3.10
+tzlocal>=5.0
+
+# 注：ComfyUI 远程唤醒（Wake-on-LAN）仅用 Python 标准库 socket，无需额外依赖。
+
 # ---- 发布功能可选依赖（按需安装；pyproject 未列，代码内懒加载）----
 # Bilibili 投稿
 biliup
@@ -38,5 +56,3 @@ biliup
 google-api-python-client
 google-auth
 google-auth-oauthlib
-APScheduler>=3.10
-tzlocal>=5.0

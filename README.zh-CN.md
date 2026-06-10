@@ -43,8 +43,10 @@ pnpm install
 
 ### 基础设施 / 外部依赖
 
-- **FFmpeg**：需在系统 PATH 中可用（视频合成）
-- **ComfyUI**（可选，默认的本地图片/视频生成路线）：本机运行 ComfyUI（默认 `http://127.0.0.1:8188`），模型见 `scripts/download-comfyui-models.ps1`
+- **FFmpeg**：需在系统 PATH 中可用（视频合成；也是 **Hyperframes** 路线的兜底合成器）。Ubuntu：`sudo apt install -y ffmpeg fonts-noto-cjk`
+- **中日韩字体**（FFmpeg / ComfyUI 路的标题烧录）：需一个可用的 CJK 字体文件。Ubuntu 用 `fonts-noto-cjk`（见上）；Windows 用系统自带 `C:/Windows/Fonts/msyh.ttc`。缺失只跳过烧录、不影响出片
+- **Node ≥ 22 + Hyperframes**（仅 `hyperframes` 视频路线需要）：Ubuntu 默认源版本过旧，用 NodeSource 装 Node 22：`curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`，再 `sudo npm i -g hyperframes`（或首次渲染由 `npx` 联网拉取）；缺失则回退 FFmpeg（非 pip 依赖）
+- **ComfyUI**（可选，默认的本地图片/视频生成路线）：本机运行 ComfyUI（默认 `http://127.0.0.1:8188`），模型见 `scripts/download-comfyui-models.ps1`。选 ComfyUI 路线时，不可达/失败会**直接报错停止**（不兜底 FFmpeg）。若把 app 部署到无 GPU 的服务器，ComfyUI 可放在另一台机器，用 **Wake-on-LAN** 按需唤醒（在「设置 → ComfyUI」配置，可用 `scripts/wake-comfyui.py` 测试）
 
 ## 运行
 
@@ -77,13 +79,13 @@ cd frontend && pnpm build     # 前端类型检查 + 构建
 - 首次配置：在仓库根目录复制模板 `cp config.yaml.example config.yaml`，填入 API Key 即可启动（`config.yaml` 已 gitignore，不入库）；之后推荐用设置页（`/settings`）可视化修改，保存时写回该文件。加载由 `backend/app/config.py`（pydantic + YAML）负责——**项目用根目录的 `config.yaml`，不是 `.env`**。
 - **模型配置**页：按用途分组（文本 / 图片 / 多模态 / TTS）的供应商参数库，每个供应商配 base_url / API Key / 输出 tokens 上限 + **可编辑的模型名列表**，支持自定义供应商；接口/Key 按供应商共享。
 - **流水线配置**页：唯一选「当前用哪个供应商 + 模型」的地方（总结 / 文案 / 图片 / 多模态 / 语音），并设默认分辨率、语言、视频路线、ComfyUI 视频模型与帧率。
-- **ComfyUI 参数**页：图片（z_image / qwen）与视频（wan5b / wan14b / lightx2v / ltx）各 workflow 的 steps/cfg 参数。
-- **提示词配置**页：中文 / 英文两套可编辑提示词，任务语言决定用哪套。
+- **ComfyUI 参数**页：连接地址带「测试连接」按钮（探 `/system_stats`）+ 可选 **Wake-on-LAN 远程唤醒**（ComfyUI 在另一台机器时用）；以及图片（z_image / qwen）与视频（wan5b / wan14b / lightx2v / ltx）各 workflow 的 steps/cfg 参数。
+- **提示词配置**页：5 套可切换预设（#1–#5，双击 chip 重命名），每套含中文 / 英文一份，任务语言决定用哪套，留空回退内置默认。存于仓库根 `prompts.yaml`（已 gitignore，模板 `prompts.yaml.example`），不写在 `config.yaml` 里。
 - **发布平台**：凭证在「发布管理」页按账号配置，存于仓库根的 `publish_targets.yaml`（每账号自包含），不写在 `config.yaml` 里。
 
 ## ComfyUI 模型（本地图片/视频生成）
 
-默认的图片/视频路线跑在**本地 ComfyUI**（工作流见 `comfyui/workflows/api/*.json`）。模型需你**自行下载**并让 ComfyUI 识别。参考配置：**24GB 显存**；全量约 **180GB** 磁盘——只需下你实际用到的路线即可。下表文件名省略 `.safetensors` 后缀；完整清单与下载源以 `scripts/download-comfyui-models.ps1` 为准。
+默认的图片/视频路线跑在**本地 ComfyUI**（工作流见 `comfyui/workflows/api/*.json`）。模型需你**自行下载**并让 ComfyUI 识别。参考配置：**24GB 显存**；全量约 **160GB** 磁盘——只需下你实际用到的路线即可。下表文件名省略 `.safetensors` 后缀；完整清单与下载源以 `scripts/download-comfyui-models.ps1` / `.sh` 为准。
 
 | 路线 | ComfyUI 目录 | 模型文件 |
 |---|---|---|
@@ -92,17 +94,21 @@ cd frontend && pnpm build     # 前端类型检查 + 构建
 | **Wan 2.2 5B** — 视频，默认/快 | `diffusion_models` · `text_encoders` · `vae` | `wan2.2_ti2v_5B_fp16` · `umt5_xxl_fp8_e4m3fn_scaled` · `wan2.2_vae` |
 | **Wan 2.2 14B** — 视频，质量（i2v & t2v） | `diffusion_models` · `vae` | `wan2.2_{i2v,t2v}_{high,low}_noise_14B_fp8_scaled` · `wan_2.1_vae` |
 | **Wan 2.2 Lightning** — 视频，4 步 LoRA | `loras` | `wan2.2_{i2v,t2v}_lightx2v_4steps_lora_*` |
-| **LTX 2.3** — 视频 | `checkpoints` · `text_encoders` · `loras` · `latent_upscale_models` | `ltx-2.3-22b-dev-fp8` · `gemma_3_12B_it_fp4_mixed` · `ltx-2.3-22b-distilled-lora-384-1.1` · `ltx-2.3-{spatial,temporal}-upscaler-x2-1.0` |
+| **LTX 2.3** — 视频 | `checkpoints` · `text_encoders` · `loras` | `ltx-2.3-22b-dev-fp8` · `gemma_3_12B_it_fp4_mixed` · `ltx-2.3-22b-distilled-lora-384-1.1` |
 
-模型全部在 **ModelScope**（`Comfy-Org/*`、`Lightricks/LTX-2.3*`）。脚本会统一下载到一个目录：
+模型全部在 **ModelScope**（`Comfy-Org/*`、`Lightricks/LTX-2.3*`）。一个脚本（PowerShell + bash 两版）把全部模型（图片 + Wan 2.2 + LTX 2.3，对齐 api 工作流）统一下载到一个目录：
 
-```powershell
+```bash
 pip install modelscope
-powershell -ExecutionPolicy Bypass -File scripts/download-comfyui-models.ps1      # 图片 + Wan 2.2
-powershell -ExecutionPolicy Bypass -File scripts/download-ltx23-comfyui-models.ps1 # LTX 2.3（可选）
+# Windows（PowerShell）
+powershell -ExecutionPolicy Bypass -File scripts/download-comfyui-models.ps1
+# Linux / WSL（bash）
+bash scripts/download-comfyui-models.sh
 ```
 
-下完把 ComfyUI 的 `extra_model_paths.yaml` 的 `base_path` 指向该目录（脚本默认 `D:/models/comfyui/`），重启 ComfyUI，再到**设置 → 流水线配置**选对应模型（workflow 的 steps/cfg 在**设置 → ComfyUI 参数**）。**没有 GPU？** 把视频路线设为 `hyperframes`（回退 FFmpeg）——ComfyUI 是可选的。
+> 自定义目标目录：`-ModelsDir <路径>`（PowerShell）/ `--models-dir <路径>`（bash）；默认 `D:\models\comfyui` / `~/models/comfyui`。
+
+下完把 ComfyUI 的 `extra_model_paths.yaml` 的 `base_path` 指向该目录（脚本默认 `D:/models/comfyui/`），重启 ComfyUI，再到**设置 → 流水线配置**选对应模型（workflow 的 steps/cfg 在**设置 → ComfyUI 参数**）。**app 主机没有 GPU？** 要么把视频路线设为 `hyperframes`（回退 FFmpeg）——ComfyUI 是可选的；要么把 ComfyUI 放在另一台 GPU 机器，用 **Wake-on-LAN** 按需唤醒（设置 → ComfyUI；该机自行负责进程自启与网络可达）。
 
 ## 发布
 

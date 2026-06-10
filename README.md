@@ -44,8 +44,10 @@ pnpm install
 
 ### Infrastructure / external dependencies
 
-- **FFmpeg**: must be available on the system PATH (video composition).
-- **ComfyUI** (optional, the default local image/video generation route): run ComfyUI locally (default `http://127.0.0.1:8188`); models via `scripts/download-comfyui-models.ps1`.
+- **FFmpeg**: must be available on the system PATH (video composition; also the fallback compositor for the **Hyperframes** route). Ubuntu: `sudo apt install -y ffmpeg fonts-noto-cjk`.
+- **CJK font** (title burn-in on the FFmpeg / ComfyUI routes): a usable CJK font file. Ubuntu: `fonts-noto-cjk` (above); Windows uses the built-in `C:/Windows/Fonts/msyh.ttc`. Missing → burn-in is skipped, output unaffected.
+- **Node ≥ 22 + Hyperframes** (only for the `hyperframes` video route). Install Node 22 on Ubuntu (default repo is too old, use NodeSource): `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`, then `sudo npm i -g hyperframes` (or let `npx` fetch it on first render). Missing → falls back to FFmpeg. (Not a pip dependency.)
+- **ComfyUI** (optional, the default local image/video generation route): run ComfyUI locally (default `http://127.0.0.1:8188`); models via `scripts/download-comfyui-models.ps1`. When the ComfyUI route is selected, an unreachable/failed ComfyUI **errors and stops the run** (no FFmpeg fallback). If the app is deployed on a GPU-less server, ComfyUI can live on a separate machine and be woken on demand via **Wake-on-LAN** (configure under Settings → ComfyUI; test with `scripts/wake-comfyui.py`).
 
 ## Run
 
@@ -78,13 +80,13 @@ cd frontend && pnpm build     # frontend type-check + build
 - First-time setup: copy the template in the repo root, `cp config.yaml.example config.yaml`, fill in your API keys, and start (`config.yaml` is gitignored). Afterwards, prefer the Settings page (`/settings`) for a visual editor that writes back to the file on save. Loading is handled by `backend/app/config.py` (pydantic + YAML) — **the project uses the root `config.yaml`, not `.env`**.
 - **Models** page: a provider library grouped by purpose (Text / Image / Vision / TTS). For each provider configure base_url / API key / output-token limit and an **editable model-name list**; custom providers are supported. Credentials are shared per provider.
 - **Pipeline** page: the single place that selects **which provider + model** each purpose uses (summary / script / image / vision / TTS), plus default resolution, language, video route, and the ComfyUI video model + fps.
-- **ComfyUI** page: per-workflow steps/cfg parameters for image (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx) workflows.
-- **Prompts** page: editable Chinese / English prompt sets — the task language decides which set is used.
+- **ComfyUI** page: connection address with a **Test connection** button (probes `/system_stats`) and optional **Wake-on-LAN** remote wake (for running ComfyUI on a separate machine); plus per-workflow steps/cfg parameters for image (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx) workflows.
+- **Prompts** page: 5 switchable prompt presets (#1–#5, double-click a chip to rename), each holding a Chinese / English set — the task language decides which is used; empty fields fall back to built-in defaults. Stored in `prompts.yaml` at the repo root (gitignored; template `prompts.yaml.example`), not in `config.yaml`.
 - **Publishing platforms**: credentials are configured per account on the "Publishers" page and stored in `publish_targets.yaml` at the repo root (each account is self-contained), not in `config.yaml`.
 
 ## ComfyUI models (local image/video generation)
 
-The default image/video route runs on a **local ComfyUI** (workflows in `comfyui/workflows/api/*.json`). You must download the models yourself and let ComfyUI find them. Reference config: **24 GB VRAM**; full set ≈ **180 GB** disk — you only need the route(s) you actually use. File names below omit the `.safetensors` suffix; the authoritative list (with download sources) is `scripts/download-comfyui-models.ps1`.
+The default image/video route runs on a **local ComfyUI** (workflows in `comfyui/workflows/api/*.json`). You must download the models yourself and let ComfyUI find them. Reference config: **24 GB VRAM**; full set ≈ **160 GB** disk — you only need the route(s) you actually use. File names below omit the `.safetensors` suffix; the authoritative list (with download sources) is `scripts/download-comfyui-models.ps1` / `.sh`.
 
 | Route | ComfyUI dir(s) | Model files |
 |---|---|---|
@@ -93,17 +95,21 @@ The default image/video route runs on a **local ComfyUI** (workflows in `comfyui
 | **Wan 2.2 5B** — video, default/fast | `diffusion_models` · `text_encoders` · `vae` | `wan2.2_ti2v_5B_fp16` · `umt5_xxl_fp8_e4m3fn_scaled` · `wan2.2_vae` |
 | **Wan 2.2 14B** — video, quality (i2v & t2v) | `diffusion_models` · `vae` | `wan2.2_{i2v,t2v}_{high,low}_noise_14B_fp8_scaled` · `wan_2.1_vae` |
 | **Wan 2.2 Lightning** — video, 4-step LoRA | `loras` | `wan2.2_{i2v,t2v}_lightx2v_4steps_lora_*` |
-| **LTX 2.3** — video | `checkpoints` · `text_encoders` · `loras` · `latent_upscale_models` | `ltx-2.3-22b-dev-fp8` · `gemma_3_12B_it_fp4_mixed` · `ltx-2.3-22b-distilled-lora-384-1.1` · `ltx-2.3-{spatial,temporal}-upscaler-x2-1.0` |
+| **LTX 2.3** — video | `checkpoints` · `text_encoders` · `loras` | `ltx-2.3-22b-dev-fp8` · `gemma_3_12B_it_fp4_mixed` · `ltx-2.3-22b-distilled-lora-384-1.1` |
 
-All models are on **ModelScope** (`Comfy-Org/*`, `Lightricks/LTX-2.3*`). The helper scripts download everything into one folder:
+All models are on **ModelScope** (`Comfy-Org/*`, `Lightricks/LTX-2.3*`). One script (PowerShell + bash variants) downloads everything (image + Wan 2.2 + LTX 2.3, aligned with the api workflows) into one folder:
 
-```powershell
+```bash
 pip install modelscope
-powershell -ExecutionPolicy Bypass -File scripts/download-comfyui-models.ps1      # image + Wan 2.2
-powershell -ExecutionPolicy Bypass -File scripts/download-ltx23-comfyui-models.ps1 # LTX 2.3 (optional)
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File scripts/download-comfyui-models.ps1
+# Linux / WSL (bash)
+bash scripts/download-comfyui-models.sh
 ```
 
-Then point ComfyUI's `extra_model_paths.yaml` `base_path` at that folder (the scripts default to `D:/models/comfyui/`), restart ComfyUI, and pick the matching model under **Settings → Pipeline** (workflow params live under **Settings → ComfyUI**). **No GPU?** Set the video route to `hyperframes` (falls back to FFmpeg) — ComfyUI is optional.
+> Override the target dir with `-ModelsDir <path>` (PowerShell) / `--models-dir <path>` (bash); defaults: `D:\models\comfyui` / `~/models/comfyui`.
+
+Then point ComfyUI's `extra_model_paths.yaml` `base_path` at that folder (the scripts default to `D:/models/comfyui/`), restart ComfyUI, and pick the matching model under **Settings → Pipeline** (workflow params live under **Settings → ComfyUI**). **No GPU on the app host?** Either set the video route to `hyperframes` (falls back to FFmpeg) — ComfyUI is optional — or run ComfyUI on a separate GPU machine and let the app wake it on demand via **Wake-on-LAN** (Settings → ComfyUI; the machine handles auto-start and network reachability).
 
 ## Publishing
 
