@@ -26,13 +26,20 @@ sudo find /data/news-videos-workflow -type d -exec chmod 2775 {} \;   # setgid�
 ## 1. 前置依赖
 
 ```bash
-# 系统依赖：ffmpeg（视频合成 + 读音频时长 ffprobe）、中文字体（字幕）
+# 系统依赖：ffmpeg（视频合成 + ffprobe 读音频时长）、中文字体（标题烧录）
 sudo apt update && sudo apt install -y ffmpeg fonts-noto-cjk
 
-# 可选——Hyperframes 视频路线需要 Node>=22 + hyperframes：
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
-sudo apt install -y nodejs && sudo npm i -g hyperframes
+# Node >= 22 —— 构建前端必需（Vite 8 要 Node>=20.19/22.12；Ubuntu apt 的 node 18 太旧会构建失败）
+# NodeSource 装的 node 同时带 npm 10 + corepack
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v                                # 确认 ≥ v22
 
+# pnpm —— 构建前端用的包管理器（必需）
+corepack enable && corepack prepare pnpm@latest --activate   # 或： sudo npm i -g pnpm
+
+# 可选——仅 Hyperframes 视频路线需要：
+sudo npm i -g hyperframes
 # ComfyUI（默认视频/图片路线）需另行在本机或别处运行，见仓库根 CLAUDE.md
 ```
 
@@ -43,10 +50,10 @@ conda create -n env_nvw python=3.12 -y
 conda run -n env_nvw pip install -r /data/news-videos-workflow/requirements.txt
 ```
 
-前端构建（产物 `frontend/dist` 由后端托管）：
+前端构建（产物 `frontend/dist` 由后端托管；用部署用户构建避免产物归 root）：
 
 ```bash
-cd /data/news-videos-workflow/frontend && pnpm install && pnpm build
+sudo -u app_nvw bash -lc 'cd /data/news-videos-workflow/frontend && pnpm install && pnpm build'
 ```
 
 配置文件（均在仓库根、均已 gitignore，从同名 `.example` 模板创建）：

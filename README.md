@@ -76,6 +76,8 @@ pip install -r requirements.txt        # includes optional publishing deps: bili
 
 ### Frontend
 
+Requires **Node ≥ 22 + pnpm** (see [System dependencies](#system-dependencies) below — Ubuntu's apt Node 18 is too old for Vite 8).
+
 ```bash
 cd frontend && pnpm install && pnpm build   # backend serves the built frontend/dist
 ```
@@ -84,7 +86,8 @@ cd frontend && pnpm install && pnpm build   # backend serves the built frontend/
 
 - **FFmpeg** — required for video composition (also the fallback compositor for the Hyperframes route). Ubuntu: `sudo apt install -y ffmpeg fonts-noto-cjk`.
 - **CJK font** — for title burn-in on the FFmpeg / ComfyUI routes. Ubuntu: `fonts-noto-cjk` (above); Windows uses the built-in `C:/Windows/Fonts/msyh.ttc`. Missing → burn-in is skipped, output unaffected.
-- **Node ≥ 22 + Hyperframes** — only for the `hyperframes` route. Ubuntu (default repo too old, use NodeSource): `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`, then `sudo npm i -g hyperframes` (or let `npx` fetch it on first render). Not a pip dependency.
+- **Node ≥ 22 + pnpm** — required to build the frontend (Vite 8 needs Node ≥ 20.19 / 22.12; Ubuntu's apt Node 18 is too old). Ubuntu (use NodeSource): `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`, then enable pnpm: `corepack enable && corepack prepare pnpm@latest --activate` (or `sudo npm i -g pnpm`).
+- **Hyperframes** — only for the `hyperframes` video route: `sudo npm i -g hyperframes` (or let `npx` fetch it on first render). Falls back to FFmpeg if missing. Not a pip dependency.
 - **ComfyUI** — optional, only for the default local image/video route; see [ComfyUI models](#comfyui-models-local-imagevideo-generation).
 
 ### Config files

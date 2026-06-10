@@ -75,6 +75,8 @@ pip install -r requirements.txt        # 含发布可选依赖 biliup / google-*
 
 ### 前端
 
+需 **Node ≥ 22 + pnpm**（见下方[系统依赖](#系统依赖)——Ubuntu apt 的 Node 18 对 Vite 8 太旧）。
+
 ```bash
 cd frontend && pnpm install && pnpm build   # 后端托管构建产物 frontend/dist
 ```
@@ -83,7 +85,8 @@ cd frontend && pnpm install && pnpm build   # 后端托管构建产物 frontend/
 
 - **FFmpeg** —— 视频合成必需（也是 Hyperframes 路线的兜底合成器）。Ubuntu：`sudo apt install -y ffmpeg fonts-noto-cjk`。
 - **CJK 字体** —— FFmpeg / ComfyUI 路的标题烧录用。Ubuntu 用 `fonts-noto-cjk`（见上）；Windows 用自带 `C:/Windows/Fonts/msyh.ttc`。缺失只跳过烧录、不影响出片。
-- **Node ≥ 22 + Hyperframes** —— 仅 `hyperframes` 路线需要。Ubuntu（默认源太旧，用 NodeSource）：`curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`，再 `sudo npm i -g hyperframes`（或首次渲染由 `npx` 拉取）。非 pip 依赖。
+- **Node ≥ 22 + pnpm** —— **构建前端必需**（Vite 8 要 Node ≥ 20.19 / 22.12；Ubuntu apt 的 Node 18 太旧）。Ubuntu（用 NodeSource）：`curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`，再启用 pnpm：`corepack enable && corepack prepare pnpm@latest --activate`（或 `sudo npm i -g pnpm`）。
+- **Hyperframes** —— 仅 `hyperframes` 视频路线需要：`sudo npm i -g hyperframes`（或首次渲染由 `npx` 拉取）；缺失回退 FFmpeg。非 pip 依赖。
 - **ComfyUI** —— 可选，仅默认的本地图片/视频路线需要；见 [ComfyUI 模型](#comfyui-模型本地图片视频生成)。
 
 ### 配置文件
