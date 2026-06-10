@@ -159,12 +159,6 @@ function ScanLoginButton({ platform, account }: {
         )}
       </div>
 
-      {state.status === "qr_ready" && (
-        <p className="text-center text-white/50 text-[11px] mb-2">
-          请使用{PLATFORM_LABELS[platform] ?? platform} App 扫码
-        </p>
-      )}
-
       <div className="flex justify-center">
         <button
           type="button"
@@ -299,7 +293,7 @@ function TargetDialog({ target, onSave, onClose }: {
             <div className="mt-2">
               <ScanLoginButton platform={platform} account={accountId} />
               <p className="text-[11px] text-white/40 mt-2 text-center">
-                用 App 扫码登录该账号；登录态自动保存。{!isEdit && "扫码后填好名称点「添加」即可保存。"}
+                用 {PLATFORM_LABELS[platform] ?? platform}App 扫码登录该账号；登录态自动保存。{!isEdit && "扫码后填好名称点「添加」即可保存。"}
               </p>
             </div>
           </div>
