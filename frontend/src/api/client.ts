@@ -82,20 +82,6 @@ export interface AppSettings {
   // 供应商参数库：各供应商的连接凭证；当前用哪个由 pipeline 选型决定
   providers: Record<string, ProviderCreds>;
   collectors: { tavily_key: string; brave_key: string; serper_key: string };
-  scoring: {
-    w_final_llm: number;
-    w_final_rule: number;
-    w_source: number;
-    w_recency: number;
-    w_keyword: number;
-    concurrency: number;
-    llm_candidate_cap: number;
-    min_score: number;
-    fresh_full_days: number;
-    fresh_week_end: number;
-    fresh_floor_days: number;
-    fresh_floor: number;
-  };
   pipeline: {
     default_time_range: string; default_max_articles: number; default_video_route: string;
     default_language: string; dedup_lookback: string; resolution: string; max_images: number;
