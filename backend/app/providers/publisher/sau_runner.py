@@ -4,7 +4,10 @@
 """
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import sys
 from pathlib import Path
 
 # 抖音/快手 SAU 不限标题长度，仅防御性上限避免异常长标题
@@ -50,3 +53,24 @@ def sanitize_tags(tags: list[str] | None) -> list[str]:
             if len(out) >= MAX_TAGS:
                 return out
     return out
+
+
+def resolve_sau() -> str | None:
+    """定位 sau 可执行：先 PATH（shutil.which），失败回退到当前解释器同级 Scripts/bin。"""
+    found = shutil.which("sau")
+    if found:
+        return found
+    base = Path(sys.executable).parent
+    for cand in (base / "Scripts" / "sau.exe", base / "sau.exe", base / "bin" / "sau", base / "sau"):
+        if cand.exists():
+            return str(cand)
+    return None
+
+
+def subprocess_env() -> dict:
+    """子进程环境：注入 sau_conf 目录到 PYTHONPATH（使 SAU 的 `import conf` 命中），并强制 UTF-8。"""
+    env = dict(os.environ)
+    prev = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(_SAU_CONF_DIR) + (os.pathsep + prev if prev else "")
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
