@@ -50,8 +50,12 @@ tzlocal>=5.0
 # 注：ComfyUI 远程唤醒（Wake-on-LAN）仅用 Python 标准库 socket，无需额外依赖。
 
 # ---- 发布功能可选依赖（按需安装；pyproject 未列，代码内懒加载）----
-# Bilibili 投稿
-biliup
+# Bilibili 投稿。
+# ⚠ biliup 不钉版本时，pip 会在 biliup→streamlink→pycountry 这条链上疯狂回溯（pycountry 每个 wheel 数十 MB，
+#   会下载"无数个版本"，install 极慢甚至卡死）。故把这条重回溯链一并钉到已验证可用的版本组合。
+biliup==1.2.0
+streamlink==8.4.0
+pycountry==26.2.16
 # YouTube 投稿（OAuth + 上传）
 google-api-python-client
 google-auth
