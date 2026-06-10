@@ -288,6 +288,23 @@ function TargetDialog({ target, onSave, onClose }: {
           </div>
         ))}
 
+        {SCAN_LOGIN_PLATFORMS.has(platform) && (
+          <div className="mb-4 rounded-lg border border-white/[0.08] p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-medium text-white/80">扫码登录</span>
+              {isEdit && <LoginBadge slug={target!.id} />}
+            </div>
+            {isEdit ? (
+              <div className="mt-2">
+                <ScanLoginButton platform={platform} slug={target!.id} />
+                <p className="text-[11px] text-white/40 mt-2">用 App 扫码登录该账号；登录态自动保存，失效后重新扫码即可。</p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-white/52 mt-2">先点「添加」保存账号，再编辑该账号即可扫码登录。</p>
+            )}
+          </div>
+        )}
+
         {error && <p className={`${errorTextCls} mb-3`}>{error}</p>}
 
         <div className="flex justify-end gap-3 mt-4">
@@ -375,9 +392,6 @@ export function PublishersPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                  {isScanPlatform && (
-                    <ScanLoginButton platform={t.platform} slug={t.id} />
-                  )}
                   <button
                     type="button"
                     onClick={() => handleToggleEnabled(t)}
