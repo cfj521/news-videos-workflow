@@ -354,7 +354,7 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
 
           </div>
 
-          {/* 右列：运行模式·路线 → 图片数·语言 → 分辨率 → 采集方式 → 时间·文章数 */}
+          {/* 右列：运行模式·路线 → 图片数·文章数 → 分辨率 → 采集方式 → 语言·时间范围 */}
           <div className="flex-1 min-w-0">
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
@@ -384,18 +384,12 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
               <div>
                 <label className={labelCls}>最多图片数（0=不限制）</label>
                 <input type="number" value={effMaxImages} onChange={(e) => setMaxImages(Number(e.target.value))} min={0} max={100} className={inputCls} />
-                <p className="text-[11px] text-white/40 mt-1">超过则生图前 AI 重规划，合并零碎/短文章到同一张图</p>
+                <p className="text-[11px] text-white/40 mt-1 leading-snug">超过则按评分裁掉低分内容到此数量</p>
               </div>
               <div>
-                <label className={labelCls}>语言</label>
-                <Select value={effLang} onChange={setLanguage} options={[
-                  { value: "zh", label: "中文" }, { value: "en", label: "English" },
-                ]} />
-                <p className="text-[11px] text-white/40 mt-1 leading-snug">
-                  {effLang === "en"
-                    ? "英文和西方面孔、场景，TTS 尽量选择英文音色"
-                    : "中文和东方面孔、场景，TTS 必须选择中文音色"}
-                </p>
+                <label className={labelCls}>最大文章数</label>
+                <input type="number" value={maxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
+                <p className="text-[11px] text-white/40 mt-1 leading-snug">评分后进入视频的内容条数上限</p>
               </div>
             </div>
 
@@ -418,8 +412,19 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
               )}
             </div>
 
-            {autoCollect && !isAihotDigest && (
-              <div className="grid grid-cols-2 gap-3 mb-5">
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div>
+                <label className={labelCls}>语言</label>
+                <Select value={effLang} onChange={setLanguage} options={[
+                  { value: "zh", label: "中文" }, { value: "en", label: "English" },
+                ]} />
+                <p className="text-[11px] text-white/40 mt-1 leading-snug">
+                  {effLang === "en"
+                    ? "英文和西方面孔、场景，TTS 尽量选择英文音色"
+                    : "中文和东方面孔、场景，TTS 必须选择中文音色"}
+                </p>
+              </div>
+              {autoCollect && !isAihotDigest && (
                 <div>
                   <label className={labelCls}>时间范围</label>
                   <Select value={timeRange} onChange={setTimeRange} options={[
@@ -430,12 +435,8 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
                     { value: "1m", label: "最近 1 个月" },
                   ]} />
                 </div>
-                <div>
-                  <label className={labelCls}>最大文章数</label>
-                  <input type="number" value={maxArticles} onChange={(e) => setMaxArticles(Number(e.target.value))} min={1} max={20} className={inputCls} />
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
