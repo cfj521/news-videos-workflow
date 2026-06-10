@@ -66,3 +66,6 @@ Thumbs.db
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# 抖音/快手扫码登录 cookie 与临时二维码（social-auto-upload）
+publish_cookies/
