@@ -110,7 +110,6 @@ class SummaryCfg(BaseModel):
 class PipelineCfg(BaseModel):
     default_time_range: str = "7d"
     default_max_articles: int = 5
-    aihot_top_n: int = 10  # AI HOT 直用模式：经 ScoringService 选取的 item 上限（1 item→1 分镜）
     default_video_route: str = "comfyui"
     default_language: str = "zh"
     dedup_lookback: str = "30d"

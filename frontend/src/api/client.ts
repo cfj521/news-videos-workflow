@@ -105,7 +105,6 @@ export interface AppSettings {
     vision_provider: string; vision_model: string;
     tts_provider: string; tts_model: string; tts_voice: string;
     video_model: string; video_fps: number;
-    aihot_top_n: number;
   };
   storage: { work_dir: string; output_dir: string };
   hyperframes: { fps: string; scene_gap_ms: number; transition: string; subtitle_font_size: number; subtitle_max_lines: number };
