@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import { api } from "../api/client";
 import type { PublishTarget } from "../types";
 import { PLATFORM_LABELS, PLATFORM_MEDIA, PLATFORM_FIELDS } from "../types";
 import {
-  btnPrimary, btnSecondary, cardCls, chipCls,
+  btnPrimary, btnSecondary, btnRegen, cardCls, chipCls,
   inputCls, labelCls, dialogOverlayCls, dialogPanelCls, errorTextCls,
   toggleCls, toggleThumbCls,
 } from "../styles";
@@ -33,6 +33,189 @@ function buildConfig(fields: Record<string, string>): string | null {
 function maskValue(v: string): string {
   if (!v || v.length < 8) return "••••";
   return v.slice(0, 4) + "••••" + v.slice(-4);
+}
+
+// ── 扫码登录 ────────────────────────────────────────────
+
+const SCAN_LOGIN_PLATFORMS = new Set(["douyin", "kuaishou"]);
+
+type LoginStatus = "idle" | "starting" | "qr_ready" | "success" | "failed" | "timeout" | "error";
+
+interface LoginState {
+  status: LoginStatus;
+  sid: string | null;
+  qrBase64: string | null;
+  errorMsg: string | null;
+}
+
+function ScanLoginButton({ platform, account }: {
+  platform: string;
+  account: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<LoginState>({
+    status: "idle", sid: null, qrBase64: null, errorMsg: null,
+  });
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = () => {
+    if (pollRef.current != null) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const handleClose = () => {
+    stopPolling();
+    setOpen(false);
+    setState({ status: "idle", sid: null, qrBase64: null, errorMsg: null });
+  };
+
+  const startLogin = async () => {
+    setState({ status: "starting", sid: null, qrBase64: null, errorMsg: null });
+    setOpen(true);
+    try {
+      const { sid } = await api.publishers.loginStart(platform, account);
+      setState((prev) => ({ ...prev, sid }));
+      // 开始轮询
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await api.publishers.loginPoll(sid);
+          if (res.status === "qr_ready") {
+            setState((prev) => ({ ...prev, status: "qr_ready", qrBase64: res.qr_base64 ?? null }));
+          } else if (res.status === "success") {
+            stopPolling();
+            setState((prev) => ({ ...prev, status: "success", qrBase64: null }));
+          } else if (["failed", "timeout", "error"].includes(res.status)) {
+            stopPolling();
+            setState((prev) => ({
+              ...prev,
+              status: res.status as LoginStatus,
+              qrBase64: null,
+              errorMsg: res.error ?? null,
+            }));
+          }
+          // starting 状态继续等待
+        } catch {
+          stopPolling();
+          setState((prev) => ({ ...prev, status: "error", errorMsg: "轮询失败" }));
+        }
+      }, 1500);
+    } catch (e) {
+      setState({
+        status: "error", sid: null, qrBase64: null,
+        errorMsg: e instanceof Error ? e.message : "启动登录失败",
+      });
+    }
+  };
+
+  // 组件卸载时清理定时器（直接操作 ref，不依赖 stopPolling 函数引用）
+  useEffect(() => () => { if (pollRef.current != null) clearInterval(pollRef.current); }, []);
+
+  const isTerminal = ["success", "failed", "timeout", "error"].includes(state.status);
+  const disabled = !account.trim();
+
+  const statusLabel: Record<string, string> = {
+    idle: "扫码登录",
+    starting: "正在启动…",
+    qr_ready: "请扫码",
+    success: "登录成功",
+    failed: "登录失败",
+    timeout: "已超时",
+    error: "出错了",
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); startLogin(); }}
+        disabled={disabled}
+        className={btnRegen}
+        title={disabled ? "请先在编辑中填写账号" : "扫码登录"}
+      >
+        扫码登录
+      </button>
+
+      {open && (
+        <div className={dialogOverlayCls} onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}>
+          <div className={`${dialogPanelCls} w-80 text-center`}>
+            <h3 className="text-base font-semibold mb-4">
+              {PLATFORM_LABELS[platform] ?? platform} 扫码登录
+            </h3>
+
+            {(state.status === "starting") && (
+              <p className="text-white/60 text-sm py-6">正在获取二维码…</p>
+            )}
+
+            {state.status === "qr_ready" && state.qrBase64 && (
+              <>
+                <img
+                  src={state.qrBase64}
+                  alt="登录二维码"
+                  className="mx-auto mb-3 rounded-lg"
+                  style={{ width: 200, height: 200, imageRendering: "pixelated" }}
+                />
+                <p className="text-white/60 text-xs">请使用{PLATFORM_LABELS[platform] ?? platform} App 扫码</p>
+              </>
+            )}
+
+            {state.status === "success" && (
+              <p className="text-emerald-400 text-sm py-6">登录成功！</p>
+            )}
+
+            {["failed", "timeout", "error"].includes(state.status) && (
+              <div className="py-6">
+                <p className="text-red-400 text-sm">{statusLabel[state.status]}</p>
+                {state.errorMsg && (
+                  <p className={`${errorTextCls} text-xs mt-1 opacity-70`}>{state.errorMsg}</p>
+                )}
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              {isTerminal && !["success"].includes(state.status) && (
+                <button type="button" onClick={startLogin} className={btnRegen}>
+                  重试
+                </button>
+              )}
+              <button type="button" onClick={handleClose} className={btnSecondary}>
+                {state.status === "success" ? "关闭" : "取消"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── 登录态徽标 ───────────────────────────────────────────
+
+function LoginBadge({ slug }: { slug: string }) {
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.publishers.loginStatus(slug).then((res) => {
+      if (!cancelled) setLoggedIn(res.logged_in);
+    }).catch(() => {
+      if (!cancelled) setLoggedIn(false);
+    });
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  if (loggedIn === null) return null;
+
+  return (
+    <span
+      className={`${chipCls} ${loggedIn
+        ? "bg-emerald-500/15 text-emerald-300"
+        : "bg-white/[0.06] text-white/52"}`}
+    >
+      {loggedIn ? "已登录" : "未登录"}
+    </span>
+  );
 }
 
 // ── Add/Edit Dialog ─────────────────────────────────────
@@ -161,6 +344,8 @@ export function PublishersPage() {
         {targets?.map((t) => {
           const cfg = parseConfig(t.config_json);
           const fieldDefs = PLATFORM_FIELDS[t.platform] ?? [];
+          const isScanPlatform = SCAN_LOGIN_PLATFORMS.has(t.platform);
+          const account = cfg["account"] ?? "";
           return (
             <div
               key={t.id}
@@ -177,6 +362,7 @@ export function PublishersPage() {
                     <span className={`${chipCls} bg-white/[0.06] text-white/66`}>
                       {MEDIA_LABEL[PLATFORM_MEDIA[t.platform] ?? "video"]}
                     </span>
+                    {isScanPlatform && <LoginBadge slug={t.id} />}
                     {!t.enabled && <span className="text-[10px] text-white/52 italic">已禁用</span>}
                   </div>
                   <div className="flex gap-4 mt-2">
@@ -192,6 +378,9 @@ export function PublishersPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                  {isScanPlatform && (
+                    <ScanLoginButton platform={t.platform} account={account} />
+                  )}
                   <button
                     type="button"
                     onClick={() => handleToggleEnabled(t)}
