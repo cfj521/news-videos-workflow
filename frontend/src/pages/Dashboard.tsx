@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { api, type ScriptData, type TimelineData, type AppSettings, type PublishResultRec } from "../api/client";
+import { api, type ScriptData, type TimelineData, type AppSettings, type PublishResultRec, type ScoringData } from "../api/client";
 import {
   btnPrimary, btnSecondary, btnCompact, btnIcon, cardCls, chipCls, STATUS_CHIP,
   sectionTitleCls, inputCls, labelCls, errorTextCls,
@@ -152,7 +152,7 @@ function Stepper({ run, onSelect, activeStage, locked = false }: { run: Pipeline
 
 // ─── S1: 搜索整理 ──────────────────────────────────────
 
-type ArticleRec = Record<string, unknown> & { title?: string; content?: string; summary?: string; source?: string; url?: string };
+type ArticleRec = Record<string, unknown> & { title?: string; content?: string; summary?: string; source?: string; url?: string; score_final?: number; score_reason?: string };
 
 function ArticleDialog({ initial, onSave, onClose }: { initial: ArticleRec | null; onSave: (a: ArticleRec) => void; onClose: () => void; }) {
   const [title, setTitle] = useState(String(initial?.title ?? ""));
@@ -223,11 +223,13 @@ function ImportArticleDialog({ runId, onDone, onClose }: { runId: number; onDone
 
 function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const { data: articles, mutate } = useSWR<ArticleRec[]>(`articles-${runId}`, () => api.runs.articles(runId) as Promise<ArticleRec[]>);
+  const { data: scoring } = useSWR<ScoringData>(`scoring-${runId}`, () => api.runs.scoring(runId).catch(() => null as unknown as ScoringData));
   const [rerolling, setRerolling] = useState(false);
   const [confirmReroll, setConfirmReroll] = useState(false);
   const [editing, setEditing] = useState<{ idx: number; rec: ArticleRec } | null>(null);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [scoringOpen, setScoringOpen] = useState(false);
   const { showToast } = useToast();
 
   // AI HOT 采集模式从 run.aihot_config 判断（权威来源）：
@@ -284,8 +286,15 @@ function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
             <div key={i} className={`${cardCls} p-4`}>
               <div className="flex justify-between items-start gap-3">
                 <div className="min-w-0">
-                  <button onClick={() => setEditing({ idx: i, rec: a })} title="点击编辑"
-                    className="block w-full text-left text-sm text-white/96 font-medium hover:text-blue-300 transition truncate">{String(a.title ?? "")}</button>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <button onClick={() => setEditing({ idx: i, rec: a })} title="点击编辑"
+                      className="block text-left text-sm text-white/96 font-medium hover:text-blue-300 transition truncate min-w-0">{String(a.title ?? "")}</button>
+                    {typeof a.score_final === "number" && (
+                      <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-blue-500/15 text-blue-300 border border-blue-400/20" title={a.score_reason ?? "评分"}>
+                        {a.score_final.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[11px] text-white/52 mt-1">{String(a.source ?? "")}</div>
                   {mainLink ? <a href={mainLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
                     className="inline-block max-w-full truncate text-[11px] text-blue-300/80 hover:text-blue-300 transition mt-0.5">↗ {mainLink}</a> : null}
@@ -300,6 +309,72 @@ function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
           );
         })}
       </div>
+      {/* 评分明细折叠区块 */}
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => setScoringOpen((v) => !v)}
+          className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white/85 transition select-none"
+        >
+          <span className={`transition-transform ${scoringOpen ? "rotate-90" : ""}`}>▶</span>
+          <span>评分明细</span>
+          {scoring?.candidates && scoring.candidates.length > 0 && (
+            <span className="text-white/40">· {scoring.candidates.length} 条候选</span>
+          )}
+          {scoring?.pool !== undefined && (
+            <span className="text-white/40">· 池 {scoring.pool}</span>
+          )}
+          {scoring?.min_score !== undefined && (
+            <span className="text-white/40">· 门槛 {scoring.min_score.toFixed(2)}</span>
+          )}
+        </button>
+        {scoringOpen && (
+          <div className="mt-2 space-y-2">
+            {(!scoring?.candidates || scoring.candidates.length === 0) ? (
+              <p className="text-xs text-white/52 pl-1">暂无评分数据</p>
+            ) : (
+              [...scoring.candidates].sort((a, b) => b.final - a.final).map((c, idx) => (
+                <div key={idx} className={`${cardCls} p-3 ${c.selected ? "border-blue-500/30" : ""}`}>
+                  <div className="flex items-start gap-2">
+                    {/* 最终分徽标 */}
+                    <span className={`shrink-0 inline-flex items-center justify-center min-w-[3rem] px-1.5 py-0.5 rounded text-[11px] font-mono font-semibold ${c.selected ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" : "bg-white/[0.06] text-white/70 border border-white/[0.08]"}`}>
+                      {c.final.toFixed(2)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs text-white/90 font-medium truncate">{c.title}</span>
+                        {c.selected && (
+                          <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">✓ 已选</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-white/52 mt-0.5">{c.source}</div>
+                      {/* 4 个分项小条 */}
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+                        <span className="text-[10px] text-white/52 font-mono">LLM: {c.llm !== null ? c.llm.toFixed(2) : "—"}</span>
+                        <span className="text-[10px] text-white/52 font-mono">来源: {c.source_w.toFixed(2)}</span>
+                        <span className="text-[10px] text-white/52 font-mono">新鲜: {c.recency.toFixed(2)}</span>
+                        <span className="text-[10px] text-white/52 font-mono">关键词: {c.keyword.toFixed(2)}</span>
+                        <span className="text-[10px] text-white/52 font-mono">规则: {c.rule.toFixed(2)}</span>
+                      </div>
+                      {c.reason && (
+                        <p className="text-[11px] text-white/60 mt-1 leading-relaxed">{c.reason}</p>
+                      )}
+                      {c.tags && c.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {c.tags.map((tag, ti) => (
+                            <span key={ti} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-white/[0.05] text-white/52 border border-white/[0.06]">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       <p className="text-[11px] text-white/52 mt-3">编辑文章后，到"脚本/图片"标签点【重生成脚本】以应用。</p>
 
       {(adding || editing) && (

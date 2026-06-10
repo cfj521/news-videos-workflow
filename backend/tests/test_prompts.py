@@ -50,3 +50,14 @@ def test_scoring_uses_resolver(monkeypatch):
     from app.prompts import resolve_prompt
     assert resolve_prompt("news_scoring") == "SCORE_OVERRIDE"
     assert not hasattr(scoring, "SCORING_SYSTEM_PROMPT")
+
+
+def test_news_scoring_language_lens(monkeypatch):
+    # 清除 config 中可能存在的用户覆盖，确保测试走内置默认值
+    monkeypatch.setattr(config, "_settings", config.Settings(prompts={"news_scoring": "", "news_scoring_en": ""}))
+    from app.prompts import resolve_prompt
+    zh = resolve_prompt("news_scoring", "zh")
+    en = resolve_prompt("news_scoring", "en")
+    assert "中国" in zh          # 中文版含中国视野
+    assert "中国" not in en       # 英文版纯国际视野
+    assert "0-10" in zh and "0-10" in en

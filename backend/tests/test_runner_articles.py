@@ -71,3 +71,38 @@ def test_save_and_reload_preserves_source_group(tmp_path):
     assert reloaded[0].metadata.get("source_group") == "aihot", "重载后 source_group 丢失"
     assert reloaded[0].metadata.get("aihot_method") == "daily"
     assert reloaded[0].metadata.get("daily_sections") == secs
+
+
+def test_write_scoring_json(tmp_path):
+    from app.pipeline.runner import _write_scoring_json
+    _write_scoring_json(tmp_path, {"pool": 3, "candidates": []})
+    import json
+    data = json.loads((tmp_path / "scoring.json").read_text(encoding="utf-8"))
+    assert data["pool"] == 3
+    _write_scoring_json(tmp_path / "nope", None)   # None 不写、不报错
+
+
+def test_save_articles_preserves_score_fields(tmp_path):
+    from app.pipeline.runner import _save_articles, _load_articles
+    from app.providers.base import RawArticleData
+    a = RawArticleData(title="t", content="c", source_url="u", source_name="s",
+                       metadata={"score_final": 0.81, "score_reason": "重要"})
+    _save_articles([a], tmp_path)
+    back = _load_articles(tmp_path)
+    assert back[0].metadata.get("score_final") == 0.81
+    assert back[0].metadata.get("score_reason") == "重要"
+
+
+def test_save_load_preserves_aihot_dates(tmp_path):
+    from app.pipeline.runner import _save_articles, _load_articles
+    from app.providers.base import RawArticleData
+    from datetime import datetime, timezone
+    daily = RawArticleData(title="日报", content="c", source_url="u", source_name="AI HOT 日报",
+        metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": "2026-06-01"})
+    item = RawArticleData(title="动态", content="c", source_url="u2", source_name="AI HOT",
+        metadata={"source_group": "aihot", "aihot_method": "items"},
+        published_at=datetime(2026, 6, 5, tzinfo=timezone.utc))
+    _save_articles([daily, item], tmp_path)
+    back = _load_articles(tmp_path)
+    assert back[0].metadata.get("report_date") == "2026-06-01"
+    assert back[1].published_at is not None and back[1].published_at.year == 2026

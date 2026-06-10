@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"  # 仓库根目录
 
@@ -151,6 +151,29 @@ class OverlayCfg(BaseModel):
     margin_ratio: float = 0.03       # 距右/上边距，相对画面短边
 
 
+class ScoringCfg(BaseModel):
+    w_final_llm: float = 0.6
+    w_final_rule: float = 0.4
+    w_source: float = 0.4
+    w_recency: float = 0.2
+    w_keyword: float = 0.4
+    concurrency: int = 5
+    llm_candidate_cap: int = 25
+    min_score: float = 0.35            # 0 = 关闭质量地板（硬保 N、可注水）
+    fresh_full_days: int = 7
+    fresh_week_end: float = 0.9        # 第 7 天的新鲜度值（弱衰减终点）
+    fresh_floor_days: int = 30
+    fresh_floor: float = 0.3
+
+    @model_validator(mode="after")
+    def _check_curve(self):
+        if not (0 <= self.fresh_floor <= self.fresh_week_end <= 1):
+            self.fresh_floor, self.fresh_week_end = 0.3, 0.9
+        if not (0 < self.fresh_full_days < self.fresh_floor_days):
+            self.fresh_full_days, self.fresh_floor_days = 7, 30
+        return self
+
+
 class InfraCfg(BaseModel):
     database_url: str = "sqlite:///../data/news_videos.db"
     data_dir: str = "../data"
@@ -217,6 +240,7 @@ class Settings(BaseModel):
     pipeline: PipelineCfg = PipelineCfg()
     hyperframes: HyperframesCfg = HyperframesCfg()
     overlay: OverlayCfg = OverlayCfg()
+    scoring: ScoringCfg = ScoringCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
     prompts: PromptsCfg = PromptsCfg()
 
@@ -416,4 +440,9 @@ def save_settings(settings: Settings) -> None:
 def reload_settings() -> Settings:
     global _settings
     _settings = None
+    try:
+        from app.services.scoring import _LLM_CACHE
+        _LLM_CACHE.clear()
+    except Exception:
+        pass
     return get_settings()

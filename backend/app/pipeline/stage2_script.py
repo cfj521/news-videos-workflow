@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import datetime, timezone
 
 from app import config
 from app.logging import get_logger
@@ -114,12 +115,23 @@ async def _gen_summary_meta(titles: list[str], tp, language: str = "zh") -> dict
     return {"title": m.get("title", "资讯汇总"), "description": m.get("description", ""), "tags": m.get("tags", [])}
 
 
+def _parse_date(s) -> "datetime | None":
+    """把 ISO 日期字符串（如 '2026-06-01'）解析为 UTC datetime，失败返回 None。"""
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(str(s)).replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
 def _aihot_candidates(articles: list) -> list:
     """把 AI HOT 三种模式归一为 RawArticleData 候选列表（供 ScoringService 评分）。"""
     out: list = []
     for art in articles:
         method = art.metadata.get("aihot_method", "items")
         sections = art.metadata.get("daily_sections")
+        pub = _parse_date(art.metadata.get("report_date") or art.metadata.get("week_end")) or art.published_at
         if method in ("daily", "weekly") and sections:
             for sec in sections:
                 label = sec.get("label", "")
@@ -127,7 +139,7 @@ def _aihot_candidates(articles: list) -> list:
                     out.append(RawArticleData(
                         title=it.get("title", ""), content=it.get("summary", ""),
                         summary=it.get("summary", ""), source_url=art.source_url,
-                        source_name=art.source_name, published_at=art.published_at,
+                        source_name=art.source_name, published_at=pub,
                         category=label, metadata={}))
         else:  # items 模式：article 本身即一条 item
             out.append(art)
@@ -153,7 +165,8 @@ async def _run_aihot_direct(articles: list, tp, language: str = "zh") -> dict:
     """AI HOT 直用：归一候选 → ScoringService 选 top N → 每条 1 scene（不 AI 生成旁白）。"""
     candidates = _aihot_candidates(articles)
     top_n = config.get_settings().pipeline.aihot_top_n
-    selected = ScoringService().select_top(candidates, n=top_n)  # 规则分；将来换 select_top_with_llm
+    res = await ScoringService().select_top(candidates, tp, language, n=top_n)
+    selected = res.selected
     scenes: list[dict] = []
     groups: list[dict] = []
     titles: list[str] = []
@@ -169,7 +182,7 @@ async def _run_aihot_direct(articles: list, tp, language: str = "zh") -> dict:
     meta = await _gen_summary_meta(titles, tp, language)
     log.info("[S2] AI HOT direct: %d candidates → %d scenes (top_n=%d)", len(candidates), len(scenes), top_n)
     return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"],
-            "groups": groups, "scenes": scenes}
+            "groups": groups, "scenes": scenes, "scoring_report": res.report}
 
 
 async def run_stage2_multi(articles: list, text_provider, language: str = "zh") -> dict:
