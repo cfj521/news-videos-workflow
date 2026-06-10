@@ -851,8 +851,9 @@ export function SettingsPage() {
         </Field>
         <Field label="分辨率" desc="图片与视频共用">
           <Select value={settings.pipeline.resolution} onChange={(v) => patch("pipeline", { resolution: v })} options={[
+            { value: "720x1280", label: "720×1280 竖屏HD" }, { value: "1280x720", label: "1280×720 横屏HD" },
+            { value: "1024x1024", label: "1024×1024 方形" },
             { value: "1080x1920", label: "1080×1920 竖屏" }, { value: "1920x1080", label: "1920×1080 横屏" },
-            { value: "1080x1080", label: "1080×1080 方形" }, { value: "720x1280", label: "720×1280 竖屏HD" }, { value: "1280x720", label: "1280×720 横屏HD" },
           ]} />
         </Field>
         <PurposeSelect label="文章总结模型" providerKeys={llmProviderKeys}
