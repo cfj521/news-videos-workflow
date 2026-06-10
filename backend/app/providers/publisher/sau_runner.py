@@ -4,9 +4,11 @@
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -83,3 +85,65 @@ def classify_upload_error(stderr: str) -> str:
         return "登录态失效，请重新扫码登录"
     tail = "\n".join(line for line in s.strip().splitlines() if line.strip())[-500:]
     return tail or "发布失败"
+
+
+UPLOAD_TIMEOUT = 600  # 浏览器自动化 + 大文件，给足 10 分钟
+LOGIN_TIMEOUT = 180   # 留足扫码时间
+
+
+def kill_process_tree(proc) -> None:
+    """杀子进程及其后代（SAU 下还有 patchright/Chromium）。Windows 用 taskkill /T，POSIX 用进程组。"""
+    pid = getattr(proc, "pid", None)
+    if not pid:
+        return
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                           capture_output=True, check=False)
+        else:
+            os.killpg(os.getpgid(pid), 9)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def _spawn_kwargs() -> dict:
+    """POSIX 下 start_new_session 让子进程自成进程组，便于整组 kill；Windows 不需要。"""
+    return {} if sys.platform == "win32" else {"start_new_session": True}
+
+
+async def run_upload(platform: str, account: str, file_path: str,
+                     title: str, desc: str, tags: list[str]) -> tuple[bool, str]:
+    sau = resolve_sau()
+    if not sau:
+        return False, "social-auto-upload 未安装（pip install git+… 并安装 Google Chrome）"
+    acct = safe_account(account)
+    if not acct:
+        return False, "账号标识非法（仅允许 a-z 0-9 _ -）"
+
+    argv = [sau, platform, "upload-video", "--account", acct,
+            "--file", file_path, "--title", sanitize_text(title)[:TITLE_MAX],
+            "--desc", sanitize_text(desc)]
+    clean_tags = sanitize_tags(tags)
+    if clean_tags:
+        argv += ["--tags", ",".join(clean_tags)]
+    argv.append("--headless")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            env=subprocess_env(), **_spawn_kwargs())
+    except FileNotFoundError:
+        return False, "social-auto-upload 未安装（找不到 sau 可执行）"
+
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=UPLOAD_TIMEOUT)
+    except asyncio.TimeoutError:
+        kill_process_tree(proc)
+        return False, "上传超时"
+
+    if proc.returncode == 0:
+        return True, (out or b"").decode("utf-8", "ignore").strip()
+    return False, classify_upload_error((err or b"").decode("utf-8", "ignore"))
