@@ -165,21 +165,23 @@ function ScanLoginButton({ platform, account }: {
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); startLogin(); }}
-        disabled={state.status === "starting"}
-        className={`${btnRegen} inline-flex items-center gap-1.5`}
-        title="生成二维码"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-             className={state.status === "starting" ? "animate-spin" : ""}>
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <polyline points="21 3 21 9 15 9" />
-        </svg>
-        生成二维码
-      </button>
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); startLogin(); }}
+          disabled={state.status === "starting"}
+          className={`${btnRegen} inline-flex items-center gap-1.5`}
+          title="生成二维码"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+               className={state.status === "starting" ? "animate-spin" : ""}>
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+          生成二维码
+        </button>
+      </div>
     </div>
   );
 }
@@ -296,7 +298,7 @@ function TargetDialog({ target, onSave, onClose }: {
             </div>
             <div className="mt-2">
               <ScanLoginButton platform={platform} account={accountId} />
-              <p className="text-[11px] text-white/40 mt-2">
+              <p className="text-[11px] text-white/40 mt-2 text-center">
                 用 App 扫码登录该账号；登录态自动保存。{!isEdit && "扫码后填好名称点「添加」即可保存。"}
               </p>
             </div>
