@@ -11,8 +11,13 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Callable
+
+from app.logging import get_logger
+
+log = get_logger("publisher.sau_runner")
 
 # 抖音/快手 SAU 不限标题长度，仅防御性上限避免异常长标题
 TITLE_MAX = 100
@@ -30,6 +35,42 @@ def ensure_cookies_dir() -> None:
     """确保 cookie 目录存在（SAU 的 resolve_account_file 只做 mkdir(exist_ok=True) 无 parents，
     全新部署下祖父目录缺失会 FileNotFoundError）。"""
     _COOKIES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _sau_utils_dir() -> Path | None:
+    """定位已安装 SAU 的 utils 包目录（含静态资源 stealth.min.js），不执行 SAU 代码。"""
+    import importlib.util
+    try:
+        spec = importlib.util.find_spec("utils")
+    except Exception:
+        return None
+    if spec is None:
+        return None
+    if spec.origin:
+        return Path(spec.origin).parent
+    if spec.submodule_search_locations:
+        return Path(list(spec.submodule_search_locations)[0])
+    return None
+
+
+def ensure_sau_runtime() -> None:
+    """准备 SAU 运行所需目录与静态资源。
+
+    我们把 conf.BASE_DIR 指向了仓库根 publish_cookies/，但 SAU 不仅把可写状态（cookies/logs）
+    按 BASE_DIR 解析，连**静态资源** stealth.min.js 也按 BASE_DIR/utils/ 解析。故需把它从已安装的
+    SAU 包内复制到 publish_cookies/utils/，否则浏览器初始化即 FileNotFoundError。
+    """
+    ensure_cookies_dir()
+    dst = _COOKIES_DIR.parent / "utils" / "stealth.min.js"  # = BASE_DIR/utils/stealth.min.js
+    if dst.exists():
+        return
+    src_dir = _sau_utils_dir()
+    if src_dir is None:
+        return
+    src = src_dir / "stealth.min.js"
+    if src.exists():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
 
 
 def safe_account(account: str | None) -> str:
@@ -118,8 +159,42 @@ def kill_process_tree(proc) -> None:
 
 
 def _spawn_kwargs() -> dict:
-    """POSIX 下 start_new_session 让子进程自成进程组，便于整组 kill；Windows 不需要。"""
-    return {} if sys.platform == "win32" else {"start_new_session": True}
+    """阻塞子进程的平台参数：Windows 不弹控制台黑窗；POSIX 自成进程组，便于整组 kill。"""
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    return {"start_new_session": True}
+
+
+def _spawn(argv: list[str], merge_stderr: bool = False) -> subprocess.Popen:
+    """启动阻塞子进程（配合 asyncio.to_thread 调用）。
+
+    用阻塞 subprocess 而非 asyncio.create_subprocess_exec —— Windows 的 SelectorEventLoop
+    不支持 asyncio 子进程（抛 NotImplementedError），to_thread + 阻塞 subprocess 方案与事件
+    循环类型无关，跨平台可靠（本仓库 bilibili 适配器对 biliup 也是 asyncio.to_thread 同理）。
+    """
+    return subprocess.Popen(
+        argv, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
+        env=subprocess_env(), **_spawn_kwargs())
+
+
+def _upload_blocking(argv: list[str]) -> tuple[bool, str]:
+    try:
+        proc = _spawn(argv)
+    except FileNotFoundError:
+        return False, "social-auto-upload 未安装（找不到 sau 可执行）"
+    try:
+        out, err = proc.communicate(timeout=UPLOAD_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        kill_process_tree(proc)
+        try:
+            proc.communicate(timeout=5)
+        except Exception:
+            pass
+        return False, "上传超时"
+    if proc.returncode == 0:
+        return True, (out or b"").decode("utf-8", "ignore").strip()
+    return False, classify_upload_error((err or b"").decode("utf-8", "ignore"))
 
 
 async def run_upload(platform: str, account: str, file_path: str,
@@ -130,7 +205,7 @@ async def run_upload(platform: str, account: str, file_path: str,
     acct = safe_account(account)
     if not acct:
         return False, "账号标识非法（仅允许 a-z 0-9 _ -）"
-    ensure_cookies_dir()
+    ensure_sau_runtime()
 
     argv = [sau, platform, "upload-video", "--account", acct,
             "--file", file_path, "--title", sanitize_text(title)[:TITLE_MAX],
@@ -140,22 +215,20 @@ async def run_upload(platform: str, account: str, file_path: str,
         argv += ["--tags", ",".join(clean_tags)]
     argv.append("--headless")
 
+    return await asyncio.to_thread(_upload_blocking, argv)
+
+
+def _check_blocking(argv: list[str]) -> bool:
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            env=subprocess_env(), **_spawn_kwargs())
+        proc = _spawn(argv)
     except FileNotFoundError:
-        return False, "social-auto-upload 未安装（找不到 sau 可执行）"
-
+        return False
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=UPLOAD_TIMEOUT)
-    except asyncio.TimeoutError:
+        proc.communicate(timeout=120)
+    except subprocess.TimeoutExpired:
         kill_process_tree(proc)
-        return False, "上传超时"
-
-    if proc.returncode == 0:
-        return True, (out or b"").decode("utf-8", "ignore").strip()
-    return False, classify_upload_error((err or b"").decode("utf-8", "ignore"))
+        return False
+    return proc.returncode == 0
 
 
 async def check_login(platform: str, account: str, deep: bool = False) -> bool:
@@ -168,61 +241,67 @@ async def check_login(platform: str, account: str, deep: bool = False) -> bool:
     sau = resolve_sau()
     if not sau:
         return False
+    argv = [sau, platform, "check", "--account", acct]
+    return await asyncio.to_thread(_check_blocking, argv)
+
+
+def _login_blocking(argv: list[str], on_qr: Callable[[str], None]) -> str:
+    """阻塞跑登录 worker：逐行读其 stdout（已并入 stderr），qr → on_qr，result → 终态。
+
+    返回 status ∈ success|timeout|failed。worker 崩溃（无 result 行）时把非 JSON 输出写日志便于排查。
+    """
     try:
-        proc = await asyncio.create_subprocess_exec(
-            sau, platform, "check", "--account", acct,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            env=subprocess_env(), **_spawn_kwargs())
+        proc = _spawn(argv, merge_stderr=True)
     except FileNotFoundError:
-        return False
-    try:
-        await asyncio.wait_for(proc.communicate(), timeout=120)
-    except asyncio.TimeoutError:
+        return "failed"
+
+    timed_out = {"v": False}
+
+    def _on_timeout():
+        timed_out["v"] = True
         kill_process_tree(proc)
-        return False
-    return proc.returncode == 0
+
+    timer = threading.Timer(LOGIN_TIMEOUT, _on_timeout)
+    timer.start()
+    status = "failed"
+    noise: list[str] = []
+    try:
+        # readline（而非 for-in，避免读前瞻缓冲拖慢二维码送达）
+        for raw in iter(proc.stdout.readline, b""):
+            line = raw.decode("utf-8", "ignore").strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                noise.append(line)  # worker 的 traceback / loguru 输出
+                continue
+            if "qr" in msg:
+                on_qr(msg["qr"])
+            elif "result" in msg:
+                status = msg.get("result", "failed")
+        proc.wait()
+    finally:
+        timer.cancel()
+
+    if timed_out["v"]:
+        return "timeout"
+    if status == "failed" and noise:
+        log.error("登录 worker 失败，输出末尾: %s", " | ".join(noise[-15:]))
+    return status
 
 
 async def run_login(platform: str, account: str,
                     on_qr: Callable[[str], None]) -> tuple[bool, str]:
-    """起登录 worker 子进程，逐行读 stdout：qr → on_qr(data_url)；result → 终态。
+    """起登录 worker 子进程，流式读其 stdout：qr → on_qr(data_url)；result → 终态。
 
     返回 (ok, status)，status ∈ success|timeout|failed。超时杀进程树。
     """
     acct = safe_account(account)
     if not acct:
         return False, "failed"
-    ensure_cookies_dir()
+    ensure_sau_runtime()
 
     argv = [sys.executable, "-m", "app.providers.publisher.sau_login_worker", platform, acct]
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            env=subprocess_env(), **_spawn_kwargs())
-    except FileNotFoundError:
-        return False, "failed"
-
-    async def _pump() -> str:
-        status = "failed"
-        while True:
-            raw = await proc.stdout.readline()
-            if not raw:
-                break
-            try:
-                msg = json.loads(raw.decode("utf-8", "ignore").strip() or "{}")
-            except json.JSONDecodeError:
-                continue
-            if "qr" in msg:
-                on_qr(msg["qr"])
-            elif "result" in msg:
-                status = msg["result"]
-        await proc.wait()
-        return status
-
-    try:
-        status = await asyncio.wait_for(_pump(), timeout=LOGIN_TIMEOUT)
-    except asyncio.TimeoutError:
-        kill_process_tree(proc)
-        return False, "timeout"
-
+    status = await asyncio.to_thread(_login_blocking, argv, on_qr)
     return status == "success", status
