@@ -210,11 +210,11 @@ function ImportArticleDialog({ runId, onDone, onClose }: { runId: number; onDone
           className="mb-1 block w-full text-sm text-white/85" />
         <p className="text-[11px] text-white/52 mb-4">PDF 走视觉模型解析，可能较慢</p>
         <label className={labelCls}>或粘贴网页 URL</label>
-        <div className="flex gap-2 mb-4">
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." className={inputCls} />
-          <button onClick={doUrl} disabled={loading} className={btnPrimary}>导入</button>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." className={`${inputCls} mb-4`} />
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className={btnCompact}>关闭</button>
+          <button onClick={doUrl} disabled={loading} className={`${btnPrimary} min-w-[96px]`}>导入</button>
         </div>
-        <div className="flex justify-end"><button onClick={onClose} className={btnCompact}>关闭</button></div>
         {loading && <p className="text-xs text-white/66 mt-2">处理中...</p>}
       </div>
     </div>
