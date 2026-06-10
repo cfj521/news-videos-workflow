@@ -5,7 +5,6 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from app.config import get_settings
 from app.logging import get_logger
 from app.prompts import resolve_prompt
 from app.providers.base import RawArticleData
@@ -72,10 +71,6 @@ class ScoringResult:
 
 
 class ScoringService:
-    def __init__(self):
-        # model_copy 浅拷贝隔离：各实例各持一份 cfg，避免测试/运行时改写全局单例
-        self.cfg = get_settings().scoring.model_copy()
-
     # ── 新子评分器（0–1 纯函数）────────────────────────────────────────────────
 
     def _source_score(self, a: RawArticleData) -> float:
@@ -87,10 +82,10 @@ class ScoringService:
 
     def _recency_score(self, published_at: datetime | None) -> float:
         if not published_at:
-            return self.cfg.fresh_floor
+            return C.FRESH_FLOOR
         days = (datetime.now(timezone.utc) - published_at).total_seconds() / 86400
-        full, we, floor_d, floor = (self.cfg.fresh_full_days, self.cfg.fresh_week_end,
-                                    self.cfg.fresh_floor_days, self.cfg.fresh_floor)
+        full, we, floor_d, floor = (C.FRESH_FULL_DAYS, C.FRESH_WEEK_END,
+                                    C.FRESH_FLOOR_DAYS, C.FRESH_FLOOR)
         if days <= 0:
             return 1.0
         if days <= full:
@@ -120,7 +115,7 @@ class ScoringService:
 
     def _rule_score(self, a: RawArticleData, language: str) -> float:
         """新版规则评分（接受 language 参数），0–1。"""
-        ws, wr, wk = self.cfg.w_source, self.cfg.w_recency, self.cfg.w_keyword
+        ws, wr, wk = C.W_SOURCE, C.W_RECENCY, C.W_KEYWORD
         tot = ws + wr + wk or 1.0
         return (ws * self._source_score(a)
                 + wr * self._recency_score(a.published_at)
@@ -164,10 +159,10 @@ class ScoringService:
     async def select_top(self, articles, text_provider=None, language="zh", n=5) -> ScoringResult:
         if not articles:
             return ScoringResult(selected=[], report={"candidates": [], "n": n, "k": 0, "pool": 0,
-                                 "min_score": self.cfg.min_score, "source_type": ""})
+                                 "min_score": C.MIN_SCORE, "source_type": ""})
         pool = len(articles)
-        cap = self.cfg.llm_candidate_cap
-        ws, wr, wk = self.cfg.w_source, self.cfg.w_recency, self.cfg.w_keyword
+        cap = C.LLM_CANDIDATE_CAP
+        ws, wr, wk = C.W_SOURCE, C.W_RECENCY, C.W_KEYWORD
         wtot = (ws + wr + wk) or 1.0
         scored = []
         for a in articles:
@@ -183,7 +178,7 @@ class ScoringService:
         else:
             llm_set = scored if text_provider is not None else []
         if llm_set:
-            sem = asyncio.Semaphore(self.cfg.concurrency)
+            sem = asyncio.Semaphore(C.LLM_CONCURRENCY)
             async def run_one(item):
                 async with sem:
                     try:
@@ -195,21 +190,21 @@ class ScoringService:
             await asyncio.gather(*(run_one(it) for it in llm_set))
         for it in scored:
             if it.get("llm_ran"):
-                it["final"] = self.cfg.w_final_llm * it["llm"] + self.cfg.w_final_rule * it["rule"]
+                it["final"] = C.W_FINAL_LLM * it["llm"] + C.W_FINAL_RULE * it["rule"]
             else:
                 it["final"] = it["rule"]
         scored.sort(key=lambda x: x["final"], reverse=True)
-        passed = [it for it in scored if it["final"] >= self.cfg.min_score]
+        passed = [it for it in scored if it["final"] >= C.MIN_SCORE]
         chosen = (passed or scored[:1])[:n]
         chosen_ids = {id(it) for it in chosen}
         for it in scored:
             it["selected"] = id(it) in chosen_ids
         report = {
             "source_type": (articles[0].metadata or {}).get("aihot_method") or "normal",
-            "n": n, "k": cap, "pool": pool, "min_score": self.cfg.min_score,
+            "n": n, "k": cap, "pool": pool, "min_score": C.MIN_SCORE,
             "candidates": [self._row(it) for it in scored],
         }
-        log.info("[scoring] pool=%d llm=%d selected=%d (min=%.2f)", pool, len(llm_set), len(chosen), self.cfg.min_score)
+        log.info("[scoring] pool=%d llm=%d selected=%d (min=%.2f)", pool, len(llm_set), len(chosen), C.MIN_SCORE)
         for it in chosen:
             it["art"].metadata["score_final"] = round(it["final"], 4)
             it["art"].metadata["score_reason"] = it.get("reason", "")
