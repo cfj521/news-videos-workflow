@@ -128,16 +128,10 @@ export const PLATFORM_FIELDS: Record<string, FieldDef[]> = {
     { key: "tid", label: "分区 ID", placeholder: "17 (科技>数码)" },
   ],
   douyin: [
-    { key: "method", label: "接入方式", placeholder: "api / playwright" },
-    { key: "client_key", label: "Client Key", required: true },
-    { key: "client_secret", label: "Client Secret", required: true, secret: true },
-    { key: "access_token", label: "Access Token", required: true, secret: true },
+    { key: "account", label: "账号标识", required: true, placeholder: "仅小写字母/数字/_/-，如 my_acct（扫码登录后用）" },
   ],
   kuaishou: [
-    { key: "method", label: "接入方式", placeholder: "api / playwright" },
-    { key: "app_id", label: "App ID", required: true },
-    { key: "app_secret", label: "App Secret", required: true, secret: true },
-    { key: "access_token", label: "Access Token", required: true, secret: true },
+    { key: "account", label: "账号标识", required: true, placeholder: "仅小写字母/数字/_/-，如 my_acct（扫码登录后用）" },
   ],
   ximalaya: [
     { key: "access_token", label: "Access Token", required: true, secret: true },
