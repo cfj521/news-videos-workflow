@@ -38,6 +38,7 @@ def _build_one(platform: str, cfg: dict):
         from app.providers.publisher.youtube import YouTubePublisher
         return YouTubePublisher(client_id=cfg.get("client_id", ""), client_secret=cfg.get("client_secret", ""),
                                 refresh_token=cfg.get("refresh_token", ""))
+    # 抖音/快手用自动生成的 account（UUID，前端建账号时写入 config）作登录态标识（cookie 文件名）
     if platform == "douyin":
         from app.providers.publisher.douyin import DouyinPublisher
         return DouyinPublisher(account=cfg.get("account", ""))

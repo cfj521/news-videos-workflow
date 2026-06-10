@@ -27,12 +27,38 @@ def _setup_name(platform: str) -> str:
     return _SETUP[platform]
 
 
+def _relax_navigation() -> None:
+    """放宽页面导航等待，降低 page.goto 超时。
+
+    抖音/快手创作页很重，SAU 写死的 `page.goto(url)` 用默认 wait_until='load'，要等所有资源
+    （含长连接/埋点）才算完，30s 内偶发等不到 load 而超时（日志：Page.goto Timeout 30000ms）。
+    改为等 domcontentloaded（DOM 解析完即可，二维码元素 SAU 自己还会再 wait_for）即可稳定返回；
+    超时时长保持默认 30s 不变。仅作用于本子进程。
+    """
+    try:
+        from patchright.async_api import Page
+    except Exception:
+        return
+    if getattr(Page, "_nv_patched", False):
+        return
+    _orig_goto = Page.goto
+
+    async def _goto(self, url, **kw):  # type: ignore[no-untyped-def]
+        kw.setdefault("wait_until", "domcontentloaded")
+        return await _orig_goto(self, url, **kw)
+
+    Page.goto = _goto  # type: ignore[assignment]
+    Page._nv_patched = True  # type: ignore[attr-defined]
+
+
 async def _run(platform: str, account: str) -> int:
     # 仅在子进程内 import，主进程永不触达
     if platform == "douyin":
         from uploader.douyin_uploader.main import douyin_setup as setup
     else:
         from uploader.ks_uploader.main import ks_setup as setup
+
+    _relax_navigation()
 
     from sau_cli import resolve_account_file  # 用 SAU 自己的路径规则（受 conf.BASE_DIR 控制）
     account_file = str(resolve_account_file(platform, account))

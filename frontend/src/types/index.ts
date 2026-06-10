@@ -127,12 +127,9 @@ export const PLATFORM_FIELDS: Record<string, FieldDef[]> = {
     { key: "ac_time_value", label: "ac_time_value（可选·续期）", secret: true },
     { key: "tid", label: "分区 ID", placeholder: "17 (科技>数码)" },
   ],
-  douyin: [
-    { key: "account", label: "账号标识", required: true, placeholder: "仅小写字母/数字/_/-，如 my_acct（扫码登录后用）" },
-  ],
-  kuaishou: [
-    { key: "account", label: "账号标识", required: true, placeholder: "仅小写字母/数字/_/-，如 my_acct（扫码登录后用）" },
-  ],
+  // 抖音/快手无需配置字段：用账号自身的 slug 作登录态标识，登录靠「扫码登录」
+  douyin: [],
+  kuaishou: [],
   ximalaya: [
     { key: "access_token", label: "Access Token", required: true, secret: true },
   ],

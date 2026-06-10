@@ -25,10 +25,8 @@ async def test_check_deep_uses_exit_code(monkeypatch):
         returncode = 0
         pid = 1
 
-        async def communicate(self):
+        def communicate(self, timeout=None):
             return b"valid", b""
 
-    async def fake_exec(*a, **k):
-        return P()
-    monkeypatch.setattr(r.asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(r.subprocess, "Popen", lambda argv, **k: P())
     assert await r.check_login("douyin", "acct1", deep=True) is True

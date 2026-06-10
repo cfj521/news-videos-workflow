@@ -22,7 +22,7 @@ _LOGIN_TASKS: set = set()  # 持有后台任务引用，防被 GC
 
 class LoginStartBody(BaseModel):
     platform: str
-    account: str
+    account: str  # 账号的内部标识（前端自动生成的 UUID，= cookie 文件名）；保存前即可扫码
 
 
 def _to_read(t) -> PublishTargetRead:
@@ -112,38 +112,25 @@ def delete_target(slug: str):
 
 @router.post("/login/start")
 async def login_start(body: LoginStartBody, db: Session = Depends(get_db)):
-    from datetime import datetime, timedelta, timezone
-
     if body.platform not in _LOGIN_PLATFORMS:
         raise HTTPException(status_code=422, detail="仅支持抖音/快手扫码登录")
+    platform = body.platform
     account = sau_runner.safe_account(body.account)
     if not account:
-        raise HTTPException(status_code=422, detail="账号标识非法（仅 a-z 0-9 _ -）")
+        raise HTTPException(status_code=422, detail="账号标识非法")
 
-    # 清理本账号旧的非进行中会话（终态：success/failed/timeout）
-    db.query(BrowserLoginSession).filter_by(platform=body.platform, account=account)\
-        .filter(BrowserLoginSession.status.notin_(["starting", "qr_ready"])).delete(synchronize_session=False)
-
-    # 并发判据：同账号仍在进行中（starting/qr_ready）且未超 LOGIN_TIMEOUT → 拒绝；
-    # 更老的视为僵死，清掉后放行。
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=sau_runner.LOGIN_TIMEOUT)
-    existing = db.query(BrowserLoginSession).filter_by(platform=body.platform, account=account)\
-        .filter(BrowserLoginSession.status.in_(["starting", "qr_ready"])).all()
-    for row in existing:
-        updated = row.updated_at
-        if updated is not None and updated.tzinfo is None:
-            updated = updated.replace(tzinfo=timezone.utc)
-        if updated is not None and updated > cutoff:
-            raise HTTPException(status_code=409, detail="该账号已有进行中的扫码登录，请先完成或等待超时")
-        # 僵死会话：删除后放行
-        db.delete(row)
+    # 「重新生成」语义：杀掉同账号上一个仍在跑的 worker（含其 Chrome），清掉该账号所有旧会话，重开。
+    # 旧 worker 即使没被杀到，其后续对旧 sid 的回写也会因行已删除而成 no-op。
+    sau_runner.kill_login_worker(platform, account)
+    db.query(BrowserLoginSession).filter_by(platform=platform, account=account)\
+        .delete(synchronize_session=False)
     db.commit()
 
     sid = secrets.token_urlsafe(24)
-    db.add(BrowserLoginSession(sid=sid, platform=body.platform, account=account, status="starting"))
+    db.add(BrowserLoginSession(sid=sid, platform=platform, account=account, status="starting"))
     db.commit()
 
-    task = asyncio.create_task(_run_login_flow(sid, body.platform, account))
+    task = asyncio.create_task(_run_login_flow(sid, platform, account))
     _LOGIN_TASKS.add(task)
     task.add_done_callback(_LOGIN_TASKS.discard)
     return {"sid": sid}

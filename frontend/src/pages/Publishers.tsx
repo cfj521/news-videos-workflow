@@ -48,11 +48,16 @@ interface LoginState {
   errorMsg: string | null;
 }
 
+/** 账号内部标识（cookie 文件名用）：自动生成，对用户不可见，用户只关心「名称」。 */
+function genAccountId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return "acct-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+}
+
 function ScanLoginButton({ platform, account }: {
   platform: string;
   account: string;
 }) {
-  const [open, setOpen] = useState(false);
   const [state, setState] = useState<LoginState>({
     status: "idle", sid: null, qrBase64: null, errorMsg: null,
   });
@@ -65,15 +70,9 @@ function ScanLoginButton({ platform, account }: {
     }
   };
 
-  const handleClose = () => {
-    stopPolling();
-    setOpen(false);
-    setState({ status: "idle", sid: null, qrBase64: null, errorMsg: null });
-  };
-
   const startLogin = async () => {
+    stopPolling();
     setState({ status: "starting", sid: null, qrBase64: null, errorMsg: null });
-    setOpen(true);
     try {
       const { sid } = await api.publishers.loginStart(platform, account);
       setState((prev) => ({ ...prev, sid }));
@@ -112,9 +111,6 @@ function ScanLoginButton({ platform, account }: {
   // 组件卸载时清理定时器（直接操作 ref，不依赖 stopPolling 函数引用）
   useEffect(() => () => { if (pollRef.current != null) clearInterval(pollRef.current); }, []);
 
-  const isTerminal = ["success", "failed", "timeout", "error"].includes(state.status);
-  const disabled = !account.trim();
-
   const statusLabel: Record<string, string> = {
     idle: "扫码登录",
     starting: "正在启动…",
@@ -126,67 +122,61 @@ function ScanLoginButton({ platform, account }: {
   };
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); startLogin(); }}
-        disabled={disabled}
-        className={btnRegen}
-        title={disabled ? "请先在编辑中填写账号" : "扫码登录"}
+    <div>
+      {/* 占位图框：点按钮后二维码回填到这里 */}
+      <div
+        className="mx-auto mb-3 flex items-center justify-center rounded-lg border border-white/[0.1] bg-white/[0.03] overflow-hidden"
+        style={{ width: 200, height: 200 }}
       >
-        扫码登录
-      </button>
-
-      {open && (
-        <div className={dialogOverlayCls} onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}>
-          <div className={`${dialogPanelCls} w-80 text-center`}>
-            <h3 className="text-base font-semibold mb-4">
-              {PLATFORM_LABELS[platform] ?? platform} 扫码登录
-            </h3>
-
-            {(state.status === "starting") && (
-              <p className="text-white/60 text-sm py-6">正在获取二维码…</p>
-            )}
-
-            {state.status === "qr_ready" && state.qrBase64 && (
-              <>
-                <img
-                  src={state.qrBase64}
-                  alt="登录二维码"
-                  className="mx-auto mb-3 rounded-lg"
-                  style={{ width: 200, height: 200, imageRendering: "pixelated" }}
-                />
-                <p className="text-white/60 text-xs">请使用{PLATFORM_LABELS[platform] ?? platform} App 扫码</p>
-              </>
-            )}
-
-            {state.status === "success" && (
-              <p className="text-emerald-400 text-sm py-6">登录成功！</p>
-            )}
-
-            {["failed", "timeout", "error"].includes(state.status) && (
-              <div className="py-6">
-                <p className="text-red-400 text-sm">{statusLabel[state.status]}</p>
-                {state.errorMsg && (
-                  <p className={`${errorTextCls} text-xs mt-1 opacity-70`}>{state.errorMsg}</p>
-                )}
-              </div>
-            )}
-
-            <div className="mt-5 flex justify-end gap-2">
-              {isTerminal && !["success"].includes(state.status) && (
-                <button type="button" onClick={startLogin} className={btnRegen}>
-                  重试
-                </button>
-              )}
-              <button type="button" onClick={handleClose} className={btnSecondary}>
-                {state.status === "success" ? "关闭" : "取消"}
-              </button>
-            </div>
+        {state.status === "qr_ready" && state.qrBase64 ? (
+          <img
+            src={state.qrBase64}
+            alt="登录二维码"
+            className="w-full h-full"
+            style={{ imageRendering: "pixelated" }}
+          />
+        ) : state.status === "starting" ? (
+          <span className="text-white/50 text-sm">二维码生成中…</span>
+        ) : state.status === "success" ? (
+          <span className="text-emerald-400 text-sm">✓ 登录成功</span>
+        ) : ["failed", "timeout", "error"].includes(state.status) ? (
+          <div className="text-center px-3">
+            <p className="text-red-400 text-sm">{statusLabel[state.status]}</p>
+            {state.errorMsg && <p className="text-white/40 text-[11px] mt-1 break-all">{state.errorMsg}</p>}
           </div>
-        </div>
-      )}
-    </>
+        ) : (
+          <div className="text-center text-white/30">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.5" className="mx-auto">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14.5" y="14.5" width="2.5" height="2.5" />
+              <rect x="18.5" y="18.5" width="2.5" height="2.5" />
+            </svg>
+            <p className="text-[11px] mt-2">点击下方按钮生成二维码</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); startLogin(); }}
+          disabled={state.status === "starting"}
+          className={`${btnRegen} inline-flex items-center gap-1.5`}
+          title="生成二维码"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+               className={state.status === "starting" ? "animate-spin" : ""}>
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+          生成二维码
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -231,6 +221,8 @@ function TargetDialog({ target, onSave, onClose }: {
   // 启用/禁用不在本窗口内改，由列表外侧的开关按 target 控制；这里仅在保存时透传原值
   const [enabled] = useState(target?.enabled ?? true);
   const [fields, setFields] = useState<Record<string, string>>(() => parseConfig(target?.config_json ?? null));
+  // 抖音/快手账号的内部标识：编辑时取已存的，新建时立即生成 UUID（无需先保存即可扫码）
+  const [accountId] = useState<string>(() => parseConfig(target?.config_json ?? null).account || genAccountId());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -248,7 +240,9 @@ function TargetDialog({ target, onSave, onClose }: {
     if (!name.trim()) { setError("名称为必填项"); return; }
     setLoading(true);
     try {
-      const body = { name, platform, enabled, config_json: buildConfig(fields) };
+      // 扫码平台把自动生成的 account 写进 config（cookie 标识），其它平台不动
+      const cfgObj = SCAN_LOGIN_PLATFORMS.has(platform) ? { ...fields, account: accountId } : fields;
+      const body = { name, platform, enabled, config_json: buildConfig(cfgObj) };
       if (isEdit) await api.publishers.update(target!.id, body);
       else await api.publishers.create(body);
       onSave();
@@ -260,7 +254,7 @@ function TargetDialog({ target, onSave, onClose }: {
   return (
     <div className={dialogOverlayCls}>
       <div className={`${dialogPanelCls} w-[520px]`}>
-        <h2 className="text-lg font-semibold mb-5">{isEdit ? "编辑" : "添加"}发布平台</h2>
+        <h2 className="text-lg font-semibold mb-5">{isEdit ? "编辑" : "添加"}发布账号</h2>
 
         <label className={labelCls}>平台</label>
         <Select value={platform} onChange={handlePlatformChange} options={PLATFORM_OPTIONS} className="mb-4" />
@@ -289,6 +283,21 @@ function TargetDialog({ target, onSave, onClose }: {
             )}
           </div>
         ))}
+
+        {SCAN_LOGIN_PLATFORMS.has(platform) && (
+          <div className="mb-4 rounded-lg border border-white/[0.08] p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-medium text-white/80">扫码登录</span>
+              {isEdit && <LoginBadge slug={target!.id} />}
+            </div>
+            <div className="mt-2">
+              <ScanLoginButton platform={platform} account={accountId} />
+              <p className="text-[11px] text-white/40 mt-2 text-center">
+                用 {PLATFORM_LABELS[platform] ?? platform}App 扫码登录该账号；登录态自动保存。{!isEdit && "扫码后填好名称点「添加」即可保存。"}
+              </p>
+            </div>
+          </div>
+        )}
 
         {error && <p className={`${errorTextCls} mb-3`}>{error}</p>}
 
@@ -337,7 +346,7 @@ export function PublishersPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold tracking-tight">发布管理</h1>
-        <button onClick={() => setDialog({ target: null })} className={`${btnPrimary} inline-flex items-center gap-1.5`}><PlusIcon /> 添加平台</button>
+        <button onClick={() => setDialog({ target: null })} className={`${btnPrimary} inline-flex items-center gap-1.5`}><PlusIcon /> 添加账号</button>
       </div>
 
       <div className="space-y-3">
@@ -345,7 +354,6 @@ export function PublishersPage() {
           const cfg = parseConfig(t.config_json);
           const fieldDefs = PLATFORM_FIELDS[t.platform] ?? [];
           const isScanPlatform = SCAN_LOGIN_PLATFORMS.has(t.platform);
-          const account = cfg["account"] ?? "";
           return (
             <div
               key={t.id}
@@ -378,9 +386,6 @@ export function PublishersPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                  {isScanPlatform && (
-                    <ScanLoginButton platform={t.platform} account={account} />
-                  )}
                   <button
                     type="button"
                     onClick={() => handleToggleEnabled(t)}
@@ -397,8 +402,8 @@ export function PublishersPage() {
         })}
         {(!targets || targets.length === 0) && (
           <div className={`${cardCls} p-12 text-center`}>
-            <p className="text-white/60 text-sm">暂无发布平台</p>
-            <p className="text-white/46 text-xs mt-1">添加平台以启用视频发布功能</p>
+            <p className="text-white/60 text-sm">暂无发布账号</p>
+            <p className="text-white/46 text-xs mt-1">添加账号以启用视频发布功能</p>
           </div>
         )}
       </div>
