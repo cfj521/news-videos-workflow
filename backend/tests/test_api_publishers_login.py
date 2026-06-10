@@ -105,19 +105,27 @@ def test_login_status_wrong_platform(client):
     assert r.status_code == 422
 
 
-def test_login_start_rejects_concurrent(client, monkeypatch):
+def test_login_start_supersedes_previous(client, monkeypatch):
     c, tok = client
     from app.api import publishers as route
+    from app.models.browser_login_session import BrowserLoginSession
 
     async def noop(*a, **k):
         return None
     monkeypatch.setattr(route, "_run_login_flow", noop)
+    killed = []
+    monkeypatch.setattr(route.sau_runner, "kill_login_worker", lambda p, a: killed.append((p, a)))
 
     r1 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "uuid1"}, headers=_h(tok))
     assert r1.status_code == 200
-    # 同账号再次发起：第一个仍 starting（noop 未推进）→ 409
+    sid1 = r1.json()["sid"]
+    # 同账号再次发起：不再 409，而是杀旧 worker + 清旧会话，重开
     r2 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "uuid1"}, headers=_h(tok))
-    assert r2.status_code == 409
-    # 不同账号不受影响
-    r3 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "uuid2"}, headers=_h(tok))
-    assert r3.status_code == 200
+    assert r2.status_code == 200
+    sid2 = r2.json()["sid"]
+    assert sid2 != sid1
+    assert ("douyin", "uuid1") in killed  # 旧 worker 被请求杀掉
+
+    # 旧 sid 已被清掉，只剩新会话
+    assert c.get(f"/api/publishers/login/status?sid={sid1}", headers=_h(tok)).json()["status"] == "error"
+    assert c.get(f"/api/publishers/login/status?sid={sid2}", headers=_h(tok)).json()["status"] == "starting"

@@ -140,9 +140,8 @@ UPLOAD_TIMEOUT = 600  # 浏览器自动化 + 大文件，给足 10 分钟
 LOGIN_TIMEOUT = 180   # 留足扫码时间
 
 
-def kill_process_tree(proc) -> None:
-    """杀子进程及其后代（SAU 下还有 patchright/Chromium）。Windows 用 taskkill /T，POSIX 用进程组。"""
-    pid = getattr(proc, "pid", None)
+def kill_pid_tree(pid: int | None) -> None:
+    """按 PID 杀进程树（SAU 下还有 patchright/Chromium）。Windows 用 taskkill /T，POSIX 用进程组。"""
     if not pid:
         return
     try:
@@ -152,10 +151,31 @@ def kill_process_tree(proc) -> None:
         else:
             os.killpg(os.getpgid(pid), 9)
     except Exception:
+        pass
+
+
+def kill_process_tree(proc) -> None:
+    """杀子进程及其后代。"""
+    pid = getattr(proc, "pid", None)
+    if pid:
+        kill_pid_tree(pid)
+    else:
         try:
             proc.kill()
         except Exception:
             pass
+
+
+# 进程内登录 worker 注册表：key=f"{platform}:{account}" -> worker pid。
+# 用户点「重新生成二维码」时，用它杀掉同账号上一个仍在跑的 worker（含其 Chrome），避免堆积/二维码混淆。
+_WORKER_PIDS: dict[str, int] = {}
+
+
+def kill_login_worker(platform: str, account: str) -> None:
+    """杀掉同账号上一个仍在跑的登录 worker（best-effort，仅当前进程内可达）。"""
+    pid = _WORKER_PIDS.pop(f"{platform}:{safe_account(account)}", None)
+    if pid:
+        kill_pid_tree(pid)
 
 
 def _spawn_kwargs() -> dict:
@@ -245,15 +265,17 @@ async def check_login(platform: str, account: str, deep: bool = False) -> bool:
     return await asyncio.to_thread(_check_blocking, argv)
 
 
-def _login_blocking(argv: list[str], on_qr: Callable[[str], None]) -> str:
+def _login_blocking(argv: list[str], on_qr: Callable[[str], None], key: str) -> str:
     """阻塞跑登录 worker：逐行读其 stdout（已并入 stderr），qr → on_qr，result → 终态。
 
     返回 status ∈ success|timeout|failed。worker 崩溃（无 result 行）时把非 JSON 输出写日志便于排查。
+    key 用于把 worker pid 登记进 _WORKER_PIDS，供「重新生成」时杀旧 worker。
     """
     try:
         proc = _spawn(argv, merge_stderr=True)
     except FileNotFoundError:
         return "failed"
+    _WORKER_PIDS[key] = proc.pid
 
     timed_out = {"v": False}
 
@@ -283,6 +305,8 @@ def _login_blocking(argv: list[str], on_qr: Callable[[str], None]) -> str:
         proc.wait()
     finally:
         timer.cancel()
+        if _WORKER_PIDS.get(key) == proc.pid:
+            _WORKER_PIDS.pop(key, None)
 
     if timed_out["v"]:
         return "timeout"
@@ -303,5 +327,5 @@ async def run_login(platform: str, account: str,
     ensure_sau_runtime()
 
     argv = [sys.executable, "-m", "app.providers.publisher.sau_login_worker", platform, acct]
-    status = await asyncio.to_thread(_login_blocking, argv, on_qr)
+    status = await asyncio.to_thread(_login_blocking, argv, on_qr, f"{platform}:{acct}")
     return status == "success", status
