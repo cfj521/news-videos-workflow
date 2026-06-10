@@ -628,13 +628,14 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
         from app.pipeline.stage2_script import run_stage2_multi
         script = await run_stage2_multi(
-            articles, text_provider, language=(run.language or cfg.pipeline.default_language))
+            articles, text_provider, language=(run.language or cfg.pipeline.default_language),
+            max_articles=run.max_articles)
 
-        # 图片数量上限：分镜数超过则按评分裁剪（丢弃低分整组，无 AI 调用）
+        # 图片数量上限：分镜数超过则按评分裁掉低分整组（仅出图路线需要）
         limit = run.max_images if run.max_images is not None else cfg.pipeline.max_images
         if run.video_route != "audio" and limit and len(script.get("scenes", [])) > limit:
             from app.pipeline.stage2_script import cap_scenes_by_score
-            _update(db, run, progress_detail=f"S2 分镜 {len(script['scenes'])} 超图片上限 {limit}，按评分裁剪中...")
+            _update(db, run, progress_detail=f"S2 分镜 {len(script['scenes'])} 超图片上限 {limit}，按评分裁剪...")
             log.info("[S2] %d scenes > limit %d → cap by score", len(script["scenes"]), limit)
             script = cap_scenes_by_score(script, limit)
 
