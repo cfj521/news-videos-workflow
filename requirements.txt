@@ -51,11 +51,17 @@ tzlocal>=5.0
 
 # ---- 发布功能可选依赖（按需安装；pyproject 未列，代码内懒加载）----
 # Bilibili 投稿。
-# ⚠ biliup 不钉版本时，pip 会在 biliup→streamlink→pycountry 这条链上疯狂回溯（pycountry 每个 wheel 数十 MB，
-#   会下载"无数个版本"，install 极慢甚至卡死）。故把这条重回溯链一并钉到已验证可用的版本组合。
+# ⚠ biliup 的依赖树（streamlink/gmssl/yt-dlp/ykdl 等）几乎都不钉版本，新版 pip 解析器会在
+#   biliup→streamlink→pycountry、gmssl→pycryptodomex、yt-dlp 等链上逐个版本回溯下载（pycountry/
+#   pycryptodomex 等 wheel 数十 MB，且会退到只有 sdist 的老版本导致源码构建失败），install 极慢/卡死。
+#   故把这棵子树一并钉到已验证可用的版本组合（与 social-auto-upload+patchright 共存无冲突）。
 biliup==1.2.0
 streamlink==8.4.0
 pycountry==26.2.16
+gmssl==3.2.2
+pycryptodomex==3.23.0
+ykdl==1.8.2
+yt-dlp==2026.3.17
 # YouTube 投稿（OAuth + 上传）
 google-api-python-client
 google-auth
