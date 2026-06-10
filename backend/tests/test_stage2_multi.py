@@ -114,10 +114,8 @@ def _aihot_daily_article():
 
 
 @pytest.mark.asyncio
-async def test_aihot_daily_direct_use(monkeypatch):
-    # aihot_top_n=3 → 7 条 item 选 3 条，1 item→1 scene；narration=summary 原样，不调 AI 生成旁白
-    monkeypatch.setattr(config, "_settings",
-                        config.Settings(pipeline=config.PipelineCfg(aihot_top_n=3)))
+async def test_aihot_daily_direct_use():
+    # max_articles=3 → 7 条 item 选 3 条，1 item→1 scene；narration=summary 原样，不调 AI 生成旁白
     import app.services.scoring as scoring
     scoring._LLM_CACHE.clear()
     tp = AsyncMock()
@@ -125,7 +123,7 @@ async def test_aihot_daily_direct_use(monkeypatch):
     llm_scores = [json.dumps({"score": s, "reason": "r", "tags": []}) for s in [9, 8, 7, 6, 5, 4, 3]]
     tp.generate.side_effect = llm_scores + ["画面A", "画面B", "画面C",
                                json.dumps({"title": "日报汇总", "description": "d", "tags": []})]
-    script = await run_stage2_multi([_aihot_daily_article()], tp)
+    script = await run_stage2_multi([_aihot_daily_article()], tp, max_articles=3)
 
     assert len(script["scenes"]) == 3
     assert [s["id"] for s in script["scenes"]] == [1, 2, 3]
@@ -138,9 +136,7 @@ async def test_aihot_daily_direct_use(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_aihot_items_direct_use(monkeypatch):
-    monkeypatch.setattr(config, "_settings",
-                        config.Settings(pipeline=config.PipelineCfg(aihot_top_n=10)))
+async def test_aihot_items_direct_use():
     import app.services.scoring as scoring
     scoring._LLM_CACHE.clear()
     tp = AsyncMock()
@@ -151,16 +147,14 @@ async def test_aihot_items_direct_use(monkeypatch):
     arts = [RawArticleData(title=f"动态{i}", content=f"内容{i}", summary=f"摘要{i}",
                            source_url="u", source_name="AI HOT",
                            metadata={"source_group": "aihot", "aihot_method": "items"}) for i in range(2)]
-    script = await run_stage2_multi(arts, tp)
+    script = await run_stage2_multi(arts, tp, max_articles=10)
     assert len(script["scenes"]) == 2
     assert {s["title"] for s in script["scenes"]} == {"动态0", "动态1"}
     assert all(s["narration"].startswith("摘要") for s in script["scenes"])
 
 
 @pytest.mark.asyncio
-async def test_aihot_image_prompt_fallback_to_title(monkeypatch):
-    monkeypatch.setattr(config, "_settings",
-                        config.Settings(pipeline=config.PipelineCfg(aihot_top_n=1)))
+async def test_aihot_image_prompt_fallback_to_title():
     import app.services.scoring as scoring
     scoring._LLM_CACHE.clear()
     tp = AsyncMock()
@@ -168,7 +162,7 @@ async def test_aihot_image_prompt_fallback_to_title(monkeypatch):
     llm_scores = [json.dumps({"score": s, "reason": "r", "tags": []}) for s in [9, 8, 7, 6, 5, 4, 3]]
     tp.generate.side_effect = llm_scores + [Exception("出图prompt失败"),
                                json.dumps({"title": "t", "description": "d", "tags": []})]
-    script = await run_stage2_multi([_aihot_daily_article()], tp)
+    script = await run_stage2_multi([_aihot_daily_article()], tp, max_articles=1)
     assert script["scenes"][0]["image_prompt"] == script["scenes"][0]["title"]  # 退化为 title
 
 
@@ -183,9 +177,7 @@ def test_aihot_candidates_fill_published_at():
 
 
 @pytest.mark.asyncio
-async def test_aihot_direct_uses_scoring_and_reports(monkeypatch):
-    monkeypatch.setattr(config, "_settings",
-                        config.Settings(pipeline=config.PipelineCfg(aihot_top_n=2)))
+async def test_aihot_direct_uses_scoring_and_reports():
     import app.services.scoring as scoring
     scoring._LLM_CACHE.clear()
     tp = AsyncMock()
@@ -197,7 +189,7 @@ async def test_aihot_direct_uses_scoring_and_reports(monkeypatch):
     daily = RawArticleData(title="日报", content="c", source_url="u", source_name="AI HOT 日报",
         metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": "2026-06-01",
                   "daily_sections": [{"label": "模型", "items": [{"title": f"i{i}", "summary": f"s{i}"} for i in range(3)]}]})
-    script = await run_stage2_multi([daily], tp)
+    script = await run_stage2_multi([daily], tp, max_articles=2)
     assert len(script["scenes"]) == 2
     assert script.get("scoring_report") and len(script["scoring_report"]["candidates"]) == 3
 
@@ -241,3 +233,31 @@ def test_cap_single_group_over_limit_truncates():
     out = cap_scenes_by_score({"scenes": scenes, "groups": []}, 2)
     assert len(out["scenes"]) == 2
     assert all(s["score"] == 0.9 for s in out["scenes"])
+
+
+@pytest.mark.asyncio
+async def test_run_stage2_max_articles_controls_aihot_topn():
+    import app.services.scoring as scoring
+    scoring._LLM_CACHE.clear()
+    tp = AsyncMock()
+    tp.generate.side_effect = ['{"score": 9, "reason": "", "tags": []}',
+                               '{"score": 5, "reason": "", "tags": []}',
+                               '{"score": 7, "reason": "", "tags": []}',
+                               "画面A", "画面B",
+                               json.dumps({"title": "汇总", "description": "d", "tags": []})]
+    daily = RawArticleData(title="日报", content="c", source_url="u", source_name="AI HOT 日报",
+        metadata={"source_group": "aihot", "aihot_method": "daily", "report_date": "2026-06-01",
+                  "daily_sections": [{"label": "模型", "items": [{"title": f"i{i}", "summary": f"s{i}"} for i in range(3)]}]})
+    script = await run_stage2_multi([daily], tp, max_articles=2)
+    assert len(script["scenes"]) == 2
+    assert all("score" in s for s in script["scenes"])
+
+
+@pytest.mark.asyncio
+async def test_run_stage2_normal_scene_carries_score():
+    tp = AsyncMock()
+    tp.generate.side_effect = [_scenes_json("a1"), json.dumps({"title": "t", "description": "d", "tags": []})]
+    art = RawArticleData(title="文章1", content="c", source_url="u", source_name="s",
+                         metadata={"score_final": 0.66})
+    script = await run_stage2_multi([art], tp)
+    assert script["scenes"][0]["score"] == 0.66

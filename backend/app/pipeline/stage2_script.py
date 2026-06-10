@@ -161,11 +161,10 @@ async def _gen_image_prompt(cand, tp, language: str = "zh") -> str:
         return cand.title
 
 
-async def _run_aihot_direct(articles: list, tp, language: str = "zh") -> dict:
+async def _run_aihot_direct(articles: list, tp, language: str = "zh", max_articles: int = 5) -> dict:
     """AI HOT 直用：归一候选 → ScoringService 选 top N → 每条 1 scene（不 AI 生成旁白）。"""
     candidates = _aihot_candidates(articles)
-    top_n = config.get_settings().pipeline.aihot_top_n
-    res = await ScoringService().select_top(candidates, tp, language, n=top_n)
+    res = await ScoringService().select_top(candidates, tp, language, n=max_articles)
     selected = res.selected
     scenes: list[dict] = []
     groups: list[dict] = []
@@ -176,18 +175,19 @@ async def _run_aihot_direct(articles: list, tp, language: str = "zh") -> dict:
             "id": i, "group_id": i, "group_title": cand.title, "title": cand.title,
             "narration": cand.summary or cand.content, "image_prompt": image_prompt,
             "motion_prompt": "", "duration_hint": 5,
+            "score": float(cand.metadata.get("score_final") or 0.0),
         })
         groups.append({"id": i, "title": cand.title, "source_index": 0})
         titles.append(cand.title)
     meta = await _gen_summary_meta(titles, tp, language)
-    log.info("[S2] AI HOT direct: %d candidates → %d scenes (top_n=%d)", len(candidates), len(scenes), top_n)
+    log.info("[S2] AI HOT direct: %d candidates → %d scenes (max_articles=%d)", len(candidates), len(scenes), max_articles)
     return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"],
             "groups": groups, "scenes": scenes, "scoring_report": res.report}
 
 
-async def run_stage2_multi(articles: list, text_provider, language: str = "zh") -> dict:
+async def run_stage2_multi(articles: list, text_provider, language: str = "zh", max_articles: int = 5) -> dict:
     if articles and articles[0].metadata.get("source_group") == "aihot":
-        return await _run_aihot_direct(articles, text_provider, language)
+        return await _run_aihot_direct(articles, text_provider, language, max_articles)
 
     scenes: list[dict] = []
     groups: list[dict] = []
@@ -205,6 +205,7 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh") 
             sc["group_id"] = gid
             sc["group_title"] = article.title
             sc["title"] = article.title
+            sc["score"] = float(article.metadata.get("score_final") or 0.0)
             scenes.append(sc)
         groups.append({"id": gid, "title": article.title, "source_index": idx})
         titles.append(article.title)
