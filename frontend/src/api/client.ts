@@ -103,7 +103,10 @@ export interface AppSettings {
     bg_opacity: number;
     margin_ratio: number;
   };
+  // 生效预设镜像（后端按 prompt_presets[active] 注入；前端只读不直接编辑）
   prompts: Record<string, string>;
+  // 提示词预设库（存 prompts.yaml）：active 选中下标 + 固定 5 个预设
+  prompt_presets: { active: number; presets: { name: string; values: Record<string, string> }[] };
 }
 
 export interface ScriptData {

@@ -179,6 +179,37 @@ class PromptsCfg(BaseModel):
     news_scoring_en: str = ""
 
 
+PROMPT_PRESET_COUNT = 5  # 固定 5 个预设槽位（#1~#5）
+
+
+class PromptPresetCfg(BaseModel):
+    name: str = ""
+    values: PromptsCfg = PromptsCfg()
+
+
+def _default_presets() -> list[PromptPresetCfg]:
+    return [PromptPresetCfg(name=f"预设 {i + 1}") for i in range(PROMPT_PRESET_COUNT)]
+
+
+class PromptPresetsCfg(BaseModel):
+    """提示词预设库（存仓库根 prompts.yaml）：active 选中下标 + 固定 5 个预设。"""
+    active: int = 0
+    presets: list[PromptPresetCfg] = Field(default_factory=_default_presets)
+
+    def normalized(self) -> "PromptPresetsCfg":
+        """补足/截断到 5 个预设，并把 active 夹到合法范围。"""
+        presets = list(self.presets)
+        while len(presets) < PROMPT_PRESET_COUNT:
+            presets.append(PromptPresetCfg(name=f"预设 {len(presets) + 1}"))
+        presets = presets[:PROMPT_PRESET_COUNT]
+        active = max(0, min(self.active, len(presets) - 1))
+        return PromptPresetsCfg(active=active, presets=presets)
+
+    def active_values(self) -> PromptsCfg:
+        n = self.normalized()
+        return n.presets[n.active].values
+
+
 class WorkflowParams(BaseModel):
     steps: int
     cfg: float
@@ -215,7 +246,10 @@ class Settings(BaseModel):
     hyperframes: HyperframesCfg = HyperframesCfg()
     overlay: OverlayCfg = OverlayCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
+    # prompts：生效预设的镜像（prompt_presets[active] 注入，供 resolve_prompt 读，不写盘）
     prompts: PromptsCfg = PromptsCfg()
+    # prompt_presets：提示词预设库，存仓库根 prompts.yaml（不写 config.yaml）
+    prompt_presets: PromptPresetsCfg = PromptPresetsCfg()
 
     def provider_creds(self, name: str) -> ProviderCreds:
         return self.providers.get(name) or ProviderCreds()
@@ -381,13 +415,25 @@ def get_settings() -> Settings:
             raw["hyperframes"] = raw.pop("video")  # 旧 key video → hyperframes
         raw.pop("providers", None)  # providers 不再从 config.yaml 取，改由 providers_store 注入
         raw.pop("collectors", None)  # 搜索 key 改由 sources_store 注入
+        # 旧 config.yaml 的扁平 prompts → 迁入 prompts.yaml 的预设 #1
+        legacy_prompts = raw.pop("prompts", None)
         _settings = Settings(**raw)
-        from app.store import providers_store, sources_store
+        from app.store import prompts_store, providers_store, sources_store
         stored = providers_store.load_providers()
         if stored:
             _settings.providers = stored  # 从 model_providers.yaml 注入 providers 凭证
         # 搜索 key 从 news_sources.yaml 注入
         _settings.collectors = CollectorsCfg(**sources_store.load_search_keys())
+        # 提示词预设从 prompts.yaml 注入；文件不存在则用旧 config.yaml 的 prompts 迁移生成预设 #1
+        presets = prompts_store.load_presets()
+        if presets is None:
+            # prompts.yaml 尚不存在：用旧 prompts 生成预设 #1（仅内存，首次保存才落盘）
+            presets = PromptPresetsCfg(presets=[
+                PromptPresetCfg(name="预设 1", values=PromptsCfg(**(legacy_prompts or {}))),
+                *(PromptPresetCfg(name=f"预设 {i + 1}") for i in range(1, PROMPT_PRESET_COUNT)),
+            ])
+        _settings.prompt_presets = presets.normalized()
+        _settings.prompts = _settings.prompt_presets.active_values()  # 生效预设镜像
         _ensure_default_models(_settings)
         _migrate_comfyui_keys(_settings)
         import logging
@@ -397,14 +443,20 @@ def get_settings() -> Settings:
 
 def save_settings(settings: Settings) -> None:
     global _settings
-    _settings = settings
-    from app.store import providers_store, sources_store
+    from app.store import prompts_store, providers_store, sources_store
     providers_store.save_providers(settings.providers)  # providers 凭证写入 model_providers.yaml
     # 搜索 key 写入 news_sources.yaml
     sources_store.save_search_keys(settings.collectors.model_dump())
+    # 提示词预设写入 prompts.yaml，并同步生效预设镜像
+    settings.prompt_presets = settings.prompt_presets.normalized()
+    prompts_store.save_presets(settings.prompt_presets)
+    settings.prompts = settings.prompt_presets.active_values()
+    _settings = settings
     data = settings.model_dump()
     data.pop("providers", None)  # providers 走 providers_store，不写 config.yaml
     data.pop("collectors", None)  # collectors 走 sources_store，不写 config.yaml
+    data.pop("prompts", None)  # 生效预设镜像，不写 config.yaml
+    data.pop("prompt_presets", None)  # 预设走 prompts_store，不写 config.yaml
     _save_yaml(CONFIG_PATH, data)
     import logging
     logging.getLogger("nv.config").info("Saved config to %s", CONFIG_PATH)

@@ -70,48 +70,7 @@ comfyui:
   default_negative: 模糊, 丑陋, 变形, 低质量, 水印
   # 各 workflow 的 steps/cfg（image_params / video_params）建议在「设置 → ComfyUI 参数」页调整
 
-# ---- 可编辑提示词：以下为中文默认（与 backend/app/prompts.py 同步）；可在「设置 → 提示词配置」页编辑，留空则回退内置默认 ----
-#      中英两套：每个键再加 `<key>_en` 即为英文版（任务语言=en 时用）；留空则回退内置英文默认。
-#      例如 roundup_article_en / summary_meta_en / weekly_digest_en / image_regen_en / article_summary_en / news_scoring_en。
-prompts:
-  roundup_article: |-
-    你是新闻短视频的分镜脚本编写者。下面给你一条资讯，为它生成 1~3 个分镜（内容多/重要则多，简短则 1 个）。
-    输出纯 JSON（无 markdown 标记）：
-    {"scenes":[{"narration":"口语化中文旁白","image_prompt":"English scene description","motion_prompt":"English camera motion","duration_hint":5}]}
-    要求：
-    - narration：像新闻主播口播的通俗中文，简单易懂，少用生僻词和英文。
-    - image_prompt / motion_prompt：用英文（English only）；画面人物必须是亚洲/中国人面孔（East Asian / Chinese faces），场景与背景为中式真实环境，避免出现欧美面孔。
-    - 分镜数不超过 3。
-  summary_meta: |-
-    你是短视频运营。下面给你一条汇总视频包含的各条资讯标题，生成整条视频的吸睛标题与简介。
-    输出纯 JSON（无 markdown 标记）：{"title":"中文标题","description":"1-2句中文简介","tags":["标签1","标签2"]}
-  weekly_digest: |-
-    你是 AI 资讯周报编辑。下面给你过去一整周的全部资讯条目（含日期/分类线索）。
-    请跨天归纳出**本周 3-5 个最重要的热点主题**，每个主题挑 1-3 条最有代表性的资讯，**全部主题的资讯总条数不超过 9 条**。
-    要求：体现"本周"视角（趋势、归纳），合并跨天对同一事件的重复报道。
-    输出纯 JSON（无 markdown 标记）：
-    {"sections":[{"label":"主题名(中文)","items":[{"title":"资讯标题","summary":"一句话摘要"}]}]}
-  image_regen: |-
-    你是视频图片提示词专家。根据旁白文本生成一段详细的 AI 图片生成提示词，描述一张能配合旁白内容的画面。
-    要求：用英文输出（English only）；画面人物必须是亚洲/中国人面孔（East Asian / Chinese），场景与背景为中式真实环境，避免欧美面孔。只输出提示词本身，不要其他内容。
-  article_summary: |-
-    用中文为新闻文章生成简洁摘要。只输出摘要文本。
-  news_scoring: |-
-    你是新闻评分专家。根据以下标准为新闻打分（0-10 整数）：
-
-    评分标准：
-    - 9-10：重大突破、范式转变、广泛使用的技术的重大版本发布
-    - 7-8：有深度的技术文章、新颖方法、有洞见的分析
-    - 5-6：增量改进、有用教程、中等社区兴趣
-    - 3-4：小更新、常识内容、过度宣传
-    - 0-2：垃圾、纯推广、离题、琐碎更新
-
-    评分要考虑：
-    - 技术深度和新颖性
-    - 对领域的潜在影响
-    - 写作/展示质量
-    - 与 AI/ML、软件工程的相关性
-    - 社区互动信号（高投票+有质量的讨论 = 社区验证的重要性）
-
-    输出纯 JSON，不要 markdown 标记：
-    {"score": <0-10整数>, "reason": "<一句话理由>", "tags": ["<标签1>", "<标签2>"]}
+# ---- 可编辑提示词已迁出本文件 ----
+#      提示词预设（#1~#5，每套中英两份）存仓库根 prompts.yaml（已 .gitignore，不入库），
+#      首次启动后端会自动从旧 config.yaml 的 prompts 块迁入预设 #1。
+#      模板见 prompts.yaml.example；也可直接在「设置 → 提示词配置」页编辑切换。

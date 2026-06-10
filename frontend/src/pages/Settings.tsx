@@ -5,7 +5,7 @@ import { useToast } from "../components/Toast";
 import { Select } from "../components/Select";
 import { PasswordInput } from "../components/PasswordInput";
 import { IconButton } from "../components/IconButton";
-import { ResetIcon } from "../components/icons";
+import { EraserIcon } from "../components/icons";
 import {
   inputCls as _inputCls,
   monoInputCls as _monoInputCls,
@@ -214,10 +214,12 @@ function TabStrip({ tabs, active, onSelect, className }: {
   );
 }
 
-// 一条提示词（中文+英文两框）：高度自适应内容，并让两框取较大值保持等高；+6px 消除滚动条。
-function PromptRow({ label, desc, zhValue, enValue, onZh, onEn, onResetZh, onResetEn }: {
+// 一条提示词（中文+英文两框）：值=预设自身内容（空则显示为空框），内置默认作为 placeholder 灰显提示。
+// 高度自适应：空值时按 placeholder 撑高，保证默认提示词也能完整可见；两框取较大值保持等高；+6px 消除滚动条。
+function PromptRow({ label, desc, zhValue, enValue, zhPlaceholder, enPlaceholder, onZh, onEn }: {
   label: string; desc: string; zhValue: string; enValue: string;
-  onZh: (v: string) => void; onEn: (v: string) => void; onResetZh: () => void; onResetEn: () => void;
+  zhPlaceholder: string; enPlaceholder: string;
+  onZh: (v: string) => void; onEn: (v: string) => void;
 }) {
   const zhRef = useRef<HTMLTextAreaElement | null>(null);
   const enRef = useRef<HTMLTextAreaElement | null>(null);
@@ -225,30 +227,105 @@ function PromptRow({ label, desc, zhValue, enValue, onZh, onEn, onResetZh, onRes
   useLayoutEffect(() => {
     const a = zhRef.current, b = enRef.current;
     if (!a || !b) return;
-    a.style.height = "auto"; b.style.height = "auto";
-    const h = Math.min(Math.max(a.scrollHeight, b.scrollHeight) + 6, maxPx); // +6 抵消边框/亚像素，消滚动条
+    // 测高时：空值临时按 placeholder 撑开（placeholder 本身不计入 scrollHeight），测完还原受控空值
+    const measure = (el: HTMLTextAreaElement) => {
+      const empty = !el.value;
+      if (empty) el.value = el.placeholder;
+      el.style.height = "auto";
+      const h = el.scrollHeight;
+      if (empty) el.value = "";
+      return h;
+    };
+    const h = Math.min(Math.max(measure(a), measure(b)) + 6, maxPx); // +6 抵消边框/亚像素，消滚动条
     a.style.height = `${h}px`; b.style.height = `${h}px`;
-  }, [zhValue, enValue]);
-  const ta = "w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/96 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40";
+  }, [zhValue, enValue, zhPlaceholder, enPlaceholder]);
+  const ta = "w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white/96 font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400/40 placeholder:text-white/35";
   const badge = "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium";
   return (
     <div className="mb-5">
       <label className="text-sm text-white/92">{label}<span className="text-white/60 text-xs ml-2">{desc}</span></label>
       <div className="grid grid-cols-2 gap-3 mt-1.5">
         <div>
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center mb-1">
             <span className={`${badge} bg-blue-500/15 text-blue-300`}>中文</span>
-            <IconButton onClick={onResetZh} title="恢复默认" className="p-1"><ResetIcon size={14} /></IconButton>
           </div>
-          <textarea ref={zhRef} value={zhValue} onChange={(e) => onZh(e.target.value)} className={ta} style={{ maxHeight: maxPx }} />
+          <textarea ref={zhRef} value={zhValue} placeholder={zhPlaceholder} onChange={(e) => onZh(e.target.value)} className={ta} style={{ maxHeight: maxPx }} />
         </div>
         <div>
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center mb-1">
             <span className={`${badge} bg-violet-500/15 text-violet-300`}>English</span>
-            <IconButton onClick={onResetEn} title="恢复默认" className="p-1"><ResetIcon size={14} /></IconButton>
           </div>
-          <textarea ref={enRef} value={enValue} onChange={(e) => onEn(e.target.value)} className={ta} style={{ maxHeight: maxPx }} />
+          <textarea ref={enRef} value={enValue} placeholder={enPlaceholder} onChange={(e) => onEn(e.target.value)} className={ta} style={{ maxHeight: maxPx }} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// 提示词预设切换条：5 个 chip（单击切换、双击重命名）+ 右侧清空（橡皮擦，二次确认，仅清空当前预设内容）。
+function PresetBar({ presets, active, onSwitch, onRename, onClear }: {
+  presets: { name: string; values: Record<string, string> }[];
+  active: number;
+  onSwitch: (i: number) => void;
+  onRename: (i: number, name: string) => void;
+  onClear: () => void;
+}) {
+  const [editing, setEditing] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const [editWidth, setEditWidth] = useState<number>(0);  // 重命名输入框宽度 = 被双击 chip 的实际宽度
+  const [confirming, setConfirming] = useState(false);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const beginRename = (i: number, width: number) => {
+    setEditing(i);
+    setDraft(presets[i]?.name || `预设 ${i + 1}`);
+    setEditWidth(width);
+  };
+  const commitRename = () => {
+    if (editing === null) return;
+    onRename(editing, draft.trim() || `预设 ${editing + 1}`);
+    setEditing(null);
+  };
+  const clickClear = () => {
+    if (confirming) {
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+      setConfirming(false);
+      onClear();
+    } else {
+      setConfirming(true);
+      confirmTimer.current = setTimeout(() => setConfirming(false), 3000);  // 3 秒内未再次点击则取消
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 mt-3">
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((p, i) => (
+          editing === i ? (
+            <input key={i} autoFocus value={draft}
+              style={{ width: editWidth, boxSizing: "border-box" }}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setEditing(null); }}
+              className="px-3 py-1 text-xs rounded-md bg-white/[0.06] text-white border border-blue-400/50 focus:outline-none" />
+          ) : (
+            <button key={i} onClick={() => onSwitch(i)} onDoubleClick={(e) => beginRename(i, e.currentTarget.offsetWidth)}
+              title="单击切换 · 双击重命名"
+              className={`min-w-[88px] px-3 py-1 text-xs rounded-md border transition ${
+                i === active
+                  ? "bg-blue-500/20 text-white/92 border-blue-400/40 font-medium"
+                  : "bg-white/[0.04] text-white/70 border-white/[0.08] hover:text-white/92"
+              }`}>
+              {p.name || `预设 ${i + 1}`}
+            </button>
+          )
+        ))}
+      </div>
+      <div className="ml-auto">
+        <IconButton onClick={clickClear} title={confirming ? "再次点击确认清空当前预设" : "清空当前预设内容"}
+          className={`p-1.5 ${confirming ? "text-red-300 bg-red-500/15 rounded-md" : ""}`}>
+          <EraserIcon size={16} />
+        </IconButton>
       </div>
     </div>
   );
@@ -344,6 +421,7 @@ const EMPTY_SETTINGS: AppSettings = {
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
   overlay: { enabled: true, font_file: "C:/Windows/Fonts/msyh.ttc", font_size_ratio: 0.035, color: "#FFFFFF", bg_opacity: 0.45, margin_ratio: 0.03 },
   prompts: {},
+  prompt_presets: { active: 0, presets: [] },
 };
 
 // 模型配置页：供应商横铺 tab（仅配 base_url + api_key；当前用哪个在流水线页选）
@@ -951,7 +1029,7 @@ export function SettingsPage() {
         </Field>
       </Section>
 
-      <Section title="画面标题" desc="在合成视频的每张画面上烧录标题文字；需后端字体文件配置正确才会生效。">
+      <Section title="画面标题" desc="在合成视频的每张画面上烧录标题文字；需后端有可用的 CJK 字体（见依赖要求）才会生效。">
         <Field label="画面标题烧录" center>
           <label className="inline-flex items-center gap-2 cursor-pointer select-none">
             <input type="checkbox" checked={settings.overlay.enabled}
@@ -959,10 +1037,6 @@ export function SettingsPage() {
               className="w-4 h-4 accent-blue-500 rounded" />
             <span className="text-sm text-white/76">{settings.overlay.enabled ? "已开启" : "已关闭"}</span>
           </label>
-        </Field>
-        <Field label="字体文件路径" desc="绝对路径或相对于后端工作目录的路径，留空使用内置字体">
-          <input value={settings.overlay.font_file} onChange={(e) => patch("overlay", { font_file: e.target.value })}
-            placeholder="如 C:\Windows\Fonts\msyh.ttc 或 assets/NotoSansSC.otf" className={monoInputCls} />
         </Field>
         <Field label="字号比例" desc="相对于画面高度的比例（0.01–0.15），如 0.045 = 4.5%">
           <div className="flex items-center gap-3">
@@ -1043,27 +1117,41 @@ export function SettingsPage() {
         </Section>
       </>)}
 
-      {activeTab === "prompts" && (<>
-      <Section title="提示词" desc="流水线各步骤的 AI 提示词；中文/英文各一套（任务语言决定用哪套），留空回退内置默认。改后点上方「保存」。">
-        {promptDefs && Object.entries(promptDefs).map(([key, def]) => (
-          <PromptRow key={key} label={def.label} desc={def.desc}
-            zhValue={settings.prompts?.[key] || def.default}
-            enValue={settings.prompts?.[`${key}_en`] || def.default_en}
-            onZh={(v) => patch("prompts", { [key]: v })}
-            onEn={(v) => patch("prompts", { [`${key}_en`]: v })}
-            onResetZh={() => patch("prompts", { [key]: def.default })}
-            onResetEn={() => patch("prompts", { [`${key}_en`]: def.default_en })} />
-        ))}
-      </Section>
-      </>)}
+      {activeTab === "prompts" && (() => {
+        const pp = settings.prompt_presets;
+        const presets = pp?.presets ?? [];
+        const active = Math.min(Math.max(pp?.active ?? 0, 0), Math.max(presets.length - 1, 0));
+        const cur = presets[active]?.values ?? {};
+        const setActiveValues = (next: Record<string, string>) =>
+          patch("prompt_presets", { presets: presets.map((p, i) => (i === active ? { ...p, values: next } : p)) });
+        const onField = (k: string, v: string) => setActiveValues({ ...cur, [k]: v });
+        return (
+          <div className="space-y-4">
+            <div>
+              <h3 className={sectionTitleCls}>提示词预设</h3>
+              {presets.length > 0 && (
+                <PresetBar presets={presets} active={active}
+                  onSwitch={(i) => patch("prompt_presets", { active: i })}
+                  onRename={(i, name) => patch("prompt_presets", { presets: presets.map((p, j) => (j === i ? { ...p, name } : p)) })}
+                  onClear={() => setActiveValues({})} />
+              )}
+            </div>
+            <section className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-6 space-y-5">
+              {promptDefs && Object.entries(promptDefs).map(([key, def]) => (
+                <PromptRow key={key} label={def.label} desc={def.desc}
+                  zhValue={cur[key] ?? ""}
+                  enValue={cur[`${key}_en`] ?? ""}
+                  zhPlaceholder={def.default}
+                  enPlaceholder={def.default_en}
+                  onZh={(v) => onField(key, v)}
+                  onEn={(v) => onField(`${key}_en`, v)} />
+              ))}
+            </section>
+          </div>
+        );
+      })()}
 
       {activeTab === "users" && <UsersTab />}
-
-      {activeTab !== "users" && (
-        <p className="text-xs text-white/46 text-center pt-2">
-          设置保存在 config.yaml
-        </p>
-      )}
     </div>
   );
 }

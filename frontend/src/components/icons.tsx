@@ -36,6 +36,10 @@ export const ImportIcon = ({ size, className }: IconProps) =>
 export const SparklesIcon = ({ size, className }: IconProps) =>
   svg(<><path d="M12 3l1.6 4.9a2 2 0 0 0 1.3 1.3L20 11l-4.9 1.6a2 2 0 0 0-1.3 1.3L12 19l-1.6-4.9a2 2 0 0 0-1.3-1.3L4 11l4.9-1.6a2 2 0 0 0 1.3-1.3z" /><path d="M19 4v3" /><path d="M20.5 5.5h-3" /></>, size, className);
 
+// 用于「清空当前预设内容」：橡皮擦，区别于删除（垃圾桶）——只擦内容不删槽位
+export const EraserIcon = ({ size, className }: IconProps) =>
+  svg(<><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l9.6-9.6a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></>, size, className);
+
 // 用于「重新生成」（脚本/配音/图片）：魔杖+闪光，明确区别于刷新箭头 RefreshIcon，避免误读为「刷新」
 export const WandIcon = ({ size, className }: IconProps) =>
   svg(<><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z" /><path d="m14 7 3 3" /><path d="M5 6v4" /><path d="M19 14v4" /><path d="M10 2v2" /><path d="M7 8H3" /><path d="M21 16h-4" /><path d="M11 3H9" /></>, size, className);

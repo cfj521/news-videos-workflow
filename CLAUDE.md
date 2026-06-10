@@ -104,6 +104,7 @@ pnpm test                        # Vitest
 - 发布平台凭证不在此文件，存仓库根的 `publish_targets.yaml`（按账号，「发布管理」页配置）
 - `overlay` — 分镜标题烧录样式（`font_file` / `font_size_ratio` / `color` / `bg_opacity` / `margin_ratio` 等；仅 FFmpeg 两路读 `font_file`，HTML 路走 CSS 字体）；`pipeline.max_articles`（per-run）是统一的内容条数上限（top-N）——普通源与 AI HOT 直用都经 `ScoringService` 选取此数量；`pipeline.max_images` 超限时按评分裁掉低分整组（`cap_scenes_by_score`，不再 AI 合并）
 - 计划任务排期不在 `config.yaml`，存仓库根 `schedule.yaml`（不入库，模板见 `schedule.yaml.example`）
+- 提示词不在 `config.yaml`，存仓库根 `prompts.yaml`（不入库，模板见 `prompts.yaml.example`，由 `app/store/prompts_store.py` 读写）：5 套预设（`#1~#5`，每套中英两份），`active` 指向当前生效预设，由 `config.get_settings()` 注入 `settings.prompt_presets` 并把生效预设镜像到 `settings.prompts`（`resolve_prompt` 仍读 `settings.prompts`，不变）；首次启动自动从旧 `config.yaml` 的 `prompts` 块迁入预设 `#1`。在「设置 → 提示词配置」页切换/重命名/清空，统一由顶部「保存」落盘
 
 ## Conventions
 
