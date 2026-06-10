@@ -8,21 +8,60 @@
 ![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
 ![Deploy](https://img.shields.io/badge/deploy-systemd-FCC624?logo=linux&logoColor=black)
 
-从新闻采集到视频发布的全链路自动化平台：抓取新闻 → 生成脚本 → 生成图片/视频素材 → 合成配音视频 → 多平台发布。
+把新闻做成成片并发布的全链路平台——**抓取 → 评分选材 → 写脚本 → 生成图片/视频素材 → 配音合成 → 多平台发布**——可全自动，也可在任意环节暂停人工审核。全程在 Web 管理面板里操作。
 
-**技术栈**：Python（FastAPI）后端 · React（Vite + TypeScript）前端
+**技术栈**：Python（FastAPI）后端 · React（Vite + TypeScript）前端。
+
+## 功能特点
+
+**采集与选材**
+- 多种采集器：**RSS**、**网页抓取**（Scrapling，针对无 RSS 的站）、**搜索 API**（Tavily / Brave / Serper / DuckDuckGo）、以及 **AI-HOT** 直用源。
+- 分类标签（AI 模型 / 产品 / 行业 / 论文 / 技巧）+ 可配置时间窗口。
+- 跨任务**去重**（回溯窗口内）后，再走一遍 AI **评分**排序，取分数最高的 top-N（`max_articles`）。
+- **人工导入**：可按 URL 或上传文件添加文章，或完全跳过采集、喂自己的内容。
+
+**脚本与素材**
+- AI 为每条资讯生成**分镜脚本**（口播旁白 + 英文画面/运镜提示词）——支持单条汇总、日报批量、周报归纳三种框定。
+- **中英双语**：任务语言决定用哪套提示词，并提供 **5 套可切换预设**（双击重命名）。
+- 图片素材走所选图片 provider；**配音**走所选 TTS provider。
+- **逐分镜人工干预**：重生成脚本、单张图片、单条画面提示词；重摇文章列表。
+
+**三条出片路线**
+- **ComfyUI** —— 本地 GPU 扩散（图片：z_image / Qwen-Image；视频：Wan 2.2 / LTX 2.3）。
+- **Hyperframes** —— HTML/CSS 动态图形，无需 GPU（Node + `hyperframes`）。
+- **纯语音** —— 只有口播、无画面。
+- 可选**标题烧录**叠加层（CJK 字体），样式可调。
+
+**可插拔 AI provider**
+- **文本 / 图片 / 多模态 / 语音** 各自通过配置切换——OpenAI、DashScope、Edge-TTS、ComfyUI…… —— 不改业务代码。
+- 按供应商的凭证库；**流水线配置**页是唯一选「每个用途用哪个供应商 + 模型」的地方。
+
+**本地 ComfyUI + 远程唤醒**
+- 图片/视频生成跑在**本地 ComfyUI**，一键测试连接。
+- 可把 app 部署在**无 GPU 的服务器**、ComfyUI 放另一台 GPU 机器，按需 **Wake-on-LAN** 唤醒。ComfyUI 不可达时任务直接报错停止（不静默兜底）。
+
+**发布与编排**
+- **多平台发布**（适配器模式：YouTube、Bilibili……），凭证按账号管理。
+- **计划任务**：类 cron 排期（每日 / 每周 / 每月），到点自动建任务。
+- **自动** 或 **手动（逐步审核）** 两种执行模式；每个 stage 幂等、**可从任意 stage 重试**。
+- 任务**全局串行**、同一时刻一个，其余排队，无需额外 worker/broker。
+- Web 管理面板：仪表盘（监控/审核/干预）、新闻源、发布管理、计划任务、设置，以及用户管理。
 
 ## 流水线
 
 ```
 [Collector] → [Processor] → [Generator] → [Composer] → [Publisher]
-   抓取新闻      整理/脚本      图片/视频素材    合成视频+配音      多平台发布
-   S1            S2/S3          S3/S5           S4/S5             S6
+   抓取+评分    脚本/分镜      图片/视频素材   合成+配音      多平台发布
+   S1           S2/S3         S3/S5          S4/S5          S6
 ```
 
-每个 stage 在后端进程内顺序执行；整条任务通过进程内**全局串行队列**（单 worker 线程）**逐个执行**，同一时刻最多一个，无需额外 worker/broker。状态存 DB，支持从任意 stage 重试。
+每个 stage 在后端进程内顺序执行，状态存 DB，可从任意 stage 续跑/重试。整条任务经单一进程内 worker 串行执行（其余显示 `pending`）；重启会丢「排队中」的任务、正在跑的优雅停止。
 
-## 环境准备
+## 运行选项
+
+新建任务时可选：**时间范围**（1d/3d/7d/15d/1m）· **最大文章数** · **分类** · **语言**（中/英）· **视频路线**（ComfyUI / Hyperframes / 纯语音）· **采集模式**（自动采集 / 人工导入）· **执行模式**（自动 / 手动逐步审核）· **信息源** · **发布账号**。计划任务沿用同一组选项（执行模式强制 auto）。
+
+## 安装
 
 ### 后端（conda + requirements.txt）
 
@@ -37,51 +76,39 @@ pip install -r requirements.txt        # 含发布可选依赖 biliup / google-*
 ### 前端
 
 ```bash
-cd frontend
-pnpm install
+cd frontend && pnpm install && pnpm build   # 后端托管构建产物 frontend/dist
 ```
 
-### 基础设施 / 外部依赖
+### 系统依赖
 
-- **FFmpeg**：需在系统 PATH 中可用（视频合成；也是 **Hyperframes** 路线的兜底合成器）。Ubuntu：`sudo apt install -y ffmpeg fonts-noto-cjk`
-- **中日韩字体**（FFmpeg / ComfyUI 路的标题烧录）：需一个可用的 CJK 字体文件。Ubuntu 用 `fonts-noto-cjk`（见上）；Windows 用系统自带 `C:/Windows/Fonts/msyh.ttc`。缺失只跳过烧录、不影响出片
-- **Node ≥ 22 + Hyperframes**（仅 `hyperframes` 视频路线需要）：Ubuntu 默认源版本过旧，用 NodeSource 装 Node 22：`curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`，再 `sudo npm i -g hyperframes`（或首次渲染由 `npx` 联网拉取）；缺失则回退 FFmpeg（非 pip 依赖）
-- **ComfyUI**（可选，默认的本地图片/视频生成路线）：本机运行 ComfyUI（默认 `http://127.0.0.1:8188`），模型见 `scripts/download-comfyui-models.ps1`。选 ComfyUI 路线时，不可达/失败会**直接报错停止**（不兜底 FFmpeg）。若把 app 部署到无 GPU 的服务器，ComfyUI 可放在另一台机器，用 **Wake-on-LAN** 按需唤醒（在「设置 → ComfyUI」配置，可用 `scripts/wake-comfyui.py` 测试）
+- **FFmpeg** —— 视频合成必需（也是 Hyperframes 路线的兜底合成器）。Ubuntu：`sudo apt install -y ffmpeg fonts-noto-cjk`。
+- **CJK 字体** —— FFmpeg / ComfyUI 路的标题烧录用。Ubuntu 用 `fonts-noto-cjk`（见上）；Windows 用自带 `C:/Windows/Fonts/msyh.ttc`。缺失只跳过烧录、不影响出片。
+- **Node ≥ 22 + Hyperframes** —— 仅 `hyperframes` 路线需要。Ubuntu（默认源太旧，用 NodeSource）：`curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`，再 `sudo npm i -g hyperframes`（或首次渲染由 `npx` 拉取）。非 pip 依赖。
+- **ComfyUI** —— 可选，仅默认的本地图片/视频路线需要；见 [ComfyUI 模型](#comfyui-模型本地图片视频生成)。
 
-## 运行
+### 配置文件
+
+配置均为仓库根的 YAML 文件（已 gitignore），从同名 `.example` 模板创建：
 
 ```bash
-# 后端 API（流水线跑在进程内，任务串行执行、同一时刻一个，无需额外 worker/broker）
-cd backend && uvicorn app.main:app --reload --port 8000   # http://127.0.0.1:8000
-# 前端
-cd frontend && pnpm dev                              # http://127.0.0.1:5173
+cp config.yaml.example          config.yaml            # 必需：基础配置（端口/路线/分辨率/语言…）
+cp model_providers.yaml.example model_providers.yaml   # provider 的 base_url/api_key（也可在「模型配置」页填）
 ```
 
-首次启动会播种默认管理员账号 **admin / admin**，登录后请在「设置 → 用户」修改密码。
+只有 `config.yaml` 必须先建。其余首次使用时自动生成、或由对应设置页写入：`prompts.yaml`（提示词预设）、`news_sources.yaml`（新闻源）、`publish_targets.yaml`（发布账号）、`schedule.yaml`（计划任务）。需要预置时再 `cp` 对应模板。
 
-## 部署
-
-推荐 **Ubuntu + systemd**，见 [`deploy/README.md`](deploy/README.md)。一个进程单端口托管前端（静态）+ 后端（API + 进程内流水线），无需 worker/broker。
-
-> 原先的**单容器 Docker** 方案已**归档**（暂不维护），移至 [`deploy/docker-archive/`](deploy/docker-archive/README.md)，需要时按该目录说明恢复。
-
-> 本地开发仍是两端口：`pnpm dev`（vite :5173，热更新）把 `/api` 代理到后端（:8000）。
-
-## 测试
-
-```bash
-cd backend && pytest          # 后端
-cd frontend && pnpm build     # 前端类型检查 + 构建
-```
+> 首次启动会播种默认管理员 **admin / admin**，请在「设置 → 用户」尽快改密。
 
 ## 配置
 
-- 首次配置：在仓库根目录复制模板 `cp config.yaml.example config.yaml`，填入 API Key 即可启动（`config.yaml` 已 gitignore，不入库）；之后推荐用设置页（`/settings`）可视化修改，保存时写回该文件。加载由 `backend/app/config.py`（pydantic + YAML）负责——**项目用根目录的 `config.yaml`，不是 `.env`**。
-- **模型配置**页：按用途分组（文本 / 图片 / 多模态 / TTS）的供应商参数库，每个供应商配 base_url / API Key / 输出 tokens 上限 + **可编辑的模型名列表**，支持自定义供应商；接口/Key 按供应商共享。
-- **流水线配置**页：唯一选「当前用哪个供应商 + 模型」的地方（总结 / 文案 / 图片 / 多模态 / 语音），并设默认分辨率、语言、视频路线、ComfyUI 视频模型与帧率。
-- **ComfyUI 参数**页：连接地址带「测试连接」按钮（探 `/system_stats`）+ 可选 **Wake-on-LAN 远程唤醒**（ComfyUI 在另一台机器时用）；以及图片（z_image / qwen）与视频（wan5b / wan14b / lightx2v / ltx）各 workflow 的 steps/cfg 参数。
-- **提示词配置**页：5 套可切换预设（#1–#5，双击 chip 重命名），每套含中文 / 英文一份，任务语言决定用哪套，留空回退内置默认。存于仓库根 `prompts.yaml`（已 gitignore，模板 `prompts.yaml.example`），不写在 `config.yaml` 里。
-- **发布平台**：凭证在「发布管理」页按账号配置，存于仓库根的 `publish_targets.yaml`（每账号自包含），不写在 `config.yaml` 里。
+一切都可在设置页（`/settings`）里改，保存时写回各 YAML 文件。加载由 `backend/app/config.py`（pydantic + YAML）负责——**项目用根目录的 `config.yaml`，不是 `.env`**。
+
+- **模型配置** —— 按用途分组（文本 / 图片 / 多模态 / 语音）的供应商库：base_url / API Key / 输出 token 上限 + 可编辑模型名列表；支持自定义供应商，凭证按供应商共享。
+- **流水线配置** —— 选「每个用途用哪个供应商 + 模型」（总结 / 文案 / 图片 / 多模态 / 语音），并设默认分辨率、语言、视频路线、ComfyUI 视频模型与帧率。
+- **ComfyUI** —— 连接地址带**测试连接**按钮、可选 **Wake-on-LAN 远程唤醒**；图片（z_image / qwen）与视频（wan5b / wan14b / lightx2v / ltx）各 workflow 的 steps/cfg。
+- **提示词** —— 5 套可切换预设（#1–#5，双击重命名），每套中英各一份；留空回退内置默认。
+- **发布管理** —— 各平台凭证按账号配置。
+- **新闻源** / **计划任务** —— 管理信息源与排期。
 
 ## ComfyUI 模型（本地图片/视频生成）
 
@@ -108,7 +135,7 @@ bash scripts/download-comfyui-models.sh
 
 > 自定义目标目录：`-ModelsDir <路径>`（PowerShell）/ `--models-dir <路径>`（bash）；默认 `D:\models\comfyui` / `~/models/comfyui`。
 
-下完把 ComfyUI 的 `extra_model_paths.yaml` 的 `base_path` 指向该目录（脚本默认 `D:/models/comfyui/`），重启 ComfyUI，再到**设置 → 流水线配置**选对应模型（workflow 的 steps/cfg 在**设置 → ComfyUI 参数**）。**app 主机没有 GPU？** 要么把视频路线设为 `hyperframes`（回退 FFmpeg）——ComfyUI 是可选的；要么把 ComfyUI 放在另一台 GPU 机器，用 **Wake-on-LAN** 按需唤醒（设置 → ComfyUI；该机自行负责进程自启与网络可达）。
+下完把 ComfyUI 的 `extra_model_paths.yaml` 的 `base_path` 指向该目录，重启 ComfyUI，再到**设置 → 流水线配置**选对应模型。**app 主机没有 GPU？** 要么把视频路线设为 `hyperframes`（无需 GPU）/ `纯语音`（只口播），要么把 ComfyUI 放另一台 GPU 机、用 **Wake-on-LAN** 唤醒（设置 → ComfyUI）。
 
 ## 发布
 
@@ -116,6 +143,12 @@ bash scripts/download-comfyui-models.sh
 
 - **YouTube**：OAuth（Client ID + Client Secret + Refresh Token），需先在 OAuth Playground 获取 refresh_token，应用须设「外部 + 正式版」。
 - **Bilibili**：浏览器 Cookie（SESSDATA + bili_jct 必填，DedeUserID/buvid3/buvid4 建议），基于 biliup 投稿。
+
+## 部署
+
+推荐 **Ubuntu + systemd**，完整步骤（服务账号、挂载、配置文件、单元文件）见 **[deploy/README.md](deploy/README.md)**。一个进程单端口托管前端（静态）+ 后端（API + 进程内流水线），无需 worker/broker。
+
+> 原单容器 **Docker** 方案已归档（暂不维护），见 [`deploy/docker-archive/`](deploy/docker-archive/README.md)。
 
 ## 文档
 

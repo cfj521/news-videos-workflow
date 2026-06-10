@@ -4,6 +4,25 @@
 
 > Docker 一体化方案已归档（暂不维护），见 [`docker-archive/`](docker-archive/README.md)；本目录是当前推荐的非容器（systemd）方案。
 
+## 0. 运行用户与目录
+
+服务以非 root 的**服务账号** `app_nvw`（主组 `sharing`，对应单元里的 `User`/`Group`）运行：
+
+```bash
+getent group sharing || sudo groupadd sharing
+# 系统账号、不可交互登录、独立 home（首跑时 scrapling/缓存需可写）
+sudo useradd --system --create-home --home-dir /home/app_nvw \
+     --gid sharing --shell /usr/sbin/nologin app_nvw
+
+# 仓库 + 数据目录归属（/data/news-videos-workflow 为部署路径）
+sudo chown -R app_nvw:sharing /data/news-videos-workflow
+sudo find /data/news-videos-workflow -type d -exec chmod 2775 {} \;   # setgid：新文件继承 sharing 组
+```
+
+- **conda 环境可达**：若 conda 装在别的用户 home 下（如 `/home/colex/miniconda3`），`app_nvw` 默认进不去 → 启动失败。放行 `sudo chmod o+x /home/colex /home/colex/miniconda3`，或更干净地把 miniconda 装到公共路径（如 `/opt/miniconda3`，归 `root:sharing` 组可读执行）。
+- 以该用户跑安装命令（`nologin` 不影响 `sudo -u`）：`sudo -u app_nvw bash -lc '...'`。
+- `/data` 若是独立挂载，确认 `app_nvw` 能穿透访问；单元已加 `RequiresMountsFor=/data`，挂载就绪后才启动。
+
 ## 1. 前置依赖
 
 ```bash
@@ -20,21 +39,30 @@ sudo apt install -y nodejs && sudo npm i -g hyperframes
 Python 环境（conda，Python 3.12）：
 
 ```bash
-conda create -n env_news_videos_wf python=3.12 -y
-conda run -n env_news_videos_wf pip install -r /opt/news-videos-workflow/requirements.txt
+conda create -n env_nvw python=3.12 -y
+conda run -n env_nvw pip install -r /data/news-videos-workflow/requirements.txt
 ```
 
 前端构建（产物 `frontend/dist` 由后端托管）：
 
 ```bash
-cd /opt/news-videos-workflow/frontend && pnpm install && pnpm build
+cd /data/news-videos-workflow/frontend && pnpm install && pnpm build
 ```
 
-配置：
+配置文件（均在仓库根、均已 gitignore，从同名 `.example` 模板创建）：
 
 ```bash
-cd /opt/news-videos-workflow && cp config.yaml.example config.yaml   # 填入各 provider 密钥
+cd /data/news-videos-workflow
+cp config.yaml.example          config.yaml            # 必需：基础配置（端口/路线/分辨率/语言…）
+cp model_providers.yaml.example model_providers.yaml   # provider 的 base_url/api_key（也可后续在「设置→模型配置」页填，保存时自动生成）
+# 以下按需，不建也行——后端会自动生成 / 由对应页面写入：
+#   prompts.yaml          首次启动自动生成（模板 prompts.yaml.example）
+#   news_sources.yaml     「新闻源」页管理
+#   publish_targets.yaml  「发布管理」页按账号写入（模板 publish_targets.yaml.example）
+#   schedule.yaml         「计划任务」页写入（模板 schedule.yaml.example）
 ```
+
+> 若 `cp` 用了 `sudo`/其它用户，记得把新建的 yaml 再 `chown app_nvw:sharing`（或直接 `sudo -u app_nvw cp ...`），保证运行用户可读写。
 
 ## 2. 安装服务
 
@@ -44,7 +72,7 @@ cd /opt/news-videos-workflow && cp config.yaml.example config.yaml   # 填入各
 - **③** `Environment=PATH`：conda 环境 bin 路径（含 `uvicorn`/`python`）
 - **④** `ExecStart`：conda 环境里 `uvicorn` 的绝对路径
 
-> conda 环境 bin 路径查法：`conda run -n env_news_videos_wf which uvicorn`
+> conda 环境 bin 路径查法：`conda run -n env_nvw which uvicorn`
 
 ```bash
 sudo cp deploy/news-videos-workflow.service /etc/systemd/system/
@@ -67,7 +95,7 @@ sudo systemctl stop news-videos-workflow     # 停止
 
 ```bash
 git pull
-conda run -n env_news_videos_wf pip install -r requirements.txt   # 依赖有变时
+conda run -n env_nvw pip install -r requirements.txt   # 依赖有变时
 cd frontend && pnpm install && pnpm build                          # 前端有变时
 sudo systemctl restart news-videos-workflow
 ```

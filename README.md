@@ -8,20 +8,59 @@
 ![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
 ![Deploy](https://img.shields.io/badge/deploy-systemd-FCC624?logo=linux&logoColor=black)
 
-An end-to-end platform that turns news into published videos: scrape news → generate script → generate image/video assets → compose narrated video → publish to multiple platforms.
+An end-to-end platform that turns news into published videos — **scrape → score & select → script → generate image/video assets → compose with narration → publish to multiple platforms** — fully automated, or paused at any step for human review. Managed from a web admin panel.
 
-**Tech stack**: Python (FastAPI) backend · React (Vite + TypeScript) frontend
+**Tech stack**: Python (FastAPI) backend · React (Vite + TypeScript) frontend.
+
+## Features
+
+**Collection & selection**
+- Multiple collectors: **RSS**, **web scraping** (Scrapling, for sites without a feed), **search APIs** (Tavily / Brave / Serper / DuckDuckGo), and **AI-HOT** direct sources.
+- Category tagging (AI models / products / industry / papers / tips) and a configurable time window.
+- Cross-run **dedup** over a lookback window, then an AI **scoring** pass ranks items and keeps the top-N (`max_articles`).
+- **Manual import**: add an article by URL or by uploading a file, or skip collection entirely and feed your own content.
+
+**Script & assets**
+- AI builds a per-item **storyboard** (spoken narration + English image/motion prompts) — single-item, daily-batch, or weekly-digest framing.
+- **Bilingual** (Chinese / English): the task language picks the prompt set, with **5 switchable prompt presets** (rename by double-click).
+- Image assets via the chosen Image provider; **TTS narration** via the chosen TTS provider.
+- **Per-scene manual intervention**: regenerate the script, an image, or an image prompt; reroll the article list.
+
+**Three output routes**
+- **ComfyUI** — local GPU diffusion (image: z_image / Qwen-Image · video: Wan 2.2 / LTX 2.3).
+- **Hyperframes** — HTML/CSS motion graphics, no GPU needed (Node + `hyperframes`).
+- **Audio-only** — pure narration, no visuals.
+- Optional **title burn-in** overlay (CJK font), fully styleable.
+
+**Pluggable AI providers**
+- **Text / Image / Vision / TTS** are each swappable via config — OpenAI, DashScope, Edge-TTS, ComfyUI, … — no code changes.
+- A per-provider credential library; the **Pipeline** page is the single place that picks which provider + model each purpose uses.
+
+**Local ComfyUI + remote wake**
+- Run image/video generation on a **local ComfyUI**, with a one-click connection test.
+- Deploy the app on a **GPU-less server** while ComfyUI lives on a separate GPU machine — woken on demand via **Wake-on-LAN**. If ComfyUI is unreachable the run fails clearly (no silent fallback).
+
+**Publishing & orchestration**
+- **Multi-platform publishing** via an adapter pattern (YouTube, Bilibili, …), credentials per account.
+- **Scheduling**: cron-like routines (daily / weekly / monthly) that auto-create runs at the set time.
+- **Auto** or **manual (step-by-step review)** execution; every stage is idempotent and **retryable from any stage**.
+- Runs execute **one at a time** through a global in-process serial queue — no extra worker/broker.
+- Web admin panel: Dashboard (monitor / review / intervene), Sources, Publishers, Schedules, Settings, plus user management.
 
 ## Pipeline
 
 ```
 [Collector] → [Processor] → [Generator] → [Composer] → [Publisher]
-   scrape       script       image/video    compose +       multi-platform
-   news         generation    assets         narration       publishing
+   scrape +     script /      image/video    compose +      multi-platform
+   score        storyboard    assets         narration      publishing
    S1           S2/S3         S3/S5          S4/S5           S6
 ```
 
-Each stage runs sequentially inside the backend process. Whole runs execute **one at a time** via a global in-process serial queue (a single worker thread) — no extra worker/broker. State is persisted to the DB, and a run can be retried from any stage.
+Each stage runs sequentially inside the backend process; state is persisted to the DB so a run can resume/retry from any stage. Whole runs are serialized through a single in-process worker (others queue as `pending`); a restart drops queued runs and gracefully stops the running one.
+
+## Run options
+
+When you create a run you choose: **time range** (1d / 3d / 7d / 15d / 1m) · **max articles** · **category** · **language** (zh / en) · **video route** (ComfyUI / Hyperframes / Audio-only) · **collection mode** (auto-collect / manual import) · **execution mode** (auto / manual step-by-step review) · **sources** · **publish targets**. The same options back the scheduler (which always runs in auto mode).
 
 ## Setup
 
@@ -38,55 +77,43 @@ pip install -r requirements.txt        # includes optional publishing deps: bili
 ### Frontend
 
 ```bash
-cd frontend
-pnpm install
+cd frontend && pnpm install && pnpm build   # backend serves the built frontend/dist
 ```
 
-### Infrastructure / external dependencies
+### System dependencies
 
-- **FFmpeg**: must be available on the system PATH (video composition; also the fallback compositor for the **Hyperframes** route). Ubuntu: `sudo apt install -y ffmpeg fonts-noto-cjk`.
-- **CJK font** (title burn-in on the FFmpeg / ComfyUI routes): a usable CJK font file. Ubuntu: `fonts-noto-cjk` (above); Windows uses the built-in `C:/Windows/Fonts/msyh.ttc`. Missing → burn-in is skipped, output unaffected.
-- **Node ≥ 22 + Hyperframes** (only for the `hyperframes` video route). Install Node 22 on Ubuntu (default repo is too old, use NodeSource): `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`, then `sudo npm i -g hyperframes` (or let `npx` fetch it on first render). Missing → falls back to FFmpeg. (Not a pip dependency.)
-- **ComfyUI** (optional, the default local image/video generation route): run ComfyUI locally (default `http://127.0.0.1:8188`); models via `scripts/download-comfyui-models.ps1`. When the ComfyUI route is selected, an unreachable/failed ComfyUI **errors and stops the run** (no FFmpeg fallback). If the app is deployed on a GPU-less server, ComfyUI can live on a separate machine and be woken on demand via **Wake-on-LAN** (configure under Settings → ComfyUI; test with `scripts/wake-comfyui.py`).
+- **FFmpeg** — required for video composition (also the fallback compositor for the Hyperframes route). Ubuntu: `sudo apt install -y ffmpeg fonts-noto-cjk`.
+- **CJK font** — for title burn-in on the FFmpeg / ComfyUI routes. Ubuntu: `fonts-noto-cjk` (above); Windows uses the built-in `C:/Windows/Fonts/msyh.ttc`. Missing → burn-in is skipped, output unaffected.
+- **Node ≥ 22 + Hyperframes** — only for the `hyperframes` route. Ubuntu (default repo too old, use NodeSource): `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`, then `sudo npm i -g hyperframes` (or let `npx` fetch it on first render). Not a pip dependency.
+- **ComfyUI** — optional, only for the default local image/video route; see [ComfyUI models](#comfyui-models-local-imagevideo-generation).
 
-## Run
+### Config files
+
+All config lives in repo-root YAML files (gitignored), created from their `.example` templates:
 
 ```bash
-# Backend API (the pipeline runs in-process; tasks execute serially, one at a time — no extra worker/broker)
-cd backend && uvicorn app.main:app --reload --port 8000   # http://127.0.0.1:8000
-# Frontend
-cd frontend && pnpm dev                              # http://127.0.0.1:5173
+cp config.yaml.example          config.yaml            # required: base settings (port / route / resolution / language…)
+cp model_providers.yaml.example model_providers.yaml   # provider base_url / api_key (or fill via the Models page)
 ```
 
-First launch seeds a default admin account **admin / admin** — change it under **Settings → Users** after logging in.
+Only `config.yaml` is required up front. The rest auto-create on first use or are written by their matching Settings page: `prompts.yaml` (prompt presets), `news_sources.yaml` (sources), `publish_targets.yaml` (publish accounts), `schedule.yaml` (scheduled runs). `cp` a template only if you want to pre-seed it.
 
-## Deployment
-
-Recommended: **systemd on Ubuntu** — see [`deploy/README.md`](deploy/README.md). One process serves the frontend (static) and the backend (API + in-process pipeline) on **one port** — no worker/broker.
-
-> The previous single-container **Docker** setup is **archived** (not maintained for now) under [`deploy/docker-archive/`](deploy/docker-archive/README.md); see that folder to restore it.
-
-> Local dev still uses two ports: `pnpm dev` (vite :5173, HMR) proxies `/api` to the backend (:8000).
-
-## Test
-
-```bash
-cd backend && pytest          # backend
-cd frontend && pnpm build     # frontend type-check + build
-```
+> On first launch the backend seeds a default admin **admin / admin** — change it under **Settings → Users**.
 
 ## Configuration
 
-- First-time setup: copy the template in the repo root, `cp config.yaml.example config.yaml`, fill in your API keys, and start (`config.yaml` is gitignored). Afterwards, prefer the Settings page (`/settings`) for a visual editor that writes back to the file on save. Loading is handled by `backend/app/config.py` (pydantic + YAML) — **the project uses the root `config.yaml`, not `.env`**.
-- **Models** page: a provider library grouped by purpose (Text / Image / Vision / TTS). For each provider configure base_url / API key / output-token limit and an **editable model-name list**; custom providers are supported. Credentials are shared per provider.
-- **Pipeline** page: the single place that selects **which provider + model** each purpose uses (summary / script / image / vision / TTS), plus default resolution, language, video route, and the ComfyUI video model + fps.
-- **ComfyUI** page: connection address with a **Test connection** button (probes `/system_stats`) and optional **Wake-on-LAN** remote wake (for running ComfyUI on a separate machine); plus per-workflow steps/cfg parameters for image (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx) workflows.
-- **Prompts** page: 5 switchable prompt presets (#1–#5, double-click a chip to rename), each holding a Chinese / English set — the task language decides which is used; empty fields fall back to built-in defaults. Stored in `prompts.yaml` at the repo root (gitignored; template `prompts.yaml.example`), not in `config.yaml`.
-- **Publishing platforms**: credentials are configured per account on the "Publishers" page and stored in `publish_targets.yaml` at the repo root (each account is self-contained), not in `config.yaml`.
+Everything is editable from the Settings page (`/settings`), which writes back to the YAML files on save. Loading is handled by `backend/app/config.py` (pydantic + YAML) — **the project uses the root `config.yaml`, not `.env`**.
+
+- **Models** — a provider library grouped by purpose (Text / Image / Vision / TTS): base_url / API key / output-token limit + an editable model-name list; custom providers supported, credentials shared per provider.
+- **Pipeline** — picks **which provider + model** each purpose uses (summary / script / image / vision / TTS), plus default resolution, language, video route, and ComfyUI video model + fps.
+- **ComfyUI** — connection address with a **Test connection** button and optional **Wake-on-LAN** remote wake; per-workflow steps/cfg for image (z_image / qwen) and video (wan5b / wan14b / lightx2v / ltx) workflows.
+- **Prompts** — 5 switchable presets (#1–#5, double-click to rename), each with a Chinese / English set; empty fields fall back to built-in defaults.
+- **Publishers** — per-account platform credentials.
+- **Sources** / **Schedules** — manage news sources and scheduled runs.
 
 ## ComfyUI models (local image/video generation)
 
-The default image/video route runs on a **local ComfyUI** (workflows in `comfyui/workflows/api/*.json`). You must download the models yourself and let ComfyUI find them. Reference config: **24 GB VRAM**; full set ≈ **160 GB** disk — you only need the route(s) you actually use. File names below omit the `.safetensors` suffix; the authoritative list (with download sources) is `scripts/download-comfyui-models.ps1` / `.sh`.
+The default image/video route runs on a **local ComfyUI** (workflows in `comfyui/workflows/api/*.json`). You download the models yourself and let ComfyUI find them. Reference config: **24 GB VRAM**; full set ≈ **160 GB** disk — you only need the route(s) you actually use. File names below omit the `.safetensors` suffix; the authoritative list (with download sources) is `scripts/download-comfyui-models.ps1` / `.sh`.
 
 | Route | ComfyUI dir(s) | Model files |
 |---|---|---|
@@ -109,14 +136,20 @@ bash scripts/download-comfyui-models.sh
 
 > Override the target dir with `-ModelsDir <path>` (PowerShell) / `--models-dir <path>` (bash); defaults: `D:\models\comfyui` / `~/models/comfyui`.
 
-Then point ComfyUI's `extra_model_paths.yaml` `base_path` at that folder (the scripts default to `D:/models/comfyui/`), restart ComfyUI, and pick the matching model under **Settings → Pipeline** (workflow params live under **Settings → ComfyUI**). **No GPU on the app host?** Either set the video route to `hyperframes` (falls back to FFmpeg) — ComfyUI is optional — or run ComfyUI on a separate GPU machine and let the app wake it on demand via **Wake-on-LAN** (Settings → ComfyUI; the machine handles auto-start and network reachability).
+Then point ComfyUI's `extra_model_paths.yaml` `base_path` at that folder, restart ComfyUI, and pick the matching model under **Settings → Pipeline**. **No GPU on the app host?** Either set the video route to `hyperframes` (no GPU) / `audio` (narration only), or run ComfyUI on a separate GPU machine and let the app wake it via **Wake-on-LAN** (Settings → ComfyUI).
 
 ## Publishing
 
 Supports YouTube, Bilibili, and more. For how to obtain and fill in each platform's account / cookie / token, see **[docs/video-publish-guide.md](docs/video-publish-guide.md)**:
 
-- **YouTube**: OAuth (Client ID + Client Secret + Refresh Token); obtain the refresh_token via the OAuth Playground, with the app set to "External + Production".
+- **YouTube**: OAuth (Client ID + Client Secret + Refresh Token); obtain the refresh_token via the OAuth Playground, app set to "External + Production".
 - **Bilibili**: browser cookies (SESSDATA + bili_jct required; DedeUserID/buvid3/buvid4 recommended), uploaded via biliup.
+
+## Deployment
+
+Recommended: **systemd on Ubuntu** — see **[deploy/README.md](deploy/README.md)** for the full walk-through (service account, mounts, config files, the unit file). One process serves the frontend (static) and the backend (API + in-process pipeline) on a single port — no worker/broker.
+
+> The previous single-container **Docker** setup is archived (not maintained) under [`deploy/docker-archive/`](deploy/docker-archive/README.md).
 
 ## Docs
 
