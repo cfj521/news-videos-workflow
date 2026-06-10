@@ -112,15 +112,33 @@ def delete_target(slug: str):
 
 @router.post("/login/start")
 async def login_start(body: LoginStartBody, db: Session = Depends(get_db)):
+    from datetime import datetime, timedelta, timezone
+
     if body.platform not in _LOGIN_PLATFORMS:
         raise HTTPException(status_code=422, detail="仅支持抖音/快手扫码登录")
     account = sau_runner.safe_account(body.account)
     if not account:
         raise HTTPException(status_code=422, detail="账号标识非法（仅 a-z 0-9 _ -）")
 
-    # 清理本账号旧的非进行中会话（并发判据：仍 starting/qr_ready 的不动）
+    # 清理本账号旧的非进行中会话（终态：success/failed/timeout）
     db.query(BrowserLoginSession).filter_by(platform=body.platform, account=account)\
         .filter(BrowserLoginSession.status.notin_(["starting", "qr_ready"])).delete(synchronize_session=False)
+
+    # 并发判据：同账号仍在进行中（starting/qr_ready）且未超 LOGIN_TIMEOUT → 拒绝；
+    # 更老的视为僵死，清掉后放行。
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=sau_runner.LOGIN_TIMEOUT)
+    existing = db.query(BrowserLoginSession).filter_by(platform=body.platform, account=account)\
+        .filter(BrowserLoginSession.status.in_(["starting", "qr_ready"])).all()
+    for row in existing:
+        updated = row.updated_at
+        if updated is not None and updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        if updated is not None and updated > cutoff:
+            raise HTTPException(status_code=409, detail="该账号已有进行中的扫码登录，请先完成或等待超时")
+        # 僵死会话：删除后放行
+        db.delete(row)
+    db.commit()
+
     sid = secrets.token_urlsafe(24)
     db.add(BrowserLoginSession(sid=sid, platform=body.platform, account=account, status="starting"))
     db.commit()

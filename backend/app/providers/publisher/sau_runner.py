@@ -26,6 +26,12 @@ _SAU_CONF_DIR = Path(__file__).resolve().parent / "sau_conf"
 _ACCOUNT_RE = re.compile(r"[a-z0-9_-]+")
 
 
+def ensure_cookies_dir() -> None:
+    """确保 cookie 目录存在（SAU 的 resolve_account_file 只做 mkdir(exist_ok=True) 无 parents，
+    全新部署下祖父目录缺失会 FileNotFoundError）。"""
+    _COOKIES_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def safe_account(account: str | None) -> str:
     """账号标识白名单：仅 [a-z0-9_-]，否则返回空串（视为未配置）。防止拼进文件名时越界。"""
     account = (account or "").strip()
@@ -124,6 +130,7 @@ async def run_upload(platform: str, account: str, file_path: str,
     acct = safe_account(account)
     if not acct:
         return False, "账号标识非法（仅允许 a-z 0-9 _ -）"
+    ensure_cookies_dir()
 
     argv = [sau, platform, "upload-video", "--account", acct,
             "--file", file_path, "--title", sanitize_text(title)[:TITLE_MAX],
@@ -185,6 +192,7 @@ async def run_login(platform: str, account: str,
     acct = safe_account(account)
     if not acct:
         return False, "failed"
+    ensure_cookies_dir()
 
     argv = [sys.executable, "-m", "app.providers.publisher.sau_login_worker", platform, acct]
     try:

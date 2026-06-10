@@ -95,3 +95,21 @@ def test_login_status_wrong_platform(client):
            "config_json": '{"sessdata": "s"}'}, headers=_h(tok))
     r = c.get("/api/publishers/b/login-status", headers=_h(tok))
     assert r.status_code == 422
+
+
+def test_login_start_rejects_concurrent(client, monkeypatch):
+    c, tok = client
+    from app.api import publishers as route
+
+    async def noop(*a, **k):
+        return None
+    monkeypatch.setattr(route, "_run_login_flow", noop)
+
+    r1 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "acct1"}, headers=_h(tok))
+    assert r1.status_code == 200
+    # 同账号再次发起：第一个仍 starting（noop 未推进）→ 409
+    r2 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "acct1"}, headers=_h(tok))
+    assert r2.status_code == 409
+    # 不同账号不受影响
+    r3 = c.post("/api/publishers/login/start", json={"platform": "douyin", "account": "acct2"}, headers=_h(tok))
+    assert r3.status_code == 200
