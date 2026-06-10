@@ -215,11 +215,23 @@ class WorkflowParams(BaseModel):
     cfg: float
 
 
+class ComfyuiWakeCfg(BaseModel):
+    """ComfyUI 远程唤醒（Wake-on-LAN）：部署在无 GPU 家庭服务器、ComfyUI 在另一台机器（WSL）时，
+    用到前若不可达先发 WoL 魔术包唤醒再轮询至就绪。进程自启/网络可达由该机自保。"""
+    enabled: bool = False
+    mac: str = ""                          # 目标机网卡 MAC（支持 AA:BB:.. / AA-BB-.. / 纯 hex）
+    broadcast: str = "255.255.255.255"     # 子网广播地址（如 192.168.1.255）
+    port: int = 9                          # WoL 端口，通常 9 或 7
+    ready_timeout: int = 180               # 唤醒后等待 ComfyUI 就绪的最长秒数（含冷启 + 载模型）
+    poll_interval: float = 3.0             # 就绪轮询间隔（秒）
+
+
 class ComfyuiCfg(BaseModel):
     """ComfyUI 参数库：地址、各 workflow 的生成参数。当前用哪个 workflow 由 pipeline 选型决定。"""
     workflows_dir: str = "comfyui/workflows/api"
     default_negative: str = "模糊, 丑陋, 变形, 低质量, 水印"
     server_url: str = "http://127.0.0.1:8188"  # 图片与视频生成共用一个 ComfyUI 地址
+    wake: ComfyuiWakeCfg = ComfyuiWakeCfg()    # 远程唤醒（WoL），默认关闭
     # ---- 图片 workflow 参数（图片 provider 选 comfyui 时生效）----
     image_params: dict[str, WorkflowParams] = {
         "z_image_turbo": WorkflowParams(steps=9, cfg=1.0),   # turbo 蒸馏，低步数

@@ -676,6 +676,10 @@ async def _run_inner(run_id: int, db: Session) -> None:
 
         from app.providers.image import build_image_provider
         from app.providers.tts import build_tts_provider
+        # 图片走 ComfyUI 时，先确保其在线（必要时远程唤醒并等待就绪），不可达即抛错停止
+        if cfg.pipeline.image_provider == "comfyui":
+            from app.providers.comfyui.wake import ensure_comfyui_ready
+            await ensure_comfyui_ready(cfg)
         image_provider = build_image_provider(cfg)
         # 按流水线选型构建语音 provider（edge-tts | openai | dashscope，共用供应商库 key）
         tts_provider = build_tts_provider(cfg)

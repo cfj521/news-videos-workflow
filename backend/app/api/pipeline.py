@@ -853,20 +853,19 @@ async def _render_video_async(run_id: int, session_factory):
         resolution = run.resolution or "1080x1920"
 
         if run.video_route == "comfyui":
+            # ComfyUI 视频路：失败（含 ComfyUI 未启动/不可达）直接抛出 → 由外层标记 failed 停止，
+            # 不兜底 FFmpeg（与图片路一致：选了 ComfyUI 就必须 ComfyUI 出片）。
             _update(db, run, progress_detail="S5 ComfyUI 视频生成中...")
-            try:
-                from app.providers.video import build_video_provider
-                from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
-                vp = build_video_provider(cfg)
-                result = await ComfyUIVideoComposer(vp, fps=cfg.pipeline.video_fps).compose(
-                    timeline_json=timeline, assets_dir=str(rd / "assets"),
-                    output_path=output_mp4, resolution=resolution,
-                )
-                final_path = result.file_path
-            except Exception as e:
-                log.warning("ComfyUI render failed for run #%d: %s — trying FFmpeg", run_id, e)
-                _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
-                final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.hyperframes.fps)
+            from app.providers.comfyui.wake import ensure_comfyui_ready
+            from app.providers.video import build_video_provider
+            from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
+            await ensure_comfyui_ready(cfg)  # 必要时远程唤醒并等待就绪，不可达即抛错停止
+            vp = build_video_provider(cfg)
+            result = await ComfyUIVideoComposer(vp, fps=cfg.pipeline.video_fps).compose(
+                timeline_json=timeline, assets_dir=str(rd / "assets"),
+                output_path=output_mp4, resolution=resolution,
+            )
+            final_path = result.file_path
         else:
             _update(db, run, progress_detail="S5 Hyperframes 渲染中...")
             from app.providers.composer.hyperframes_composer import HyperframesComposer

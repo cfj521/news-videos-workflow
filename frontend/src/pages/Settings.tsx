@@ -331,6 +331,40 @@ function PresetBar({ presets, active, onSwitch, onRename, onClear }: {
   );
 }
 
+// ComfyUI 地址输入 + 右侧「测试连接」：探测 {url}/system_stats，绿/红状态指示。测的是输入框当前值（含未保存）。
+function ComfyuiHealthField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [state, setState] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [msg, setMsg] = useState("");
+  const test = async () => {
+    setState("testing"); setMsg("");
+    try {
+      const r = await api.settings.comfyuiHealth(value);
+      if (r.ok) { setState("ok"); setMsg(r.detail || "在线"); }
+      else { setState("fail"); setMsg(r.error || "不可达"); }
+    } catch (e) {
+      setState("fail"); setMsg(e instanceof Error ? e.message : "请求失败");
+    }
+  };
+  return (
+    <div>
+      <div className="flex gap-2 items-center">
+        <input value={value} onChange={(e) => { onChange(e.target.value); setState("idle"); }} className={`${monoInputCls} flex-1`} />
+        <button onClick={test} disabled={state === "testing" || !value.trim()}
+          className={cx("shrink-0 px-3 py-2 text-xs rounded-md bg-white/[0.05] text-white/78 border border-white/[0.08] hover:text-white/96 transition",
+            (state === "testing" || !value.trim()) && "opacity-40 cursor-default")}>
+          {state === "testing" ? "测试中…" : "测试连接"}
+        </button>
+      </div>
+      {(state === "ok" || state === "fail") && (
+        <p className={cx("text-xs mt-1.5 flex items-center gap-1.5", state === "ok" ? "text-emerald-300" : "text-red-300")}>
+          <span className={cx("inline-block w-2 h-2 rounded-full shrink-0", state === "ok" ? "bg-emerald-400" : "bg-red-400")} />
+          <span className="break-all">{state === "ok" ? `已连接 · ${msg}` : `连接失败：${msg}`}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 // 分组内「添加自定义供应商」一行：自带输入态，加后回调父级（小一号按钮）
 function AddProviderInline({ onAdd }: { onAdd: (name: string) => void }) {
   const [v, setV] = useState("");
@@ -418,7 +452,7 @@ const EMPTY_SETTINGS: AppSettings = {
   },
   storage: { work_dir: "", output_dir: "" },
   hyperframes: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
-  comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
+  comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", wake: { enabled: false, mac: "", broadcast: "255.255.255.255", port: 9, ready_timeout: 180, poll_interval: 3 }, image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
   overlay: { enabled: true, font_file: "C:/Windows/Fonts/msyh.ttc", font_size_ratio: 0.035, color: "#FFFFFF", bg_opacity: 0.45, margin_ratio: 0.03 },
   prompts: {},
   prompt_presets: { active: 0, presets: [] },
@@ -1084,11 +1118,33 @@ export function SettingsPage() {
       {activeTab === "comfyui" && (<>
         <Section title="ComfyUI 连接" desc="本地 ComfyUI 服务，图片与视频生成共用。需 ComfyUI 运行中。">
           <Field label="ComfyUI 地址">
-            <input value={settings.comfyui.server_url} onChange={(e) => patch("comfyui", { server_url: e.target.value })} className={monoInputCls} />
+            <ComfyuiHealthField value={settings.comfyui.server_url} onChange={(v) => patch("comfyui", { server_url: v })} />
           </Field>
           <Field label="默认负向提示词" desc="图片与视频生成共用，描述不想要的画面元素">
             <input value={settings.comfyui.default_negative} onChange={(e) => patch("comfyui", { default_negative: e.target.value })} placeholder="模糊, 丑陋, 变形, 低质量, 水印" className={inputCls} />
           </Field>
+          <Field label="远程唤醒(WoL)" desc="app 在无 GPU 机、ComfyUI 在另一台机器（平时休眠）时启用：用到前若不可达先发魔术包唤醒并等就绪，超时报错停止" center>
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={settings.comfyui.wake.enabled}
+                onChange={(e) => patch("comfyui", { wake: { ...settings.comfyui.wake, enabled: e.target.checked } })}
+                className="w-4 h-4 accent-blue-500 rounded" />
+              <span className="text-sm text-white/76">{settings.comfyui.wake.enabled ? "已开启" : "已关闭"}</span>
+            </label>
+          </Field>
+          {settings.comfyui.wake.enabled && (<>
+            <Field label="目标机 MAC" desc="ComfyUI 所在机的网卡物理地址">
+              <input value={settings.comfyui.wake.mac} onChange={(e) => patch("comfyui", { wake: { ...settings.comfyui.wake, mac: e.target.value } })}
+                placeholder="AA:BB:CC:DD:EE:FF" className={monoInputCls} />
+            </Field>
+            <Field label="子网广播地址" desc="与该机同一网段的广播地址，发包机须同段">
+              <input value={settings.comfyui.wake.broadcast} onChange={(e) => patch("comfyui", { wake: { ...settings.comfyui.wake, broadcast: e.target.value } })}
+                placeholder="192.168.1.255" className={monoInputCls} />
+            </Field>
+            <Field label="就绪超时(秒)" desc="唤醒后等 ComfyUI 就绪的最长时间，含冷启 + 载模型">
+              <input type="number" value={settings.comfyui.wake.ready_timeout} min={10} max={600} step={10}
+                onChange={(e) => patch("comfyui", { wake: { ...settings.comfyui.wake, ready_timeout: Number(e.target.value) } })} className={inputCls} />
+            </Field>
+          </>)}
         </Section>
 
         <Section title="图片 workflow 参数" desc="选「图片生成模型 = ComfyUI」时生效；横铺切换各 workflow 配置参数。">

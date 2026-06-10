@@ -66,9 +66,18 @@ overlay:
 # ---- ComfyUI 参数库（image_provider 或 video_route 选 comfyui 时生效）----
 #      当前用哪个图片/视频 workflow 由 pipeline.image_model / video_model 决定，这里只配参数。
 comfyui:
-  server_url: http://127.0.0.1:8188     # 图片与视频生成共用
+  server_url: http://127.0.0.1:8188     # 图片与视频生成共用（部署到家庭服务器时填 ComfyUI 所在机 IP，如 http://192.168.1.50:8188）
   default_negative: 模糊, 丑陋, 变形, 低质量, 水印
   # 各 workflow 的 steps/cfg（image_params / video_params）建议在「设置 → ComfyUI 参数」页调整
+  # 远程唤醒（Wake-on-LAN）：app 在无 GPU 服务器、ComfyUI 在另一台机器（平时休眠）时启用。
+  # 用到 ComfyUI 前若不可达会发 WoL 唤醒并等就绪；超时即报错停止（不兜底）。进程自启/网络可达由该机自行保证。
+  wake:
+    enabled: false
+    mac: ''                       # 目标机网卡 MAC，如 AA:BB:CC:DD:EE:FF
+    broadcast: 255.255.255.255    # 子网广播地址，如 192.168.1.255
+    port: 9                       # WoL 端口，9 或 7
+    ready_timeout: 180            # 唤醒后等就绪最长秒数（含冷启 + 载模型）
+    poll_interval: 3              # 就绪轮询间隔（秒）
 
 # ---- 可编辑提示词已迁出本文件 ----
 #      提示词预设（#1~#5，每套中英两份）存仓库根 prompts.yaml（已 .gitignore，不入库），

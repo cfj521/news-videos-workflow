@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter
 
 from app.config import Settings, get_settings, save_settings
@@ -52,3 +53,25 @@ async def update_settings(payload: dict):
 @router.get("/prompts/defaults")
 async def prompt_defaults():
     return {p.key: {"label": p.label, "desc": p.desc, "default": p.default, "default_en": p.default_en or p.default} for p in PROMPTS}
+
+
+@router.get("/comfyui/health")
+async def comfyui_health(url: str = ""):
+    """探测 ComfyUI 是否在线：GET {url}/system_stats（ComfyUI 自带），3s 超时。
+    url 取前端输入框当前值（含未保存），留空用已存配置；测的就是填的地址，不套 NV_COMFYUI_URL。"""
+    target = (url or get_settings().comfyui.server_url).rstrip("/")
+    if not target:
+        return {"ok": False, "url": target, "error": "未填写 ComfyUI 地址"}
+    try:
+        async with httpx.AsyncClient(timeout=3) as c:
+            r = await c.get(f"{target}/system_stats")
+            r.raise_for_status()
+            data = r.json()
+    except Exception as e:  # noqa: BLE001 — 探活只需区分「可达/不可达」，任何异常都算不可达
+        return {"ok": False, "url": target, "error": str(e) or e.__class__.__name__}
+    sysinfo = data.get("system", {}) if isinstance(data, dict) else {}
+    devices = data.get("devices", []) if isinstance(data, dict) else []
+    version = sysinfo.get("comfyui_version") or sysinfo.get("version") or ""
+    device = (devices[0].get("name") if devices else "") or ""
+    detail = " · ".join(x for x in (f"ComfyUI {version}" if version else "", device) if x)
+    return {"ok": True, "url": target, "detail": detail or "在线"}

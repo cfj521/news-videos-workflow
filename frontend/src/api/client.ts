@@ -94,7 +94,7 @@ export interface AppSettings {
   };
   storage: { work_dir: string; output_dir: string };
   hyperframes: { fps: string; scene_gap_ms: number; transition: string; subtitle_font_size: number; subtitle_max_lines: number };
-  comfyui: { server_url: string; default_negative: string; image_params: Record<string, { steps: number; cfg: number }>; video_params: Record<string, { steps: number; cfg: number }> };
+  comfyui: { server_url: string; default_negative: string; wake: { enabled: boolean; mac: string; broadcast: string; port: number; ready_timeout: number; poll_interval: number }; image_params: Record<string, { steps: number; cfg: number }>; video_params: Record<string, { steps: number; cfg: number }> };
   overlay: {
     enabled: boolean;
     font_file: string;
@@ -299,6 +299,8 @@ export const api = {
         body: JSON.stringify(body),
       }),
     promptDefaults: () => fetchJSON<Record<string, { label: string; desc: string; default: string; default_en: string }>>("/settings/prompts/defaults"),
+    comfyuiHealth: (url: string) =>
+      fetchJSON<{ ok: boolean; url: string; detail?: string; error?: string }>(`/settings/comfyui/health?url=${encodeURIComponent(url)}`),
   },
   schedules: {
     list: () => fetchJSON<Schedule[]>("/schedules/"),

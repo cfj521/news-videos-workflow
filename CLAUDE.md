@@ -86,7 +86,7 @@ pnpm test                        # Vitest
 ## Dependencies
 
 - **Scrapling**: 新闻抓取框架，需 Python 3.10+，安装时用 `pip install "scrapling[all]"`，首次运行 `scrapling install` 下载浏览器
-- **FFmpeg**: 视频合成必须在系统 PATH 中可用（也是 Hyperframes/ComfyUI 渲染失败时的兜底合成器）
+- **FFmpeg**: 视频合成必须在系统 PATH 中可用（是 Hyperframes 渲染失败时的兜底合成器；**ComfyUI 视频路失败/未启动则直接报错停止，不兜底 FFmpeg**——与图片路一致，选了 ComfyUI 就必须 ComfyUI 出片）
 - **CJK 字体（标题烧录，仅 FFmpeg 路）**: comfyui / FFmpeg 兜底路用 `drawtext` 把分镜标题烧到画面右上角，需一个可用的中日韩字体文件。Windows 默认 `C:/Windows/Fonts/msyh.ttc`（微软雅黑，系统自带）；其它平台在 `config.yaml` 的 `overlay.font_file` 指定（如 `/usr/share/fonts/.../NotoSansCJK-Regular.ttc`）。缺失时仅跳过烧录、不影响出片。hyperframes(HTML) 路不依赖此项（走 CSS 字体）。
 - **Hyperframes**（hyperframes 视频路线）: 需 Node.js + `npx hyperframes`（npm 包，非 Python 依赖，不在 requirements.txt）。首次渲染由 npx 联网拉取，或预装 `npm i -g hyperframes`。缺失时自动回退到 FFmpeg 合成。
 - **ComfyUI**（可选，本地图片/视频生成）: 默认视频路线，需本机运行 ComfyUI（默认 `http://127.0.0.1:8188`）+ 下载模型（见 `scripts/download-comfyui-models.ps1`）。工作流 JSON 在 `comfyui/workflows/api/`，配置在设置页「ComfyUI」标签。
