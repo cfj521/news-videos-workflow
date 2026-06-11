@@ -12,5 +12,14 @@
 #   2) 机器上装 Google Chrome              # uploader 用 channel="chrome"；或在 sau_conf/conf.py 设 LOCAL_CHROME_PATH
 #   Ubuntu Server 额外：patchright install-deps chromium   # 装 headless chromium 所需系统库（需 sudo）
 #   并装中日韩字体：sudo apt install fonts-noto-cjk
+#
+# ⚠ 抖音 uploader 写死 channel="chrome"（只认系统 Google Chrome，路径 /opt/google/chrome/chrome，
+#   不读 LOCAL_CHROME_PATH）。若机器装不了 Google Chrome（如服务器被墙、dl.google.com 不可达），改用
+#   patchright 自带 chromium 顶上：
+#     运行用户执行： patchright install chromium
+#     再把它软链到 chrome 路径（chromium 同引擎可当 Chrome 跑，需 sudo）：
+#       sudo mkdir -p /opt/google/chrome
+#       sudo ln -sf ~<运行用户>/.cache/ms-playwright/chromium-*/chrome-linux64/chrome /opt/google/chrome/chrome
+#   （快手 uploader 支持 LOCAL_CHROME_PATH，可在 sau_conf/conf.py 指定，无需软链。）
 
 social-auto-upload @ git+https://github.com/dreammis/social-auto-upload.git@90e01c0106cb73c17a1d8f00d67ebe084c850732
