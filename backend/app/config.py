@@ -419,6 +419,23 @@ def _migrate_comfyui_keys(s: Settings) -> None:
     c.video_params = {_COMFY_KEY_MAP.get(k, k): v for k, v in c.video_params.items()}
 
 
+def _fill_preset1_defaults(presets: PromptPresetsCfg, legacy: dict[str, Any] | None) -> None:
+    """把预设 1（默认预设）的空字段用内置默认提示词补齐（中文 DEFAULTS / 英文 DEFAULTS_EN），
+    旧 config.yaml 的 prompts 块若有同名字段则优先。已有内容（用户自定义）不动；预设 2~5 不动。"""
+    from app.prompts import DEFAULTS, DEFAULTS_EN
+
+    if not presets.presets:
+        return
+    p1 = presets.presets[0].values
+    legacy = legacy or {}
+    for key, dft in DEFAULTS.items():
+        if not (getattr(p1, key, "") or "").strip():
+            setattr(p1, key, legacy.get(key) or dft)
+        en_key = f"{key}_en"
+        if not (getattr(p1, en_key, "") or "").strip():
+            setattr(p1, en_key, legacy.get(en_key) or DEFAULTS_EN.get(key, ""))
+
+
 def get_settings() -> Settings:
     global _settings
     if _settings is None:
@@ -436,14 +453,15 @@ def get_settings() -> Settings:
             _settings.providers = stored  # 从 model_providers.yaml 注入 providers 凭证
         # 搜索 key 从 news_sources.yaml 注入
         _settings.collectors = CollectorsCfg(**sources_store.load_search_keys())
-        # 提示词预设从 prompts.yaml 注入；文件不存在则用旧 config.yaml 的 prompts 迁移生成预设 #1
+        # 提示词预设从 prompts.yaml 注入；文件不存在则建 5 个空预设
         presets = prompts_store.load_presets()
         if presets is None:
-            # prompts.yaml 尚不存在：用旧 prompts 生成预设 #1（仅内存，首次保存才落盘）
             presets = PromptPresetsCfg(presets=[
-                PromptPresetCfg(name="预设 1", values=PromptsCfg(**(legacy_prompts or {}))),
-                *(PromptPresetCfg(name=f"预设 {i + 1}") for i in range(1, PROMPT_PRESET_COUNT)),
+                PromptPresetCfg(name=f"预设 {i + 1}") for i in range(PROMPT_PRESET_COUNT)
             ])
+        # 预设 1 作为「默认」预设：空字段用内置默认提示词补齐（旧 config.yaml 的 prompts 若有则优先），
+        # 让「提示词配置」页预设 1 默认就可见可编辑，而非空白。仅改内存，用户保存时才落盘。
+        _fill_preset1_defaults(presets, legacy_prompts)
         _settings.prompt_presets = presets.normalized()
         _settings.prompts = _settings.prompt_presets.active_values()  # 生效预设镜像
         _ensure_default_models(_settings)
