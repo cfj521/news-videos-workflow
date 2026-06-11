@@ -144,6 +144,9 @@ export const PLATFORM_FIELDS: Record<string, FieldDef[]> = {
   ],
 };
 
+/** 扫码登录平台：账号"可用"不看配置字段，而看是否已扫码登录（cookie 存在）。 */
+export const SCAN_LOGIN_PLATFORMS = new Set(["douyin", "kuaishou"]);
+
 /** 账号必要凭证是否齐全（required 字段全部有非空值）→ 决定账号是否可用。 */
 export function isTargetReady(platform: string, configJson: string | null): boolean {
   const fields = PLATFORM_FIELDS[platform];

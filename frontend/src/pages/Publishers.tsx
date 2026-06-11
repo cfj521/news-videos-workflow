@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import { api } from "../api/client";
 import type { PublishTarget } from "../types";
-import { PLATFORM_LABELS, PLATFORM_MEDIA, PLATFORM_FIELDS } from "../types";
+import { PLATFORM_LABELS, PLATFORM_MEDIA, PLATFORM_FIELDS, SCAN_LOGIN_PLATFORMS } from "../types";
 import {
   btnPrimary, btnSecondary, btnRegen, cardCls, chipCls,
   inputCls, labelCls, dialogOverlayCls, dialogPanelCls, errorTextCls,
@@ -37,7 +37,6 @@ function maskValue(v: string): string {
 
 // ── 扫码登录 ────────────────────────────────────────────
 
-const SCAN_LOGIN_PLATFORMS = new Set(["douyin", "kuaishou"]);
 
 type LoginStatus = "idle" | "starting" | "qr_ready" | "success" | "failed" | "timeout" | "error";
 
@@ -54,9 +53,10 @@ function genAccountId(): string {
   return "acct-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
 }
 
-function ScanLoginButton({ platform, account }: {
+function ScanLoginButton({ platform, account, onSuccess }: {
   platform: string;
   account: string;
+  onSuccess?: () => void;
 }) {
   const [state, setState] = useState<LoginState>({
     status: "idle", sid: null, qrBase64: null, errorMsg: null,
@@ -85,6 +85,7 @@ function ScanLoginButton({ platform, account }: {
           } else if (res.status === "success") {
             stopPolling();
             setState((prev) => ({ ...prev, status: "success", qrBase64: null }));
+            onSuccess?.();   // 通知外层刷新列表/登录态徽标
           } else if (["failed", "timeout", "error"].includes(res.status)) {
             stopPolling();
             setState((prev) => ({
@@ -182,7 +183,7 @@ function ScanLoginButton({ platform, account }: {
 
 // ── 登录态徽标 ───────────────────────────────────────────
 
-function LoginBadge({ slug }: { slug: string }) {
+function LoginBadge({ slug, refresh = 0 }: { slug: string; refresh?: number }) {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -193,7 +194,7 @@ function LoginBadge({ slug }: { slug: string }) {
       if (!cancelled) setLoggedIn(false);
     });
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [slug, refresh]);
 
   if (loggedIn === null) return null;
 
@@ -210,10 +211,12 @@ function LoginBadge({ slug }: { slug: string }) {
 
 // ── Add/Edit Dialog ─────────────────────────────────────
 
-function TargetDialog({ target, onSave, onClose }: {
+function TargetDialog({ target, onSave, onClose, loginTick = 0, onLoginSuccess }: {
   target: PublishTarget | null;
   onSave: () => void;
   onClose: () => void;
+  loginTick?: number;
+  onLoginSuccess?: () => void;
 }) {
   const isEdit = !!target;
   const [name, setName] = useState(target?.name ?? "");
@@ -288,10 +291,10 @@ function TargetDialog({ target, onSave, onClose }: {
           <div className="mb-4 rounded-lg border border-white/[0.08] p-3">
             <div className="flex items-center justify-between">
               <span className="text-[13px] font-medium text-white/80">扫码登录</span>
-              {isEdit && <LoginBadge slug={target!.id} />}
+              {isEdit && <LoginBadge slug={target!.id} refresh={loginTick} />}
             </div>
             <div className="mt-2">
-              <ScanLoginButton platform={platform} account={accountId} />
+              <ScanLoginButton platform={platform} account={accountId} onSuccess={onLoginSuccess} />
               <p className="text-[11px] text-white/40 mt-2 text-center">
                 用 {PLATFORM_LABELS[platform] ?? platform}App 扫码登录该账号；登录态自动保存。{!isEdit && "扫码后填好名称点「添加」即可保存。"}
               </p>
@@ -331,6 +334,8 @@ const MEDIA_LABEL: Record<string, string> = { video: "视频", audio: "音频", 
 export function PublishersPage() {
   const { data: targets, mutate } = useSWR("publishers", api.publishers.list);
   const [dialog, setDialog] = useState<{ target: PublishTarget | null } | null>(null);
+  const [loginTick, setLoginTick] = useState(0);  // 登录成功后 +1，驱动列表与徽标刷新
+  const refreshLogin = () => { setLoginTick((t) => t + 1); mutate(); };
 
   const handleDelete = async (id: string) => {
     await api.publishers.remove(id);
@@ -370,7 +375,7 @@ export function PublishersPage() {
                     <span className={`${chipCls} bg-white/[0.06] text-white/66`}>
                       {MEDIA_LABEL[PLATFORM_MEDIA[t.platform] ?? "video"]}
                     </span>
-                    {isScanPlatform && <LoginBadge slug={t.id} />}
+                    {isScanPlatform && <LoginBadge slug={t.id} refresh={loginTick} />}
                     {!t.enabled && <span className="text-[10px] text-white/52 italic">已禁用</span>}
                   </div>
                   <div className="flex gap-4 mt-2">
@@ -413,6 +418,8 @@ export function PublishersPage() {
           target={dialog.target}
           onSave={() => { setDialog(null); mutate(); }}
           onClose={() => setDialog(null)}
+          loginTick={loginTick}
+          onLoginSuccess={refreshLogin}
         />
       )}
     </div>

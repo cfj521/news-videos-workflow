@@ -4,7 +4,7 @@ import { api, type AppSettings } from "../api/client";
 import { inputCls, labelCls, btnPrimary, btnSecondary, dialogOverlayCls, dialogPanelCls, selectCls } from "../styles";
 import { Select } from "./Select";
 import { MultiSelect } from "./MultiSelect";
-import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isTargetReady, isAihotSource } from "../types";
+import { STAGE_LABELS, VISIBLE_STAGES, PLATFORM_LABELS, PLATFORM_MEDIA, isTargetReady, isAihotSource, SCAN_LOGIN_PLATFORMS } from "../types";
 import { formatScheduleSummary, composeRunAt, decomposeRunAt } from "../lib/schedule";
 import type { Schedule } from "../types";
 import { payloadToDialogState, type DialogInit } from "../lib/runConfig";
@@ -110,10 +110,25 @@ export function CreateRunDialog({ onCreated, onClose, schedule = false, onSchedu
 
   const audioOnly = effVideoRoute === "audio";
   const excludedMedia = audioOnly ? "video" : "audio";
-  // 可选发布账号：启用 + 必要凭证齐全（isTargetReady）+ 媒体类型与当前路线匹配
-  const availableTargets = (publishTargets ?? []).filter(
-    (t) => t.enabled && isTargetReady(t.platform, t.config_json) && PLATFORM_MEDIA[t.platform] !== excludedMedia
+  // 扫码登录平台（抖音/快手）账号是否可用取决于「是否已扫码登录」，需查 login-status（无配置字段可判）。
+  const scanSlugs = (publishTargets ?? [])
+    .filter((t) => t.enabled && SCAN_LOGIN_PLATFORMS.has(t.platform))
+    .map((t) => String(t.id));
+  const { data: loginMap } = useSWR(
+    scanSlugs.length ? ["publisher-login-status", scanSlugs.join(",")] : null,
+    async () => {
+      const entries = await Promise.all(
+        scanSlugs.map(async (slug) => [slug, (await api.publishers.loginStatus(slug)).logged_in] as const),
+      );
+      return Object.fromEntries(entries) as Record<string, boolean>;
+    },
   );
+  // 可选发布账号：启用 + 媒体类型匹配 + 凭证齐全（扫码平台改判「已登录」）
+  const availableTargets = (publishTargets ?? []).filter((t) => {
+    if (!t.enabled || PLATFORM_MEDIA[t.platform] === excludedMedia) return false;
+    if (SCAN_LOGIN_PLATFORMS.has(t.platform)) return loginMap?.[String(t.id)] === true;
+    return isTargetReady(t.platform, t.config_json);
+  });
   const targetOptions = availableTargets.map((t) => ({
     value: String(t.id), label: t.name, hint: PLATFORM_LABELS[t.platform] ?? t.platform,
   }));
