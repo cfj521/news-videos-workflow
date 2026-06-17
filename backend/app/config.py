@@ -153,7 +153,7 @@ class OverlayCfg(BaseModel):
 
 class CoverCfg(BaseModel):
     """视频固定封面（片头）。统一用 hyperframes 渲染；comfyui 路线拼接到成片开头。"""
-    enabled: bool = False
+    enabled: bool = True
     image: str = ""
     title_template: str = "{period}AI资讯"
     subtitle: str = ""

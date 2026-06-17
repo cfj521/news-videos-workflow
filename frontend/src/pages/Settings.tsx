@@ -456,7 +456,7 @@ const EMPTY_SETTINGS: AppSettings = {
   hyperframes: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2, subtitle_bottom_px: 80 },
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", wake: { enabled: false, mac: "", broadcast: "255.255.255.255", port: 9, ready_timeout: 180, poll_interval: 3 }, image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
   overlay: { enabled: true, font_file: "C:/Windows/Fonts/msyh.ttc", font_size_ratio: 0.035, color: "#FFFFFF", bg_opacity: 0.45, margin_ratio: 0.03 },
-  cover: { enabled: false, image: "", title_template: "{period}AI资讯", subtitle: "", narration: "", font_size: 72 },
+  cover: { enabled: true, image: "", title_template: "{period}AI资讯", subtitle: "", narration: "", font_size: 72 },
   cover_presets: { active: 0, presets: [] },
   prompts: {},
   prompt_presets: { active: 0, presets: [] },
@@ -1121,7 +1121,7 @@ export function SettingsPage() {
         const cp = settings.cover_presets;
         const coverPresets = cp?.presets ?? [];
         const coverActive = Math.min(Math.max(cp?.active ?? 0, 0), Math.max(coverPresets.length - 1, 0));
-        const COVER_DEFAULTS = { enabled: false, image: "", title_template: "{period}AI资讯", subtitle: "", narration: "", font_size: 72 } as const;
+        const COVER_DEFAULTS = { enabled: true, image: "", title_template: "{period}AI资讯", subtitle: "", narration: "", font_size: 72 } as const;
         const cur = coverPresets[coverActive]?.values ?? COVER_DEFAULTS;
         const patchCover = (partial: Partial<typeof cur>) =>
           patch("cover_presets", { ...cp, presets: coverPresets.map((p, j) => j === coverActive ? { ...p, values: { ...p.values, ...partial } } : p) });
@@ -1227,7 +1227,7 @@ export function SettingsPage() {
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="1.8" /><path d="m21 15-5-5L5 21" />
                     </svg>
-                    <span className="text-[11px]">未上传封面图（横版）</span>
+                    <span className="text-[11px]">未上传封面图</span>
                   </div>
                 )}
               </div>

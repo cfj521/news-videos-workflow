@@ -4,7 +4,7 @@ active: 0
 presets:
   - name: 封面 1
     values:
-      enabled: false
+      enabled: true
       image: ""
       title_template: "{period}AI资讯"
       subtitle: ""
