@@ -28,7 +28,7 @@
 
 | 项 | 要求 | 验证命令 |
 |----|------|----------|
-| Python 环境 | `conda env_news_videos_wf` Python 3.12，`pip install -r requirements.txt` | `python -V` |
+| Python 环境 | `conda env_nvw` Python 3.12，`pip install -r requirements.txt` | `python -V` |
 | 后端可启动 | uvicorn 正常起，`GET /api/health`（或根路由）200 | 由用户自行启动（见备注） |
 | 前端可启动 | `pnpm install && pnpm dev` | 浏览器打开 `:5173` |
 | FFmpeg | 在 PATH 中可用 | `ffmpeg -version` |

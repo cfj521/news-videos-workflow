@@ -61,7 +61,7 @@ NewsSource → RawArticle → ProcessedScript → [ImageAsset[], AudioAsset] →
 
 ```bash
 # 一次性：创建并激活 conda 环境（Python 3.12）
-conda create -n env_news_videos_wf python=3.12 && conda activate env_news_videos_wf
+conda create -n env_nvw python=3.12 && conda activate env_nvw
 pip install -r requirements.txt  # 安装依赖（含发布可选依赖 biliup / google-*）
 
 cd backend
