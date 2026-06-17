@@ -311,10 +311,13 @@ function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       </div>
       {/* 评分明细折叠区块 */}
       <div className="mt-4">
-        <button
-          type="button"
+        {/* 用 div 而非 button：避免生成中被外层 fieldset[disabled] 连带禁用——评分明细是只读查看，应始终可展开 */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setScoringOpen((v) => !v)}
-          className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white/85 transition select-none"
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setScoringOpen((v) => !v); } }}
+          className="inline-flex items-center gap-1.5 text-xs text-white/60 hover:text-white/85 transition select-none cursor-pointer"
         >
           <span className={`transition-transform ${scoringOpen ? "rotate-90" : ""}`}>▶</span>
           <span>评分明细</span>
@@ -327,7 +330,7 @@ function S1Panel({ runId, run }: { runId: number; run: PipelineRun }) {
           {scoring?.min_score !== undefined && (
             <span className="text-white/40">· 门槛 {scoring.min_score.toFixed(2)}</span>
           )}
-        </button>
+        </div>
         {scoringOpen && (
           <div className="mt-2 space-y-2">
             {(!scoring?.candidates || scoring.candidates.length === 0) ? (
@@ -826,8 +829,12 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const [subFont, setSubFont] = useState(48);
   const [subLines, setSubLines] = useState(2);
   const [inited, setInited] = useState(false);
+  // 封面 per-run 覆盖（null = 不覆盖，沿用全局配置）；图片覆盖 MVP 暂不做，仅文字/字号
+  const [coverTitle, setCoverTitle] = useState<string | null>(null);
+  const [coverSubtitle, setCoverSubtitle] = useState<string | null>(null);
+  const [coverFont, setCoverFont] = useState<number | null>(null);
   // 已应用到预览的参数快照（仅本地、不写全局配置）。null = 尚未覆盖，预览用落盘 timeline 默认渲染
-  const [applied, setApplied] = useState<{ transition: string; sceneGap: number; fps: string; subFont: number; subLines: number } | null>(null);
+  const [applied, setApplied] = useState<{ transition: string; sceneGap: number; fps: string; subFont: number; subLines: number; coverTitle: string | null; coverSubtitle: string | null; coverFont: number | null } | null>(null);
 
   // Playback state (synced via postMessage from iframe)
   const [playing, setPlaying] = useState(false);
@@ -871,18 +878,24 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     fps: settings.hyperframes.fps,
     subFont: settings.hyperframes.subtitle_font_size,
     subLines: settings.hyperframes.subtitle_max_lines,
+    coverTitle: null as string | null,
+    coverSubtitle: null as string | null,
+    coverFont: null as number | null,
   } : null);
   const isDirty = !!base && (
     transition !== base.transition ||
     sceneGap !== base.sceneGap ||
     fps !== base.fps ||
     subFont !== base.subFont ||
-    subLines !== base.subLines
+    subLines !== base.subLines ||
+    coverTitle !== base.coverTitle ||
+    coverSubtitle !== base.coverSubtitle ||
+    coverFont !== base.coverFont
   );
 
   // 重新生成预览：仅把当前参数应用到本次预览（query 覆盖，不写全局配置、不落盘）
   const handleRegenerate = () => {
-    setApplied({ transition, sceneGap, fps, subFont, subLines });
+    setApplied({ transition, sceneGap, fps, subFont, subLines, coverTitle, coverSubtitle, coverFont });
     setIframeKey((k) => k + 1);
     setPlaying(false);
     showToast("已应用到预览（未改全局配置）", "success");
@@ -898,6 +911,9 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       subtitle_font_size: String(applied.subFont),
       subtitle_max_lines: String(applied.subLines),
     });
+    if (applied.coverTitle !== null) q.set("cover_title", applied.coverTitle);
+    if (applied.coverSubtitle !== null) q.set("cover_subtitle", applied.coverSubtitle);
+    if (applied.coverFont !== null) q.set("cover_font_size", String(applied.coverFont));
     return `${baseUrl}?${q.toString()}`;
   })();
   const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -1081,6 +1097,32 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
                 { value: "2", label: "2 行" },
                 { value: "3", label: "3 行" },
               ]} />
+            </div>
+            {/* 封面 per-run 覆盖（仅文字/字号；图片覆盖 MVP 暂不做） */}
+            <div>
+              <label className={labelCls}>封面标题</label>
+              <input
+                value={coverTitle ?? ""}
+                onChange={(e) => setCoverTitle(e.target.value === "" ? null : e.target.value)}
+                placeholder="留空沿用配置"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>封面副标题</label>
+              <input
+                value={coverSubtitle ?? ""}
+                onChange={(e) => setCoverSubtitle(e.target.value === "" ? null : e.target.value)}
+                placeholder="留空沿用配置"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>封面字号</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input type="range" min={24} max={160} step={4} value={coverFont ?? 72} onChange={(e) => setCoverFont(Number(e.target.value))} className="flex-1 accent-blue-500" />
+                <span className="text-xs text-white/66 w-14 text-right font-mono">{coverFont !== null ? `${coverFont}px` : "—"}</span>
+              </div>
             </div>
           </div>
         ) : (
@@ -1511,16 +1553,16 @@ export function DashboardPage() {
                 <span className="text-xs text-white/52 shrink-0">{ts}</span>
                 <span className={`${chipCls} text-[10px] shrink-0 ${run.mode === "auto" ? "bg-yellow-500/15 text-yellow-300" : "bg-orange-500/15 text-orange-300"}`}>{run.mode === "auto" ? "自动" : "手动"}</span>
                 <span className={`${chipCls} text-[10px] shrink-0 ${(run.language || "zh").toLowerCase().startsWith("zh") ? "bg-cyan-500/15 text-cyan-300" : "bg-rose-500/15 text-rose-300"}`}>{langLabel(run.language)}</span>
-                <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px]`}>{STATUS_LABEL[run.status] ?? run.status}</span>
+                <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px] whitespace-nowrap shrink-0`}>{STATUS_LABEL[run.status] ?? run.status}</span>
                 {run.status === "processing" && (
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setPendingStop(run); }}
                     title="终止此任务"
                     aria-label="终止此任务"
-                    className="ml-auto inline-flex items-center justify-center p-1 rounded text-red-300 bg-red-500/15 border border-red-500/25 hover:bg-red-500/25 transition"
+                    className={`${btnDeleteIcon} ml-auto`}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="12" cy="12" r="10" />
                       <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
                     </svg>
