@@ -552,18 +552,22 @@ async def regen_scene_audio(run_id: int, scene_id: int, body: RegenAudioRequest,
         new_dur = result.duration_ms or measure_audio_ms(audio_path)
         if new_dur > 0:
             timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+            # 取原封面 entry，重跑后重新注入，避免封面被当普通场景丢失
+            cover_entry = next((e for e in timeline.get("entries", []) if e.get("is_cover")), None)
+            # 过滤封面 entry，仅反推普通场景素材
             scene_assets = [{
                 "scene_id": e["scene_id"],
                 "image": {"file_path": e.get("image_path", "")},
                 "audio": {"file_path": e.get("audio_path", ""),
                           "duration_ms": new_dur if e["scene_id"] == scene_id else e.get("audio_duration_ms", 0)},
-            } for e in timeline.get("entries", [])]
+            } for e in timeline.get("entries", []) if not e.get("is_cover")]
             from app.pipeline.stage4_timeline import generate_srt, run_stage4
             hf = cfg.hyperframes
             new_timeline = run_stage4(script, scene_assets, scene_gap_ms=hf.scene_gap_ms,
                                       resolution=(run.resolution or "1080x1920"),
                                       subtitle_font_size=hf.subtitle_font_size,
-                                      subtitle_max_lines=hf.subtitle_max_lines)
+                                      subtitle_max_lines=hf.subtitle_max_lines,
+                                      cover=cover_entry)
             timeline_path.write_text(json.dumps(new_timeline, ensure_ascii=False, indent=2), encoding="utf-8")
             (rd / "output.srt").write_text(generate_srt(new_timeline), encoding="utf-8")
             log.info("[regen-audio] 时间轴已重建 run #%d scene %d（新音频 %dms，共 %d 段，总 %.1fs）",
@@ -811,6 +815,9 @@ def get_preview_html(
     subtitle_font_size: int | None = None,
     subtitle_max_lines: int | None = None,
     subtitle_bottom_px: int | None = None,
+    cover_title: str | None = None,
+    cover_subtitle: str | None = None,
+    cover_font_size: int | None = None,
     db: Session = Depends(get_db),
 ):
     """生成 hyperframes 预览 HTML。
@@ -818,6 +825,9 @@ def get_preview_html(
     预览页可通过 query 参数临时覆盖渲染参数（转场/场景间隔/字幕字号/行数/距底部）：
     **仅作用于本次预览渲染，不写全局 config、不落盘 timeline**——供预览页试看，不影响默认值与成片。
     缺省时回退到全局 `cfg.hyperframes.*`，保持原有默认行为。
+
+    cover_title/cover_subtitle/cover_font_size 临时覆盖封面视觉字段（同样不落盘），
+    传入这三个参数任意一个也会触发重跑 run_stage4。
     """
     rd = _run_dir(run_id)
     timeline_path = rd / "timeline.json"
@@ -835,20 +845,41 @@ def get_preview_html(
     eff_bottom = subtitle_bottom_px if subtitle_bottom_px is not None else hf.subtitle_bottom_px
     eff_gap = scene_gap_ms if scene_gap_ms is not None else hf.scene_gap_ms
 
-    # 字号/行数/场景间隔影响 stage4 折行与排时长：有覆盖值时，用落盘 timeline 反推素材，
+    # 字号/行数/场景间隔/封面覆盖 影响 stage4 折行与排时长：有覆盖值时，用落盘 timeline 反推素材，
     # 临时重跑 run_stage4（纯函数，不写文件）重新折行/排时长，使预览实时反映这些参数。
-    if scene_gap_ms is not None or subtitle_font_size is not None or subtitle_max_lines is not None:
+    # cover_title/cover_subtitle/cover_font_size 也纳入触发条件，以反映封面视觉覆盖。
+    needs_rerun = (
+        scene_gap_ms is not None
+        or subtitle_font_size is not None
+        or subtitle_max_lines is not None
+        or cover_title is not None
+        or cover_subtitle is not None
+        or cover_font_size is not None
+    )
+    if needs_rerun:
         script_path = rd / "script.json"
         if script_path.exists():
             script = json.loads(script_path.read_text(encoding="utf-8"))
+            # 取原封面 entry（is_cover 标记），并应用本次视觉覆盖参数
+            cover_entry = next((e for e in timeline.get("entries", []) if e.get("is_cover")), None)
+            if cover_entry is not None:
+                cover_entry = dict(cover_entry)  # 浅拷贝，避免改动落盘数据
+                if cover_title is not None:
+                    cover_entry["title"] = cover_title
+                if cover_subtitle is not None:
+                    cover_entry["subtitle"] = cover_subtitle
+                if cover_font_size is not None:
+                    cover_entry["cover_font_size"] = cover_font_size
+            # 过滤封面 entry（scene_id==0, is_cover），仅反推普通场景素材
             scene_assets = [{
                 "scene_id": e["scene_id"],
                 "image": {"file_path": e.get("image_path", "")},
                 "audio": {"file_path": e.get("audio_path", ""), "duration_ms": e.get("audio_duration_ms", 0)},
-            } for e in timeline.get("entries", [])]
+            } for e in timeline.get("entries", []) if not e.get("is_cover")]
             from app.pipeline.stage4_timeline import run_stage4
             timeline = run_stage4(script, scene_assets, scene_gap_ms=eff_gap, resolution=resolution,
-                                  subtitle_font_size=eff_font, subtitle_max_lines=eff_lines)
+                                  subtitle_font_size=eff_font, subtitle_max_lines=eff_lines,
+                                  cover=cover_entry)
 
     from app.providers.composer.hyperframes_composer import HyperframesComposer
     composer = HyperframesComposer()
