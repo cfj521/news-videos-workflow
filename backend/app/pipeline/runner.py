@@ -228,12 +228,12 @@ async def _summarize_articles(articles, cfg, run, db, log):
     sys_prompt += f" (Keep within {max_len} words.)" if (lang or "").lower().startswith("en") else f"（摘要不超过{max_len}字）"
     for i, a in enumerate(articles):
         try:
-            _update(db, run, progress_detail=f"S1 生成摘要中 ({i+1}/{len(articles)})...")
+            _update(db, run, progress_detail=f"Stage1 生成摘要中 ({i+1}/{len(articles)})...")
             text = f"标题：{a.title}\n来源：{a.source_name}\n内容：{(a.content or a.title)[:2000]}"
             a.summary = (await tp.generate(prompt=text, system_prompt=sys_prompt)).strip()
-            log.info("[S1] Summary %d/%d: %s", i + 1, len(articles), a.summary[:60])
+            log.info("[Stage1] Summary %d/%d: %s", i + 1, len(articles), a.summary[:60])
         except Exception:
-            log.exception("[S1] Summary failed for '%s'", a.title)
+            log.exception("[Stage1] Summary failed for '%s'", a.title)
             a.summary = ""
 
 
@@ -245,7 +245,7 @@ async def _distill_weekly_if_needed(articles, log, language: str = "zh"):
     from app.pipeline.stage2_script import distill_weekly_sections
     art = articles[0]
     items = art.metadata.get("weekly_items", [])
-    log.info("[S1] weekly distill — %d items", len(items))
+    log.info("[Stage1] weekly distill — %d items", len(items))
     tp = _build_text_provider()
     art.metadata["daily_sections"] = await distill_weekly_sections(items, tp, language)
 
@@ -562,20 +562,20 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
         if not run.auto_collect:
             _save_articles([], run_dir)
             _update(db, run, current_stage=1, status="review", progress_detail="等待人工导入文章…")
-            log.info("[S1] auto_collect off — waiting for manual import")
+            log.info("[Stage1] auto_collect off — waiting for manual import")
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
         else:
-            _update(db, run, current_stage=1, progress_detail="S1 采集新闻中...")
-            log.info("[S1] Collecting news — time_range=%s max=%d",
+            _update(db, run, current_stage=1, progress_detail="Stage1 采集新闻中...")
+            log.info("[Stage1] Collecting news — time_range=%s max=%d",
                      run.time_range, run.max_articles)
             source_configs, collectors = _collectors_for_run(db, run, cfg)
-            log.info("[S1] Using %d sources: %s", len(source_configs), [s["name"] for s in source_configs])
+            log.info("[Stage1] Using %d sources: %s", len(source_configs), [s["name"] for s in source_configs])
             digest_method = next((sc.get("method") for sc in source_configs
                                   if sc.get("method") in ("daily", "weekly")), None)
             history_fps = _load_history_fingerprints(db)
             if history_fps:
-                log.info("[S1] Loaded %d history fingerprints (recent issues) for dedup",
+                log.info("[Stage1] Loaded %d history fingerprints (recent issues) for dedup",
                          len(history_fps))
             text_provider = _build_text_provider()   # 提前构造，评分用；stage2 复用
             articles, scoring_report = await run_stage1(
@@ -585,21 +585,21 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                 text_provider=text_provider, language=(run.language or cfg.pipeline.default_language))
             _write_scoring_json(run_dir, scoring_report)   # 普通源评分明细
             for i, a in enumerate(articles, 1):
-                log.info("[S1]   [%d] %s (%s)", i, a.title, a.source_name)
+                log.info("[Stage1]   [%d] %s (%s)", i, a.title, a.source_name)
             if articles and articles[0].metadata.get("source_group") != "aihot":
-                _update(db, run, progress_detail=f"S1 生成摘要中 (0/{len(articles)})...")
+                _update(db, run, progress_detail=f"Stage1 生成摘要中 (0/{len(articles)})...")
                 await _summarize_articles(articles, cfg, run, db, log)
             elif articles and articles[0].metadata.get("aihot_method") == "weekly":
-                _update(db, run, progress_detail="S1 提炼本周热点中...")
+                _update(db, run, progress_detail="Stage1 提炼本周热点中...")
                 await _distill_weekly_if_needed(articles, log, run.language or cfg.pipeline.default_language)
             elapsed = time.time() - t0
-            _update(db, run, progress_detail=f"S1 完成 — {len(articles)} 篇文章 ({elapsed:.1f}s)")
-            log.info("[S1] Done — %d articles in %.1fs", len(articles), elapsed)
+            _update(db, run, progress_detail=f"Stage1 完成 — {len(articles)} 篇文章 ({elapsed:.1f}s)")
+            log.info("[Stage1] Done — %d articles in %.1fs", len(articles), elapsed)
             _save_articles(articles, run_dir)
             if run.mode == "manual" and not skip_review:
                 _update(db, run, status="review",
-                        progress_detail=f"S1 采集完成 ({len(articles)} 篇)，等待审核")
-                log.info("[S1] Paused for review")
+                        progress_detail=f"Stage1 采集完成 ({len(articles)} 篇)，等待审核")
+                log.info("[Stage1] Paused for review")
                 await _wait_for_resume(run_id, db)
                 run = db.get(PipelineRun, run_id)
 
@@ -623,23 +623,31 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
         _check_cancel(run.id)
         t0 = time.time()
         _update(db, run, current_stage=2,
-                progress_detail=f"S2 生成脚本 — {len(articles)} 篇文章...")
-        log.info("[S2] Generating multi-article script for %d articles", len(articles))
+                progress_detail=f"Stage2 生成脚本 — {len(articles)} 篇文章...")
+        log.info("[Stage2] Generating multi-article script for %d articles", len(articles))
 
         text_provider = text_provider or _build_text_provider()   # 复用 stage1 已构造的 tp（人工导入时重建）
-        log.info("[S2] Provider: %s / %s", cfg.pipeline.script_provider, cfg.pipeline.script_model)
+        log.info("[Stage2] Provider: %s / %s", cfg.pipeline.script_provider, cfg.pipeline.script_model)
+
+        # S2 子阶段进度（评分/生成分镜/标题简介）实时写回 progress_detail；限流避免高频 commit
+        _s2_last = [0.0]
+        def _s2_progress(text: str) -> None:
+            now = time.time()
+            if now - _s2_last[0] >= 1.0:
+                _s2_last[0] = now
+                _update(db, run, progress_detail=text)
 
         from app.pipeline.stage2_script import run_stage2_multi
         script = await run_stage2_multi(
             articles, text_provider, language=(run.language or cfg.pipeline.default_language),
-            max_articles=run.max_articles)
+            max_articles=run.max_articles, on_progress=_s2_progress)
 
         # 图片数量上限：分镜数超过则按评分裁掉低分整组（仅出图路线需要）
         limit = run.max_images if run.max_images is not None else cfg.pipeline.max_images
         if run.video_route != "audio" and limit and len(script.get("scenes", [])) > limit:
             from app.pipeline.stage2_script import cap_scenes_by_score
-            _update(db, run, progress_detail=f"S2 分镜 {len(script['scenes'])} 超图片上限 {limit}，按评分裁剪...")
-            log.info("[S2] %d scenes > limit %d → cap by score", len(script["scenes"]), limit)
+            _update(db, run, progress_detail=f"Stage2 分镜 {len(script['scenes'])} 超图片上限 {limit}，按评分裁剪...")
+            log.info("[Stage2] %d scenes > limit %d → cap by score", len(script["scenes"]), limit)
             script = cap_scenes_by_score(script, limit)
 
         (run_dir / "script.json").write_text(
@@ -647,18 +655,18 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
         _write_scoring_json(run_dir, script.get("scoring_report"))   # AI HOT 评分明细（如有）
         scene_count = len(script.get("scenes", []))
         elapsed = time.time() - t0
-        detail = f"S2 完成 — 《{script.get('title', '')}》{scene_count} 个分镜 ({elapsed:.1f}s)"
+        detail = f"Stage2 完成 — 《{script.get('title', '')}》{scene_count} 个分镜 ({elapsed:.1f}s)"
         _update(db, run, progress_detail=detail)
-        log.info("[S2] Done — \"%s\" %d scenes in %.1fs",
+        log.info("[Stage2] Done — \"%s\" %d scenes in %.1fs",
                  script.get("title", ""), scene_count, elapsed)
 
         for s in script.get("scenes", []):
-            log.debug("[S2]   S%d: %s", s["id"], s["narration"][:60])
+            log.debug("[Stage2]   S%d: %s", s["id"], s["narration"][:60])
 
         if run.mode == "manual" and not skip_review:
             _update(db, run, status="review",
-                    progress_detail=f"S2 脚本完成 ({scene_count} 分镜)，等待审核")
-            log.info("[S2] Paused for review")
+                    progress_detail=f"Stage2 脚本完成 ({scene_count} 分镜)，等待审核")
+            log.info("[Stage2] Paused for review")
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
 
@@ -673,8 +681,8 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
         _check_cancel(run.id)
         t0 = time.time()
         total = len(script.get("scenes", []))
-        _update(db, run, current_stage=3, progress_detail=f"S3 生成素材 0/{total}")
-        log.info("[S3] Generating assets — %d scenes, provider: %s/%s",
+        _update(db, run, current_stage=3, progress_detail=f"Stage3 生成素材 0/{total}")
+        log.info("[Stage3] Generating assets — %d scenes, provider: %s/%s",
                  total, cfg.pipeline.image_provider, cfg.pipeline.image_model)
 
         from app.providers.image import build_image_provider
@@ -686,7 +694,7 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
         image_provider = build_image_provider(cfg)
         # 按流水线选型构建语音 provider（edge-tts | openai | dashscope，共用供应商库 key）
         tts_provider = build_tts_provider(cfg)
-        log.info("[S3] TTS provider: %s / %s / voice=%s",
+        log.info("[Stage3] TTS provider: %s / %s / voice=%s",
                  cfg.pipeline.tts_provider, cfg.pipeline.tts_model or "-", cfg.pipeline.tts_voice)
         img_count = 0
         tts_count = 0
@@ -703,12 +711,12 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                 # 解析不到才退回累计调用数 img_count。
                 m = re.search(r"scene_(\d+)_image", os.path.basename(output_path or ""))
                 scene_no = int(m.group(1)) if m else img_count
-                _update(db, run, progress_detail=f"S3 生成图片 {scene_no}/{total}...")
-                log.info("[S3] Image %d/%d: %s", scene_no, total, prompt[:60])
+                _update(db, run, progress_detail=f"Stage3 生成图片 {scene_no}/{total}...")
+                log.info("[Stage3] Image %d/%d: %s", scene_no, total, prompt[:60])
                 t = time.time()
                 result = await self._inner.generate(
                     prompt=prompt, size=size, output_path=output_path)
-                log.info("[S3] Image %d/%d done (%.1fs, %s)",
+                log.info("[Stage3] Image %d/%d done (%.1fs, %s)",
                          scene_no, total, time.time() - t, result.file_path)
                 if m:  # 实时推送：该场景图片就绪，前端据此只刷新这一张
                     publish_event(run.id, {"type": "asset", "kind": "image", "scene": scene_no})
@@ -725,12 +733,12 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                 # 同图片：分子用场景号，重试不溢出；解析不到退回累计调用数。
                 m = re.search(r"scene_(\d+)_audio", os.path.basename(output_path or ""))
                 scene_no = int(m.group(1)) if m else tts_count
-                _update(db, run, progress_detail=f"S3 生成语音 {scene_no}/{total}...")
-                log.info("[S3] TTS %d/%d: %s...", scene_no, total, text[:30])
+                _update(db, run, progress_detail=f"Stage3 生成语音 {scene_no}/{total}...")
+                log.info("[Stage3] TTS %d/%d: %s...", scene_no, total, text[:30])
                 t = time.time()
                 result = await self._inner.synthesize(
                     text=text, voice=voice, speed=speed, output_path=output_path)
-                log.info("[S3] TTS %d/%d done (%.1fs)", scene_no, total, time.time() - t)
+                log.info("[Stage3] TTS %d/%d done (%.1fs)", scene_no, total, time.time() - t)
                 if m:
                     publish_event(run.id, {"type": "asset", "kind": "audio", "scene": scene_no})
                 return result
@@ -748,16 +756,16 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
         ok = sum(1 for a in scene_assets if "error" not in a)
         errors = [a for a in scene_assets if "error" in a]
         elapsed = time.time() - t0
-        detail = f"S3 完成 — {ok}/{total} 成功 ({elapsed:.1f}s)"
+        detail = f"Stage3 完成 — {ok}/{total} 成功 ({elapsed:.1f}s)"
         _update(db, run, progress_detail=detail)
-        log.info("[S3] Done — %d/%d ok in %.1fs", ok, total, elapsed)
+        log.info("[Stage3] Done — %d/%d ok in %.1fs", ok, total, elapsed)
         for err in errors:
-            log.warning("[S3] Scene %d error: %s", err["scene_id"], err["error"])
+            log.warning("[Stage3] Scene %d error: %s", err["scene_id"], err["error"])
 
         if run.mode == "manual" and not skip_review:
             _update(db, run, status="review",
-                    progress_detail=f"S3 素材完成 ({ok}/{total})，等待审核")
-            log.info("[S3] Paused for review")
+                    progress_detail=f"Stage3 素材完成 ({ok}/{total})，等待审核")
+            log.info("[Stage3] Paused for review")
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
 
@@ -771,7 +779,8 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
             from app.providers.tts import build_tts_provider
             log.info("[Cover] 准备封面素材 (route=%s)", run.video_route)
             cover_entry = await prepare_cover_assets(
-                cfg.cover, run, run_dir, build_tts_provider(cfg))
+                cfg.cover, run, run_dir, build_tts_provider(cfg),
+                meta_title=script.get("title", ""))
             if cover_entry:
                 log.info("[Cover] 封面 entry 准备完成: dur=%dms image=%s audio=%s",
                          cover_entry.get("end_ms", 0),
@@ -787,8 +796,8 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
     if 4 in selected and run.video_route != "audio":
         _check_cancel(run.id)
         t0 = time.time()
-        _update(db, run, current_stage=4, progress_detail="S4 生成时间轴...")
-        log.info("[S4] Building timeline + preview (route=%s)", run.video_route)
+        _update(db, run, current_stage=4, progress_detail="Stage4 生成时间轴...")
+        log.info("[Stage4] Building timeline + preview (route=%s)", run.video_route)
 
         timeline = run_stage4(
             script=script, scene_assets=scene_assets, scene_gap_ms=cfg.hyperframes.scene_gap_ms,
@@ -799,16 +808,16 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
             json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
         # 外挂字幕 SRT 落盘：供前端下载、发布时随视频上传（YouTube 等）
         (run_dir / "output.srt").write_text(generate_srt(timeline), encoding="utf-8")
-        log.info("[S4] Timeline: %.1fs total, %d entries (+ output.srt)",
+        log.info("[Stage4] Timeline: %.1fs total, %d entries (+ output.srt)",
                  timeline["total_duration_ms"] / 1000, len(timeline["entries"]))
 
-        _update(db, run, progress_detail="S4 生成分镜审核页...")
+        _update(db, run, progress_detail="Stage4 生成分镜审核页...")
         preview_html = _generate_storyboard_html(script, scene_assets, timeline)
         preview_path = run_dir / "preview.html"
         preview_path.write_text(preview_html, encoding="utf-8")
 
         if run.video_route == "hyperframes":
-            _update(db, run, progress_detail="S4 生成 Hyperframes 预览...")
+            _update(db, run, progress_detail="Stage4 生成 Hyperframes 预览...")
             composer = HyperframesComposer(overlay=cfg.overlay)
             try:
                 hyperframes_html = composer._render_html(
@@ -816,21 +825,21 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                     subtitle_font_size=cfg.hyperframes.subtitle_font_size,
                     subtitle_bottom_px=cfg.hyperframes.subtitle_bottom_px)
                 (run_dir / "index.html").write_text(hyperframes_html, encoding="utf-8")
-                log.info("[S4] Hyperframes HTML generated at %s/index.html", run_dir)
+                log.info("[Stage4] Hyperframes HTML generated at %s/index.html", run_dir)
             except Exception as e:
-                log.warning("[S4] Hyperframes HTML generation failed: %s", e)
+                log.warning("[Stage4] Hyperframes HTML generation failed: %s", e)
         else:
-            log.info("[S4] 视频路线 — 预览/clip 在 S5 生成")
+            log.info("[Stage4] 视频路线 — 预览/clip 在 S5 生成")
 
         elapsed = time.time() - t0
         total_s = timeline["total_duration_ms"] / 1000
-        detail = f"S4 预览就绪 — {total_s:.0f}s / {len(timeline['entries'])} 分镜 ({elapsed:.1f}s)"
+        detail = f"Stage4 预览就绪 — {total_s:.0f}s / {len(timeline['entries'])} 分镜 ({elapsed:.1f}s)"
         _update(db, run, progress_detail=detail, preview_path=str(preview_path))
-        log.info("[S4] Done in %.1fs", elapsed)
+        log.info("[Stage4] Done in %.1fs", elapsed)
 
         if run.mode == "manual" and not skip_review:
-            _update(db, run, status="review", progress_detail="S4 预览就绪，等待审核")
-            log.info("[S4] Paused for review")
+            _update(db, run, status="review", progress_detail="Stage4 预览就绪，等待审核")
+            log.info("[Stage4] Paused for review")
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
 
@@ -840,20 +849,20 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
         t0 = time.time()
 
         if run.video_route == "audio":
-            _update(db, run, current_stage=5, progress_detail="S5 合成音频中...")
-            log.info("[S5] Merging audio — %d scenes", len(script.get("scenes", [])))
+            _update(db, run, current_stage=5, progress_detail="Stage5 合成音频中...")
+            log.info("[Stage5] Merging audio — %d scenes", len(script.get("scenes", [])))
             try:
                 final_path = _ffmpeg_merge_audio(script, assets_dir, run_dir)
             except Exception as e:
                 _update(db, run, status="failed", error_message=f"音频合成失败: {e}",
                         finished_at=datetime.now(timezone.utc))
-                log.exception("[S5] Audio merge failed")
+                log.exception("[Stage5] Audio merge failed")
                 return
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
                 _update(db, run, output_path=final_path,
-                        progress_detail=f"S5 合成完成 — {size_mb:.1f} MB ({time.time()-t0:.1f}s)")
-                log.info("[S5] Audio merged — %.1f MB", size_mb)
+                        progress_detail=f"Stage5 合成完成 — {size_mb:.1f} MB ({time.time()-t0:.1f}s)")
+                log.info("[Stage5] Audio merged — %.1f MB", size_mb)
                 export_final(run.id, final_path, script.get("title", ""))
                 rendered = True
             else:
@@ -861,7 +870,7 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                         finished_at=datetime.now(timezone.utc))
                 return
             if run.mode == "manual" and not skip_review:
-                _update(db, run, status="review", progress_detail="S5 合成完成，等待审核")
+                _update(db, run, status="review", progress_detail="Stage5 合成完成，等待审核")
                 await _wait_for_resume(run_id, db)
                 run = db.get(PipelineRun, run_id)
         else:
@@ -874,8 +883,8 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
             output_mp4 = str((run_dir / "output.mp4").resolve())
 
             if run.video_route == "comfyui":
-                _update(db, run, current_stage=5, progress_detail="S5 ComfyUI 视频生成中...")
-                log.info("[S5] ComfyUI rendering — output=%s", output_mp4)
+                _update(db, run, current_stage=5, progress_detail="Stage5 ComfyUI 视频生成中...")
+                log.info("[Stage5] ComfyUI rendering — output=%s", output_mp4)
                 try:
                     from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
                     from app.providers.video import build_video_provider
@@ -885,17 +894,17 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                         output_path=output_mp4, resolution=resolution,
                     )
                     final_path = result.file_path
-                    log.info("[S5] ComfyUI render ok — %s", final_path)
+                    log.info("[Stage5] ComfyUI render ok — %s", final_path)
                 except Exception as e:
-                    log.warning("[S5] ComfyUI failed: %s — falling back to FFmpeg", e)
-                    _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
+                    log.warning("[Stage5] ComfyUI failed: %s — falling back to FFmpeg", e)
+                    _update(db, run, progress_detail="Stage5 ComfyUI 失败，FFmpeg 合成中...")
                     final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps, overlay=cfg.overlay)
                 # ── 封面拼接：对 comfyui 成功路径和 FFmpeg 回退路径都生效 ──
                 # 挪到 try/except 之后，final_path 已确定，再统一处理封面拼接。
                 cover_entry = next((e for e in timeline.get("entries", []) if e.get("is_cover")), None)
                 if cover_entry:
                     try:
-                        _update(db, run, progress_detail="S5 渲染封面片段中...")
+                        _update(db, run, progress_detail="Stage5 渲染封面片段中...")
                         from app.providers.composer.hyperframes_composer import HyperframesComposer as _HFC
                         cover_mp4 = str(run_dir / "cover.mp4")
                         await _HFC(overlay=cfg.overlay).render_cover_clip(
@@ -905,42 +914,42 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                         final_path = _ffmpeg_concat(
                             [cover_mp4, final_path], concat_out,
                             resolution, cfg.hyperframes.fps)
-                        log.info("[S5] 封面拼接完成 → %s", final_path)
+                        log.info("[Stage5] 封面拼接完成 → %s", final_path)
                     except Exception as cover_err:
-                        log.warning("[S5] 封面拼接失败，跳过封面直接用主视频: %s", cover_err)
+                        log.warning("[Stage5] 封面拼接失败，跳过封面直接用主视频: %s", cover_err)
             else:
-                _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
-                log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
+                _update(db, run, current_stage=5, progress_detail="Stage5 Hyperframes 渲染中...")
+                log.info("[Stage5] Hyperframes rendering — output=%s", output_mp4)
                 composer = HyperframesComposer(overlay=cfg.overlay)
                 try:
                     result = await run_stage5(
                         timeline=timeline, composer=composer, assets_dir=str(assets_dir),
                         output_path=output_mp4, resolution=resolution)
                     final_path = result.file_path
-                    log.info("[S5] Hyperframes render ok — %s", final_path)
+                    log.info("[Stage5] Hyperframes render ok — %s", final_path)
                 except Exception as e:
-                    log.warning("[S5] Hyperframes failed: %s — falling back to FFmpeg", e)
-                    _update(db, run, progress_detail="S5 Hyperframes 失败，FFmpeg 合成中...")
+                    log.warning("[Stage5] Hyperframes failed: %s — falling back to FFmpeg", e)
+                    _update(db, run, progress_detail="Stage5 Hyperframes 失败，FFmpeg 合成中...")
                     final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps, overlay=cfg.overlay)
 
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
                 elapsed = time.time() - t0
-                detail = f"S5 渲染完成 — {size_mb:.1f} MB ({elapsed:.1f}s)"
+                detail = f"Stage5 渲染完成 — {size_mb:.1f} MB ({elapsed:.1f}s)"
                 _update(db, run, progress_detail=detail, output_path=final_path)
-                log.info("[S5] Done — %.1f MB in %.1fs", size_mb, elapsed)
+                log.info("[Stage5] Done — %.1f MB in %.1fs", size_mb, elapsed)
                 export_final(run.id, final_path, script.get("title", ""))
                 rendered = True
             else:
-                log.error("[S5] Output file not found: %s", final_path)
+                log.error("[Stage5] Output file not found: %s", final_path)
                 _update(db, run, status="failed",
                         error_message=f"Video output not found: {final_path}",
                         finished_at=datetime.now(timezone.utc))
                 return
 
             if run.mode == "manual" and not skip_review:
-                _update(db, run, status="review", progress_detail="S5 渲染完成，等待审核")
-                log.info("[S5] Paused for review")
+                _update(db, run, status="review", progress_detail="Stage5 渲染完成，等待审核")
+                log.info("[Stage5] Paused for review")
                 await _wait_for_resume(run_id, db)
                 run = db.get(PipelineRun, run_id)
 

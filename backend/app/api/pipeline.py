@@ -629,7 +629,7 @@ async def reroll_articles(run_id: int, db: Session = Depends(get_db)):
         # 前端也会禁用按钮，这里双保险防止直接打 API
         raise HTTPException(status_code=400, detail="日报模式无需重新采集")
     is_weekly = method == "weekly"
-    run.progress_detail = "S1 重新总结中..." if is_weekly else "S1 重新采集中..."
+    run.progress_detail = "Stage1 重新总结中..." if is_weekly else "Stage1 重新采集中..."
     db.commit()
     session_factory = get_session_factory()
     serial_submit(_reroll_articles_bg, run_id, session_factory, label=f"reroll#{run_id}")
@@ -668,15 +668,15 @@ async def _reroll_articles_async(run_id: int, session_factory):
             log.warning("Reroll for run #%d collected 0 articles — keeping existing list", run_id)
             return
         if articles[0].metadata.get("source_group") != "aihot":
-            runner_update(db, run, progress_detail="S1 生成摘要中...")
+            runner_update(db, run, progress_detail="Stage1 生成摘要中...")
             await _summarize_articles(articles, cfg, run, db, log)
         elif articles[0].metadata.get("aihot_method") == "weekly":
-            runner_update(db, run, progress_detail="S1 提炼本周热点中...")
+            runner_update(db, run, progress_detail="Stage1 提炼本周热点中...")
             await _distill_weekly_if_needed(articles, log, run.language or cfg.pipeline.default_language)
         rd = _run_dir(run_id)
         rd.mkdir(parents=True, exist_ok=True)
         _save_articles(articles, rd)
-        _update(db, run, progress_detail=f"S1 完成 — {len(articles)} 篇文章")
+        _update(db, run, progress_detail=f"Stage1 完成 — {len(articles)} 篇文章")
         log.info("Rerolled articles for run #%d — %d articles", run_id, len(articles))
     except Exception as e:
         log.exception("Reroll articles failed for run #%d", run_id)
@@ -908,7 +908,7 @@ async def trigger_render(run_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="No timeline — run stage 4 first")
     run.current_stage = 5
     run.status = "processing"
-    run.progress_detail = "S5 合成启动中..." if is_audio else "S5 渲染启动中..."
+    run.progress_detail = "Stage5 合成启动中..." if is_audio else "Stage5 渲染启动中..."
     run.output_path = None
     run.error_message = None  # 重新渲染 → 清掉上次失败残留的报错
     run.finished_at = None
@@ -942,7 +942,7 @@ async def _render_video_async(run_id: int, session_factory):
 
         if run.video_route == "audio":
             from app.pipeline.runner import _ffmpeg_merge_audio
-            _update(db, run, progress_detail="S5 合成音频中...")
+            _update(db, run, progress_detail="Stage5 合成音频中...")
             try:
                 script = json.loads((rd / "script.json").read_text(encoding="utf-8"))
                 final_path = _ffmpeg_merge_audio(script, rd / "assets", rd)
@@ -952,7 +952,7 @@ async def _render_video_async(run_id: int, session_factory):
                 return
             if Path(final_path).exists():
                 size_mb = Path(final_path).stat().st_size / 1024 / 1024
-                _update(db, run, status="done", progress_detail=f"S5 合成完成 — {size_mb:.1f} MB", output_path=final_path, error_message=None, finished_at=datetime.now(timezone.utc))
+                _update(db, run, status="done", progress_detail=f"Stage5 合成完成 — {size_mb:.1f} MB", output_path=final_path, error_message=None, finished_at=datetime.now(timezone.utc))
                 export_final(run_id, final_path)
             else:
                 _update(db, run, status="failed", error_message="音频文件未生成", finished_at=datetime.now(timezone.utc))
@@ -965,7 +965,7 @@ async def _render_video_async(run_id: int, session_factory):
         if run.video_route == "comfyui":
             # ComfyUI 视频路：失败（含 ComfyUI 未启动/不可达）直接抛出 → 由外层标记 failed 停止，
             # 不兜底 FFmpeg（与图片路一致：选了 ComfyUI 就必须 ComfyUI 出片）。
-            _update(db, run, progress_detail="S5 ComfyUI 视频生成中...")
+            _update(db, run, progress_detail="Stage5 ComfyUI 视频生成中...")
             from app.providers.comfyui.wake import ensure_comfyui_ready
             from app.providers.video import build_video_provider
             from app.providers.composer.comfyui_composer import ComfyUIVideoComposer
@@ -977,7 +977,7 @@ async def _render_video_async(run_id: int, session_factory):
             )
             final_path = result.file_path
         else:
-            _update(db, run, progress_detail="S5 Hyperframes 渲染中...")
+            _update(db, run, progress_detail="Stage5 Hyperframes 渲染中...")
             from app.providers.composer.hyperframes_composer import HyperframesComposer
             composer = HyperframesComposer()
             try:
@@ -989,12 +989,12 @@ async def _render_video_async(run_id: int, session_factory):
                 final_path = result.file_path
             except Exception as e:
                 log.warning("Hyperframes render failed for run #%d: %s — trying FFmpeg", run_id, e)
-                _update(db, run, progress_detail="S5 FFmpeg 合成中...")
+                _update(db, run, progress_detail="Stage5 FFmpeg 合成中...")
                 final_path = _ffmpeg_compose(timeline, rd, resolution, cfg.hyperframes.fps)
 
         if Path(final_path).exists():
             size_mb = Path(final_path).stat().st_size / 1024 / 1024
-            _update(db, run, status="done", progress_detail=f"S5 渲染完成 — {size_mb:.1f} MB", output_path=final_path, error_message=None, finished_at=datetime.now(timezone.utc))
+            _update(db, run, status="done", progress_detail=f"Stage5 渲染完成 — {size_mb:.1f} MB", output_path=final_path, error_message=None, finished_at=datetime.now(timezone.utc))
             export_final(run_id, final_path)
         else:
             _update(db, run, status="failed", error_message="Video file not found", finished_at=datetime.now(timezone.utc))

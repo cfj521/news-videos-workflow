@@ -1232,15 +1232,15 @@ export function SettingsPage() {
                 )}
               </div>
             </Field>
-            <Field label="标题模板" desc="变量：{period} {days} {date}">
+            <Field label="标题模板" desc="变量：{period} {days} {date} {title}（{title}=视频标题）">
               <input value={cur.title_template}
                 onChange={(e) => patchCover({ title_template: e.target.value })}
                 placeholder="{period}AI资讯" className={inputCls} />
             </Field>
-            <Field label="副标题">
+            <Field label="副标题" desc="同样支持 {period} {days} {date} {title}；{title} 较长会自动换行">
               <input value={cur.subtitle}
                 onChange={(e) => patchCover({ subtitle: e.target.value })}
-                placeholder="留空则无副标题" className={inputCls} />
+                placeholder="留空则无副标题，可用 {title}" className={inputCls} />
             </Field>
             <Field label="标题字号" desc="按渲染分辨率计的像素值">
               <div className="flex items-center gap-3">

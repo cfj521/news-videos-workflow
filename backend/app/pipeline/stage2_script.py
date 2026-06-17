@@ -62,13 +62,13 @@ async def distill_weekly_sections(weekly_items: list[dict], text_provider, langu
         sections = _parse_json(resp).get("sections", [])
     except Exception:
         # 含 provider 鉴权/网络错误：记完整堆栈再兜底，避免静默退化成 category 分组
-        log.exception("[S1] weekly distill failed (provider/parse) — 将按 category 兜底")
+        log.exception("[Stage1] weekly distill failed (provider/parse) — 将按 category 兜底")
         sections = []
     sections = [s for s in sections if s.get("items")]
     if not sections:
-        log.warning("[S1] weekly distill empty — fallback group by category")
+        log.warning("[Stage1] weekly distill empty — fallback group by category")
         sections = _fallback_weekly_sections(weekly_items)
-    log.info("[S1] weekly distilled into %d themes", len(sections))
+    log.info("[Stage1] weekly distilled into %d themes", len(sections))
     return sections
 
 
@@ -89,7 +89,7 @@ async def _translate_to_en(texts: list[str], tp) -> dict:
         arr = _parse_json(resp).get("items", [])
         return {uniq[i]: arr[i] for i in range(min(len(uniq), len(arr))) if arr[i]}
     except Exception:
-        log.warning("[S2] group title translate to EN failed")
+        log.warning("[Stage2] group title translate to EN failed")
         return {}
 
 
@@ -99,7 +99,7 @@ async def _gen_article_scenes(article, tp, language: str = "zh") -> list[dict]:
     try:
         scenes = _parse_json(resp).get("scenes", [])
     except Exception:
-        log.warning("[S2] parse article scenes failed for '%s'", article.title)
+        log.warning("[Stage2] parse article scenes failed for '%s'", article.title)
         scenes = []
     if not scenes:
         scenes = [{"narration": article.title, "image_prompt": article.title, "motion_prompt": "", "duration_hint": 5}]
@@ -147,29 +147,39 @@ def _aihot_candidates(articles: list) -> list:
 
 
 async def _gen_image_prompt(cand, tp, language: str = "zh") -> str:
-    """把新闻 title+summary 转成一句视觉画面描述供文生图（非重写旁白）。失败退化为 title。"""
-    sys = ("Turn the news into ONE concise visual scene description for image generation "
-           "(subject + setting + style). Output the description only, no quotes."
-           if _is_en(language) else
-           "把这条新闻转成一句用于文生图的画面描述（主体+场景+风格），只输出该句，不要引号。")
+    """把新闻 title+summary 转成文生图提示词。失败退化为 title。
+
+    复用可配置的 image_regen 提示词（与「重新生成图片」同源、含 English only / 面孔约束），
+    使 AI HOT 直用路径也受提示词配置控制，不再硬编码。
+    """
+    sys = resolve_prompt("image_regen", language)
     try:
         resp = await tp.generate(prompt=f"{cand.title}。{cand.summary}", system_prompt=sys)
         text = resp.strip().strip('"').strip("「」")
         return text or cand.title
     except Exception:
-        log.warning("[S2] image prompt gen failed for '%s' — fallback to title", cand.title[:40])
+        log.warning("[Stage2] image prompt gen failed for '%s' — fallback to title", cand.title[:40])
         return cand.title
 
 
-async def _run_aihot_direct(articles: list, tp, language: str = "zh", max_articles: int = 5) -> dict:
-    """AI HOT 直用：归一候选 → ScoringService 选 top N → 每条 1 scene（不 AI 生成旁白）。"""
+async def _run_aihot_direct(articles: list, tp, language: str = "zh", max_articles: int = 5, on_progress=None) -> dict:
+    """AI HOT 直用：归一候选 → ScoringService 选 top N → 每条 1 scene（不 AI 生成旁白）。
+
+    on_progress(text)：可选，把子阶段进度文案回调给上层（供刷新 run.progress_detail）。
+    """
     candidates = _aihot_candidates(articles)
-    res = await ScoringService().select_top(candidates, tp, language, n=max_articles)
+    log.info("[Stage2] AI HOT 直用：解析出 %d 条候选，开始评分（选 top %d）", len(candidates), max_articles)
+    sc_cb = (lambda d, t: on_progress(f"Stage2 评分中 {d}/{t} 条")) if on_progress else None
+    res = await ScoringService().select_top(candidates, tp, language, n=max_articles, on_progress=sc_cb)
     selected = res.selected
+    log.info("[Stage2] 评分完成：%d 条候选 → 选中 %d 条，开始生成分镜图片提示词", len(candidates), len(selected))
     scenes: list[dict] = []
     groups: list[dict] = []
     titles: list[str] = []
     for i, cand in enumerate(selected, start=1):
+        log.info("[Stage2] 生成图片提示词 %d/%d：%s", i, len(selected), cand.title[:40])
+        if on_progress:
+            on_progress(f"Stage2 生成分镜 {i}/{len(selected)}")
         image_prompt = await _gen_image_prompt(cand, tp, language)
         scenes.append({
             "id": i, "group_id": i, "group_title": cand.title, "title": cand.title,
@@ -179,15 +189,18 @@ async def _run_aihot_direct(articles: list, tp, language: str = "zh", max_articl
         })
         groups.append({"id": i, "title": cand.title, "source_index": 0})
         titles.append(cand.title)
+    log.info("[Stage2] 生成视频标题/简介（meta）...")
+    if on_progress:
+        on_progress("Stage2 生成标题简介")
     meta = await _gen_summary_meta(titles, tp, language)
-    log.info("[S2] AI HOT direct: %d candidates → %d scenes (max_articles=%d)", len(candidates), len(scenes), max_articles)
+    log.info("[Stage2] AI HOT direct: %d candidates → %d scenes (max_articles=%d)", len(candidates), len(scenes), max_articles)
     return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"],
             "groups": groups, "scenes": scenes, "scoring_report": res.report}
 
 
-async def run_stage2_multi(articles: list, text_provider, language: str = "zh", max_articles: int = 5) -> dict:
+async def run_stage2_multi(articles: list, text_provider, language: str = "zh", max_articles: int = 5, on_progress=None) -> dict:
     if articles and articles[0].metadata.get("source_group") == "aihot":
-        return await _run_aihot_direct(articles, text_provider, language, max_articles)
+        return await _run_aihot_direct(articles, text_provider, language, max_articles, on_progress=on_progress)
 
     scenes: list[dict] = []
     groups: list[dict] = []
@@ -195,7 +208,11 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh", 
     next_gid = 1
     titles: list[str] = []
 
+    log.info("[Stage2] 多文章脚本：为 %d 篇文章逐篇生成分镜", len(articles))
     for idx, article in enumerate(articles):
+        log.info("[Stage2] 生成分镜 %d/%d：%s", idx + 1, len(articles), article.title[:40])
+        if on_progress:
+            on_progress(f"Stage2 生成分镜 {idx + 1}/{len(articles)}")
         gid = next_gid
         next_gid += 1
         art_scenes = await _gen_article_scenes(article, text_provider, language)
@@ -221,7 +238,7 @@ async def run_stage2_multi(articles: list, text_provider, language: str = "zh", 
                     sc["group_title"] = trans[sc["group_title"]]
 
     meta = await _gen_summary_meta(titles, text_provider, language)
-    log.info("[S2] multi script: %d groups, %d scenes", len(groups), len(scenes))
+    log.info("[Stage2] multi script: %d groups, %d scenes", len(groups), len(scenes))
     return {"title": meta["title"], "description": meta["description"], "tags": meta["tags"], "groups": groups, "scenes": scenes}
 
 
@@ -266,5 +283,5 @@ def cap_scenes_by_score(script: dict, limit: int) -> dict:
                                "source_index": len(new_groups)})
         new_scenes.append({**sc, "id": len(new_scenes) + 1, "group_id": gid_remap[old_gid]})
 
-    log.info("[S2] cap scenes %d → %d (limit %d)", len(scenes), len(new_scenes), limit)
+    log.info("[Stage2] cap scenes %d → %d (limit %d)", len(scenes), len(new_scenes), limit)
     return {**script, "scenes": new_scenes, "groups": new_groups}

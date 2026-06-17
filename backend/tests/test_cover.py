@@ -45,6 +45,18 @@ def test_date_normal_source_single_day():
     # 普通源（无 method）：单日
     assert resolve_cover_text("{date}", _run(time_range="7d")) == "2026-06-18"
 
+def test_title_variable():
+    # {title} = 视频 meta 标题
+    assert resolve_cover_text("{title}", _run(), meta_title="AI圈大爆发") == "AI圈大爆发"
+
+def test_title_variable_empty_when_missing():
+    assert resolve_cover_text("副标题{title}", _run()) == "副标题"
+
+def test_build_cover_entry_resolves_title_in_subtitle():
+    cfg = CoverCfg(enabled=True, subtitle="{title}")
+    e = build_cover_entry(cfg, _run(), image_rel="", audio_rel="", audio_ms=0, meta_title="本周AI大事件")
+    assert e["subtitle"] == "本周AI大事件"
+
 def test_cover_text_color_passthrough():
     cfg = CoverCfg(enabled=True, text_color="#FF0000")
     e = build_cover_entry(cfg, _run(), image_rel="", audio_rel="", audio_ms=0)

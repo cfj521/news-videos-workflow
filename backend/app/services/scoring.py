@@ -156,7 +156,8 @@ class ScoringService:
 
     # ── 核心编排：async select_top ────────────────────────────────────────────
 
-    async def select_top(self, articles, text_provider=None, language="zh", n=5) -> ScoringResult:
+    async def select_top(self, articles, text_provider=None, language="zh", n=5, on_progress=None) -> ScoringResult:
+        """on_progress(done, total)：LLM 评分每完成一条回调一次（供上层刷新 run 进度）。"""
         if not articles:
             return ScoringResult(selected=[], report={"candidates": [], "n": n, "k": 0, "pool": 0,
                                  "min_score": C.MIN_SCORE, "source_type": ""})
@@ -178,8 +179,12 @@ class ScoringService:
         else:
             llm_set = scored if text_provider is not None else []
         if llm_set:
+            total = len(llm_set)
+            done = 0
+            log.info("[scoring] start — LLM 评分 %d 条候选 (pool=%d, concurrency=%d)", total, pool, C.LLM_CONCURRENCY)
             sem = asyncio.Semaphore(C.LLM_CONCURRENCY)
             async def run_one(item):
+                nonlocal done
                 async with sem:
                     try:
                         r = await self._llm_score(item["art"], text_provider, language)
@@ -187,6 +192,16 @@ class ScoringService:
                         item["reason"], item["tags"], item["llm_ran"] = r.get("reason", ""), r.get("tags", []), True
                     except Exception:
                         item["llm_ran"] = False
+                    finally:
+                        done += 1
+                        # 评分并发完成，逐条进度（每 5 条或末条打 INFO，便于观察「正在评分」不卡死）
+                        if done % 5 == 0 or done == total:
+                            log.info("[scoring] LLM 评分进度 %d/%d", done, total)
+                        if on_progress is not None:
+                            try:
+                                on_progress(done, total)
+                            except Exception:
+                                pass
             await asyncio.gather(*(run_one(it) for it in llm_set))
         for it in scored:
             if it.get("llm_ran"):

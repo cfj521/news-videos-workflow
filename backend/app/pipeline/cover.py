@@ -50,13 +50,15 @@ def _run_dt(run) -> datetime:
     return datetime.now(timezone.utc).astimezone()
 
 
-def resolve_cover_text(template: str, run) -> str:
-    """把封面模板里的 {period}/{days}/{date} 按 run 填充。
+def resolve_cover_text(template: str, run, *, meta_title: str = "") -> str:
+    """把封面模板里的 {period}/{days}/{date}/{title} 按 run 填充。
 
     {date} 按报告类型自适应：
     - 日报 / 普通源：单日（如 2026-06-18）
     - 周报：本期跨度（如 06.12-06.18，按 time_range 推算）
     - 月报：年.月（如 2026.06）
+
+    {title} = 该 run 的视频 meta 标题（summary_meta 生成的吸睛标题，也是发布标题）。
     """
     if not template:
         return ""
@@ -74,10 +76,11 @@ def resolve_cover_text(template: str, run) -> str:
         date_str = f"{start.strftime('%m.%d')}-{base.strftime('%m.%d')}"
     else:
         date_str = base.strftime("%Y-%m-%d")
-    return (template.replace("{period}", period).replace("{days}", days).replace("{date}", date_str))
+    return (template.replace("{period}", period).replace("{days}", days)
+            .replace("{date}", date_str).replace("{title}", meta_title or ""))
 
 
-def build_cover_entry(cfg, run, *, image_rel: str, audio_rel: str, audio_ms: int) -> dict:
+def build_cover_entry(cfg, run, *, image_rel: str, audio_rel: str, audio_ms: int, meta_title: str = "") -> dict:
     """组装 timeline 头部的封面 entry（视觉字段全内联）。
 
     时长规则：
@@ -95,15 +98,15 @@ def build_cover_entry(cfg, run, *, image_rel: str, audio_rel: str, audio_ms: int
     return {
         "scene_id": 0, "is_cover": True, "start_ms": 0, "end_ms": end_ms,
         "image_path": image_rel, "audio_path": audio_rel or "", "audio_duration_ms": audio_dur,
-        "title": resolve_cover_text(cfg.title_template, run),
-        "subtitle": resolve_cover_text(cfg.subtitle, run),
+        "title": resolve_cover_text(cfg.title_template, run, meta_title=meta_title),
+        "subtitle": resolve_cover_text(cfg.subtitle, run, meta_title=meta_title),
         "cover_font_size": cfg.font_size,
         "cover_text_color": getattr(cfg, "text_color", "") or "#FFFFFF",  # 标题+副标题统一颜色
         "subtitle_text": "", "subtitle_lines": [],
     }
 
 
-async def prepare_cover_assets(cfg_cover, run, run_dir, tts, *, override_image: str = "") -> "dict | None":
+async def prepare_cover_assets(cfg_cover, run, run_dir, tts, *, override_image: str = "", meta_title: str = "") -> "dict | None":
     """封面启用且非纯音频时，备好封面图/音频并返回封面 entry；否则 None。
 
     - 图：override_image（per-run）优先，否则 cfg_cover.image（仓库根相对或绝对）；
@@ -133,7 +136,7 @@ async def prepare_cover_assets(cfg_cover, run, run_dir, tts, *, override_image: 
 
     # ── 封面旁白 TTS：narration 非空且有 tts provider 则合成音频 ──
     audio_abs, audio_ms = "", 0
-    narration = resolve_cover_text(cfg_cover.narration, run)
+    narration = resolve_cover_text(cfg_cover.narration, run, meta_title=meta_title)
     if narration and tts is not None:
         from app.providers.tts.audio_duration import measure_audio_ms
         out = str((assets / "cover_audio.mp3").resolve())
@@ -143,4 +146,5 @@ async def prepare_cover_assets(cfg_cover, run, run_dir, tts, *, override_image: 
             audio_ms = measured
             audio_abs = out
 
-    return build_cover_entry(cfg_cover, run, image_rel=image_abs, audio_rel=audio_abs, audio_ms=audio_ms)
+    return build_cover_entry(cfg_cover, run, image_rel=image_abs, audio_rel=audio_abs,
+                             audio_ms=audio_ms, meta_title=meta_title)
