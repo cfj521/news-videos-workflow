@@ -14,6 +14,8 @@ import {
   btnDeleteCompact,
   btnAdd,
   sectionTitleCls,
+  toggleCls,
+  toggleThumbCls,
   cx,
 } from "../styles";
 
@@ -1075,12 +1077,13 @@ export function SettingsPage() {
 
       <Section title="画面标题" desc="在合成视频的每张画面上烧录标题文字；需后端有可用的 CJK 字体（见依赖要求）才会生效。">
         <Field label="画面标题烧录" center>
-          <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox" checked={settings.overlay.enabled}
-              onChange={(e) => patch("overlay", { enabled: e.target.checked })}
-              className="w-4 h-4 accent-blue-500 rounded" />
+          <div className="inline-flex items-center gap-2 select-none">
+            <button type="button" onClick={() => patch("overlay", { enabled: !settings.overlay.enabled })}
+              className={toggleCls(settings.overlay.enabled)} title={settings.overlay.enabled ? "点击关闭" : "点击开启"}>
+              <span className={toggleThumbCls(settings.overlay.enabled)} />
+            </button>
             <span className="text-sm text-white/76">{settings.overlay.enabled ? "已开启" : "已关闭"}</span>
-          </label>
+          </div>
         </Field>
         <Field label="字号比例" desc="相对于画面高度的比例（0.01–0.15），如 0.045 = 4.5%">
           <div className="flex items-center gap-3">
@@ -1187,12 +1190,13 @@ export function SettingsPage() {
               return <CoverPresetBar />;
             })()}
             <Field label="封面功能" center>
-              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                <input type="checkbox" checked={cur.enabled}
-                  onChange={(e) => patchCover({ enabled: e.target.checked })}
-                  className="w-4 h-4 accent-blue-500 rounded" />
+              <div className="inline-flex items-center gap-2 select-none">
+                <button type="button" onClick={() => patchCover({ enabled: !cur.enabled })}
+                  className={toggleCls(cur.enabled)} title={cur.enabled ? "点击关闭" : "点击开启"}>
+                  <span className={toggleThumbCls(cur.enabled)} />
+                </button>
                 <span className="text-sm text-white/76">{cur.enabled ? "已开启" : "已关闭"}</span>
-              </label>
+              </div>
             </Field>
             <Field label="封面图">
               <div className="flex flex-col gap-2">

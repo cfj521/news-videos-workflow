@@ -6,6 +6,7 @@ import {
   sectionTitleCls, inputCls, labelCls, errorTextCls,
   btnApprove, btnDelete, btnDeleteIcon,
   dialogOverlayCls, dialogPanelCls,
+  toggleCls, toggleThumbCls,
 } from "../styles";
 import { Select } from "../components/Select";
 import { CreateRunDialog } from "../components/CreateRunDialog";
@@ -1236,12 +1237,14 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
         </div>
         <div className="flex-1 flex justify-end">
           {!audioOnly && (
-            <label className="inline-flex items-center gap-2 cursor-pointer select-none" title="仅在播放器中显示外挂字幕，不影响成片（成片不烧字幕）">
-              <input type="checkbox" checked={showSubs}
-                onChange={(e) => { setShowSubs(e.target.checked); applyTrackMode(e.target.checked); }}
-                className="w-4 h-4 accent-blue-500 rounded" />
+            <div className="inline-flex items-center gap-2 select-none" title="仅在播放器中显示外挂字幕，不影响成片（成片不烧字幕）">
               <span className="text-xs text-white/76">显示字幕</span>
-            </label>
+              <button type="button"
+                onClick={() => { const next = !showSubs; setShowSubs(next); applyTrackMode(next); }}
+                className={toggleCls(showSubs)}>
+                <span className={toggleThumbCls(showSubs)} />
+              </button>
+            </div>
           )}
         </div>
       </div>
