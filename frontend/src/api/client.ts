@@ -93,7 +93,7 @@ export interface AppSettings {
     video_model: string; video_fps: number;
   };
   storage: { work_dir: string; output_dir: string };
-  hyperframes: { fps: string; scene_gap_ms: number; transition: string; subtitle_font_size: number; subtitle_max_lines: number };
+  hyperframes: { fps: string; scene_gap_ms: number; transition: string; subtitle_font_size: number; subtitle_max_lines: number; subtitle_bottom_px: number };
   comfyui: { server_url: string; default_negative: string; wake: { enabled: boolean; mac: string; broadcast: string; port: number; ready_timeout: number; poll_interval: number }; image_params: Record<string, { steps: number; cfg: number }>; video_params: Record<string, { steps: number; cfg: number }> };
   overlay: {
     enabled: boolean;

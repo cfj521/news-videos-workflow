@@ -787,7 +787,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
             try:
                 hyperframes_html = composer._render_html(
                     timeline, resolution, run_dir, transition=cfg.hyperframes.transition,
-                    subtitle_font_size=cfg.hyperframes.subtitle_font_size)
+                    subtitle_font_size=cfg.hyperframes.subtitle_font_size,
+                    subtitle_bottom_px=cfg.hyperframes.subtitle_bottom_px)
                 (run_dir / "index.html").write_text(hyperframes_html, encoding="utf-8")
                 log.info("[S4] Hyperframes HTML generated at %s/index.html", run_dir)
             except Exception as e:

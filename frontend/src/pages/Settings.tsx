@@ -451,7 +451,7 @@ const EMPTY_SETTINGS: AppSettings = {
     video_model: "wan2.2_5b", video_fps: 24,
   },
   storage: { work_dir: "", output_dir: "" },
-  hyperframes: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2 },
+  hyperframes: { fps: "30", scene_gap_ms: 500, transition: "crossfade", subtitle_font_size: 48, subtitle_max_lines: 2, subtitle_bottom_px: 80 },
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", wake: { enabled: false, mac: "", broadcast: "255.255.255.255", port: 9, ready_timeout: 180, poll_interval: 3 }, image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
   overlay: { enabled: true, font_file: "C:/Windows/Fonts/msyh.ttc", font_size_ratio: 0.035, color: "#FFFFFF", bg_opacity: 0.45, margin_ratio: 0.03 },
   prompts: {},
@@ -1054,6 +1054,12 @@ export function SettingsPage() {
           <div className="flex items-center gap-3">
             <input type="range" value={settings.hyperframes.subtitle_font_size} onChange={(e) => patch("hyperframes", { subtitle_font_size: Number(e.target.value) })} min={24} max={96} step={2} className="flex-1 accent-blue-500" />
             <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.hyperframes.subtitle_font_size}px</span>
+          </div>
+        </Field>
+        <Field label="字幕距底部" desc="按渲染分辨率计的像素值，越大字幕越靠上">
+          <div className="flex items-center gap-3">
+            <input type="range" value={settings.hyperframes.subtitle_bottom_px} onChange={(e) => patch("hyperframes", { subtitle_bottom_px: Number(e.target.value) })} min={0} max={400} step={10} className="flex-1 accent-blue-500" />
+            <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.hyperframes.subtitle_bottom_px}px</span>
           </div>
         </Field>
         <Field label="字幕最多行数" desc="超长旁白会按此上限自动切分成多条短字幕">

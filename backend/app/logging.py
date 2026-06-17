@@ -32,6 +32,20 @@ def reset_run_context(token) -> None:
         pass
 
 
+async def bind_run_log(run_id: int):
+    """FastAPI 依赖：把当前请求绑定到某个 run 的日志上下文，请求结束自动复位。
+
+    挂到带 path 参数 run_id 的路由上，请求内（含各 provider）日志统一带 [run=N]，
+    修复 regen/scene 等接口日志打成 [run=-] 的问题。必须是 async（async 依赖与
+    async 路由在同一 task 上下文执行，contextvar 才能传到路由；sync 依赖跑在线程池、传不过去）。
+    """
+    token = set_run_context(run_id)
+    try:
+        yield
+    finally:
+        reset_run_context(token)
+
+
 class _RunIdFilter(logging.Filter):
     """把当前 run_id 注入每条 LogRecord，供 format 的 %(run_id)s 使用。"""
 

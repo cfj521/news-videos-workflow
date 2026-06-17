@@ -9,7 +9,7 @@
     .scene { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     .scene img { width: 100%; height: 100%; object-fit: cover; }
     .subtitle {
-      position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: {{ subtitle_bottom_px | default(80) }}px; left: 50%; transform: translateX(-50%);
       font-size: {{ subtitle_font_size | default(48) }}px; color: white; text-align: center; max-width: 80%;
       text-shadow: 2px 2px 6px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.5);
       font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
@@ -163,9 +163,12 @@
       if (!e.data || !e.data.type) return;
       var audios = document.querySelectorAll('audio');
       if (e.data.type === 'play') { tl.play(); }
-      if (e.data.type === 'pause') { tl.pause(); audios.forEach(function(a){a.pause();}); }
+      if (e.data.type === 'pause') { tl.pause(); audios.forEach(function(a){a.pause();}); activeAudioId = null; }  // 清掉 → 恢复播放时 syncAudio 重新对齐并 play 当前段（否则同段守卫会跳过，声音要等下一分镜才回来）
       if (e.data.type === 'restart') { audios.forEach(function(a){ a.pause(); try { a.currentTime = 0; } catch (_) {} }); activeAudioId = null; tl.restart(); }
       if (e.data.type === 'seek') { tl.seek(e.data.time); activeAudioId = null; }  // 重置 → 下一帧重新对齐音频
+      if (e.data.type === 'subtitles') {  // 预览页「显示字幕」开关：成片走外挂 SRT 不烧字幕，此开关仅控制预览显隐
+        document.querySelectorAll('.subtitle').forEach(function (el) { el.style.display = e.data.show ? '' : 'none'; });
+      }
     });
   </script>
 </body>

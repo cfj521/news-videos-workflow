@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db, get_session_factory
 from app.services.document_import import import_file, import_url
 from app.config import get_settings, reload_settings
-from app.logging import get_logger
+from app.logging import bind_run_log, get_logger, reset_run_context, set_run_context
 from app.models.pipeline_run import PipelineRun
 from app.pipeline.engine import PipelineEngine
 from app.pipeline.runner import execute_pipeline, _collectors_for_run, _build_text_provider, _update, _article_from_dict, _humanize_error, export_final, run_pipeline_bg, _write_scoring_json
@@ -353,7 +353,7 @@ def get_timeline(run_id: int):
 
 
 @router.post("/runs/{run_id}/regen-script")
-async def regen_script(run_id: int, db: Session = Depends(get_db)):
+async def regen_script(run_id: int, db: Session = Depends(get_db), _log=Depends(bind_run_log)):
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -515,7 +515,7 @@ class RegenAudioRequest(BaseModel):
 
 
 @router.post("/runs/{run_id}/scenes/{scene_id}/audio")
-async def regen_scene_audio(run_id: int, scene_id: int, body: RegenAudioRequest, db: Session = Depends(get_db)):
+async def regen_scene_audio(run_id: int, scene_id: int, body: RegenAudioRequest, db: Session = Depends(get_db), _log=Depends(bind_run_log)):
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -548,7 +548,7 @@ class RegenImageRequest(BaseModel):
 
 
 @router.post("/runs/{run_id}/scenes/{scene_id}/image")
-async def regen_scene_image(run_id: int, scene_id: int, body: RegenImageRequest, db: Session = Depends(get_db)):
+async def regen_scene_image(run_id: int, scene_id: int, body: RegenImageRequest, db: Session = Depends(get_db), _log=Depends(bind_run_log)):
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -603,7 +603,11 @@ async def reroll_articles(run_id: int, db: Session = Depends(get_db)):
 
 
 def _reroll_articles_bg(run_id: int, session_factory):
-    asyncio.run(_reroll_articles_async(run_id, session_factory))
+    token = set_run_context(run_id)  # 让后台 reroll 的 provider 日志带 [run=N]（asyncio.run 建 task 会拷贝当前上下文）
+    try:
+        asyncio.run(_reroll_articles_async(run_id, session_factory))
+    finally:
+        reset_run_context(token)
 
 
 async def _reroll_articles_async(run_id: int, session_factory):
@@ -656,7 +660,7 @@ class RegenPromptRequest(BaseModel):
 
 
 @router.post("/runs/{run_id}/scenes/{scene_id}/regen-prompt")
-async def regen_scene_prompt(run_id: int, scene_id: int, body: RegenPromptRequest, db: Session = Depends(get_db)):
+async def regen_scene_prompt(run_id: int, scene_id: int, body: RegenPromptRequest, db: Session = Depends(get_db), _log=Depends(bind_run_log)):
     rd = _run_dir(run_id)
     script_path = rd / "script.json"
     if not script_path.exists():
@@ -689,7 +693,7 @@ class _AddSceneBody(_PydBase):
 
 
 @router.post("/runs/{run_id}/scenes")
-async def add_scene(run_id: int, body: _AddSceneBody, db: Session = Depends(get_db)):
+async def add_scene(run_id: int, body: _AddSceneBody, db: Session = Depends(get_db), _log=Depends(bind_run_log)):
     reload_settings()  # 拿最新提示词
     run = db.get(PipelineRun, run_id)
     lang = (run.language if run else None) or get_settings().pipeline.default_language
@@ -770,7 +774,21 @@ def delete_scene(run_id: int, scene_id: int):
 # ─── Preview HTML ─────────────────────────────────────────
 
 @public_router.get("/runs/{run_id}/preview-html")
-def get_preview_html(run_id: int, db: Session = Depends(get_db)):
+def get_preview_html(
+    run_id: int,
+    transition: str | None = None,
+    scene_gap_ms: int | None = None,
+    subtitle_font_size: int | None = None,
+    subtitle_max_lines: int | None = None,
+    subtitle_bottom_px: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """生成 hyperframes 预览 HTML。
+
+    预览页可通过 query 参数临时覆盖渲染参数（转场/场景间隔/字幕字号/行数/距底部）：
+    **仅作用于本次预览渲染，不写全局 config、不落盘 timeline**——供预览页试看，不影响默认值与成片。
+    缺省时回退到全局 `cfg.hyperframes.*`，保持原有默认行为。
+    """
     rd = _run_dir(run_id)
     timeline_path = rd / "timeline.json"
     if not timeline_path.exists():
@@ -779,10 +797,33 @@ def get_preview_html(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)
     resolution = (run.resolution if run else None) or "1080x1920"
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+
+    hf = cfg.hyperframes
+    eff_trans = transition or hf.transition
+    eff_font = subtitle_font_size if subtitle_font_size is not None else hf.subtitle_font_size
+    eff_lines = subtitle_max_lines if subtitle_max_lines is not None else hf.subtitle_max_lines
+    eff_bottom = subtitle_bottom_px if subtitle_bottom_px is not None else hf.subtitle_bottom_px
+    eff_gap = scene_gap_ms if scene_gap_ms is not None else hf.scene_gap_ms
+
+    # 字号/行数/场景间隔影响 stage4 折行与排时长：有覆盖值时，用落盘 timeline 反推素材，
+    # 临时重跑 run_stage4（纯函数，不写文件）重新折行/排时长，使预览实时反映这些参数。
+    if scene_gap_ms is not None or subtitle_font_size is not None or subtitle_max_lines is not None:
+        script_path = rd / "script.json"
+        if script_path.exists():
+            script = json.loads(script_path.read_text(encoding="utf-8"))
+            scene_assets = [{
+                "scene_id": e["scene_id"],
+                "image": {"file_path": e.get("image_path", "")},
+                "audio": {"file_path": e.get("audio_path", ""), "duration_ms": e.get("audio_duration_ms", 0)},
+            } for e in timeline.get("entries", [])]
+            from app.pipeline.stage4_timeline import run_stage4
+            timeline = run_stage4(script, scene_assets, scene_gap_ms=eff_gap, resolution=resolution,
+                                  subtitle_font_size=eff_font, subtitle_max_lines=eff_lines)
+
     from app.providers.composer.hyperframes_composer import HyperframesComposer
     composer = HyperframesComposer()
-    html = composer._render_html(timeline, resolution, rd, transition=cfg.hyperframes.transition,
-                                 subtitle_font_size=cfg.hyperframes.subtitle_font_size)
+    html = composer._render_html(timeline, resolution, rd, transition=eff_trans,
+                                 subtitle_font_size=eff_font, subtitle_bottom_px=eff_bottom)
     return HTMLResponse(html)
 
 
@@ -814,7 +855,11 @@ async def trigger_render(run_id: int, db: Session = Depends(get_db)):
 
 
 def _render_video_bg(run_id: int, session_factory):
-    asyncio.run(_render_video_async(run_id, session_factory))
+    token = set_run_context(run_id)  # 让后台 render 的 composer/provider 日志带 [run=N]
+    try:
+        asyncio.run(_render_video_async(run_id, session_factory))
+    finally:
+        reset_run_context(token)
 
 
 async def _render_video_async(run_id: int, session_factory):

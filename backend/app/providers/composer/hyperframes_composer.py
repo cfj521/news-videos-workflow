@@ -61,7 +61,7 @@ class HyperframesComposer(ComposerProvider):
             resolution=resolution,
         )
 
-    def _render_html(self, timeline: dict, resolution: str, run_dir: Path, transition: str = "crossfade", subtitle_font_size: int = 48) -> str:
+    def _render_html(self, timeline: dict, resolution: str, run_dir: Path, transition: str = "crossfade", subtitle_font_size: int = 48, subtitle_bottom_px: int = 80) -> str:
         parts = resolution.split("x")
         width, height = int(parts[0]), int(parts[1])
         total_s = timeline["total_duration_ms"] / 1000
@@ -123,6 +123,7 @@ class HyperframesComposer(ComposerProvider):
         return template.render(width=width, height=height, total_duration_s=round(total_s, 3),
                                entries=entries, prev_scene_ids=prev_scene_ids, transition=transition,
                                subtitle_font_size=subtitle_font_size,
+                               subtitle_bottom_px=subtitle_bottom_px,
                                title_overlays=title_overlays, title_font_size=title_font_size,
                                title_margin_px=title_margin_px,
                                overlay=self._overlay)

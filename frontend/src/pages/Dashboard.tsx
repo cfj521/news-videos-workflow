@@ -815,7 +815,7 @@ function Scrubber({ currentTime, totalDuration, onSeek, onScrubStart, onScrubEnd
 // ─── S4: 预览 ──────────────────────────────────────────
 
 function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
-  const { data: settings, mutate: mutateSettings } = useSWR<AppSettings>("settings", api.settings.get);
+  const { data: settings } = useSWR<AppSettings>("settings", api.settings.get);
   const { data: timeline } = useSWR<TimelineData>(`timeline-${runId}`, () => api.runs.timeline(runId).catch(() => null as unknown as TimelineData));
   const { showToast } = useToast();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -823,7 +823,13 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const [transition, setTransition] = useState("");
   const [sceneGap, setSceneGap] = useState(500);
   const [fps, setFps] = useState("");
+  const [subFont, setSubFont] = useState(48);
+  const [subLines, setSubLines] = useState(2);
   const [inited, setInited] = useState(false);
+  // 已应用到预览的参数快照（仅本地、不写全局配置）。null = 尚未覆盖，预览用落盘 timeline 默认渲染
+  const [applied, setApplied] = useState<{ transition: string; sceneGap: number; fps: string; subFont: number; subLines: number } | null>(null);
+  // 预览字幕显隐开关（仅控制预览；成片走外挂 SRT 本就不烧字幕）。默认显示
+  const [showSubtitles, setShowSubtitles] = useState(true);
 
   // Playback state (synced via postMessage from iframe)
   const [playing, setPlaying] = useState(false);
@@ -835,6 +841,8 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       setTransition(settings.hyperframes.transition);
       setSceneGap(settings.hyperframes.scene_gap_ms);
       setFps(settings.hyperframes.fps);
+      setSubFont(settings.hyperframes.subtitle_font_size);
+      setSubLines(settings.hyperframes.subtitle_max_lines);
       setInited(true);
     }
   }, [settings, inited]);
@@ -856,30 +864,44 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   };
 
   const isHyperframes = run.video_route === "hyperframes";
-  const settingsLabel = isHyperframes ? "HTML 设置" : "视频设置";
+  const settingsLabel = isHyperframes ? "hyperframes 设置" : "视频设置";
 
-  const isDirty = !!settings && (
-    transition !== settings.hyperframes.transition ||
-    sceneGap !== settings.hyperframes.scene_gap_ms ||
-    fps !== settings.hyperframes.fps
+  // 基准 = 已应用快照（若有）否则全局配置；脏 = 当前控件与基准不同
+  const base = applied ?? (settings ? {
+    transition: settings.hyperframes.transition,
+    sceneGap: settings.hyperframes.scene_gap_ms,
+    fps: settings.hyperframes.fps,
+    subFont: settings.hyperframes.subtitle_font_size,
+    subLines: settings.hyperframes.subtitle_max_lines,
+  } : null);
+  const isDirty = !!base && (
+    transition !== base.transition ||
+    sceneGap !== base.sceneGap ||
+    fps !== base.fps ||
+    subFont !== base.subFont ||
+    subLines !== base.subLines
   );
 
-  const [regenerating, setRegenerating] = useState(false);
-
-  const handleRegenerate = async () => {
-    if (!settings) return;
-    setRegenerating(true);
-    try {
-      await api.settings.save({ hyperframes: { ...settings.hyperframes, transition, scene_gap_ms: sceneGap, fps } });
-      mutateSettings();
-      setIframeKey((k) => k + 1);
-      setPlaying(false);
-      showToast("已重新生成预览", "success");
-    } catch { showToast("生成失败", "error"); }
-    finally { setRegenerating(false); }
+  // 重新生成预览：仅把当前参数应用到本次预览（query 覆盖，不写全局配置、不落盘）
+  const handleRegenerate = () => {
+    setApplied({ transition, sceneGap, fps, subFont, subLines });
+    setIframeKey((k) => k + 1);
+    setPlaying(false);
+    showToast("已应用到预览（未改全局配置）", "success");
   };
 
-  const previewUrl = api.runs.previewHtmlUrl(runId);
+  // 预览 URL：应用过则带 query 覆盖参数，让 get_preview_html 按本地值临时渲染
+  const previewUrl = (() => {
+    const baseUrl = api.runs.previewHtmlUrl(runId);
+    if (!applied) return baseUrl;
+    const q = new URLSearchParams({
+      transition: applied.transition,
+      scene_gap_ms: String(applied.sceneGap),
+      subtitle_font_size: String(applied.subFont),
+      subtitle_max_lines: String(applied.subLines),
+    });
+    return `${baseUrl}?${q.toString()}`;
+  })();
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [isBrowserFs, setIsBrowserFs] = useState(false);
   const [isViewportFs, setIsViewportFs] = useState(false);
@@ -943,6 +965,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
             ref={iframeRef}
             src={previewUrl}
             title="预览"
+            onLoad={() => postCmd({ type: "subtitles", show: showSubtitles })}
             className="absolute top-0 left-0 pointer-events-none"
             style={{
               width: canvasW,
@@ -1020,9 +1043,17 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       <div className={`${cardCls} p-5`}>
         <div className="flex justify-between items-center mb-3">
           <h4 className={sectionTitleCls}>{settingsLabel}</h4>
-          <button onClick={handleRegenerate} disabled={!isDirty || regenerating} className={`${btnCompact} ${isDirty ? "!border-blue-500/30 !text-blue-300" : ""}`}>
-            {regenerating ? "生成中..." : "重新生成"}
-          </button>
+          <div className="flex items-center gap-4">
+            <button onClick={handleRegenerate} disabled={!isDirty} className={`${btnCompact} ${isDirty ? "!border-blue-500/30 !text-blue-300" : ""}`}>
+              {"重新生成"}
+            </button>
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none" title="仅控制预览显隐；成片走外挂 SRT，本就不烧字幕">
+              <span className="text-sm text-white/76">显示字幕</span>
+              <input type="checkbox" checked={showSubtitles}
+                onChange={(e) => { setShowSubtitles(e.target.checked); postCmd({ type: "subtitles", show: e.target.checked }); }}
+                className="w-4 h-4 accent-blue-500 rounded" />
+            </label>
+          </div>
         </div>
 
         {isHyperframes ? (
@@ -1046,6 +1077,21 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
                 <input type="range" min={0} max={2000} step={100} value={sceneGap} onChange={(e) => setSceneGap(Number(e.target.value))} className="flex-1 accent-blue-500" />
                 <span className="text-xs text-white/66 w-14 text-right font-mono">{sceneGap}ms</span>
               </div>
+            </div>
+            <div>
+              <label className={labelCls}>字幕字号</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input type="range" min={24} max={96} step={2} value={subFont} onChange={(e) => setSubFont(Number(e.target.value))} className="flex-1 accent-blue-500" />
+                <span className="text-xs text-white/66 w-14 text-right font-mono">{subFont}px</span>
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>字幕最多行数</label>
+              <Select value={String(subLines)} onChange={(v) => setSubLines(Number(v))} options={[
+                { value: "1", label: "1 行" },
+                { value: "2", label: "2 行" },
+                { value: "3", label: "3 行" },
+              ]} />
             </div>
           </div>
         ) : (

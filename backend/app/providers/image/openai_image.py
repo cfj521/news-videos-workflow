@@ -34,6 +34,35 @@ _G2_MIN_PIXELS = 655_360
 _G2_MAX_PIXELS = 8_294_400
 
 
+def _img_dimensions(data: bytes) -> str:
+    """从图片字节解析实际 'WxH'（仅 PNG / JPEG，解析失败返回 '?'）。
+
+    零依赖（不引 Pillow）：PNG 读 IHDR，JPEG 扫 SOF 标记。仅用于日志核对
+    "请求尺寸 vs 实际出图尺寸"，定位 provider 不按 size 出图（如选横版却出竖版）。
+    """
+    try:
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            w = int.from_bytes(data[16:20], "big")
+            h = int.from_bytes(data[20:24], "big")
+            return f"{w}x{h}"
+        if data[:2] == b"\xff\xd8":  # JPEG：逐段跳到 SOF（含宽高）
+            i = 2
+            n = len(data)
+            while i + 9 < n:
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = data[i + 1]
+                if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                    h = int.from_bytes(data[i + 5:i + 7], "big")
+                    w = int.from_bytes(data[i + 7:i + 9], "big")
+                    return f"{w}x{h}"
+                i += 2 + int.from_bytes(data[i + 2:i + 4], "big")
+    except Exception:
+        pass
+    return "?"
+
+
 def _align_gpt_image_2_size(size: str) -> str | None:
     """把 WxH 对齐到 gpt-image-2 的约束并返回 'WxH'；无法满足返回 None（交回档位映射）。
 
@@ -94,13 +123,15 @@ class OpenAIImageProvider(ImageProvider):
             import base64
             image_data = base64.b64decode(item.b64_json)
             Path(output_path).write_bytes(image_data)
-            log.info("generate() done — b64 %d bytes in %.1fs → %s", len(image_data), time.time() - t0, output_path)
+            log.info("generate() done — b64 %d bytes, req=%s→%s actual=%s in %.1fs → %s",
+                     len(image_data), size, api_size, _img_dimensions(image_data), time.time() - t0, output_path)
         elif hasattr(item, "url") and item.url:
             async with httpx.AsyncClient(timeout=60) as http:
                 resp = await http.get(item.url)
                 resp.raise_for_status()
                 Path(output_path).write_bytes(resp.content)
-                log.info("generate() done — url download %d bytes in %.1fs → %s", len(resp.content), time.time() - t0, output_path)
+                log.info("generate() done — url download %d bytes, req=%s→%s actual=%s in %.1fs → %s",
+                         len(resp.content), size, api_size, _img_dimensions(resp.content), time.time() - t0, output_path)
         else:
             log.error("generate() — no image data in response")
             raise RuntimeError("No image data in response")
@@ -112,6 +143,9 @@ class OpenAIImageProvider(ImageProvider):
         import base64
         t0 = time.time()
         tool_size = _SUB_SIZE_MAP.get(size, "auto")
+        # 先打请求映射：req 是流水线要的尺寸，tool 是传给订阅 image_generation 工具的档位
+        # （订阅工具只有 1024x1024 / 1024x1536 竖 / 1536x1024 横；未命中映射表则退化成 auto，模型自选比例）
+        log.info("generate(sub) start — req=%s → tool=%s, output=%s", size, tool_size, output_path)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         try:
             _, token, account_id = subscription_creds()
@@ -136,8 +170,13 @@ class OpenAIImageProvider(ImageProvider):
             raise ProviderError(service="图片生成", provider="openai", model=self._model, base_url=self._base_url, cause=e) from e
         if not img_b64:
             raise ProviderError(service="图片生成", provider="openai", model=self._model, base_url=self._base_url, cause=RuntimeError("订阅生图无图片返回"))
-        Path(output_path).write_bytes(base64.b64decode(img_b64))
-        log.info("generate(sub) image done in %.1fs → %s", time.time() - t0, output_path)
+        data = base64.b64decode(img_b64)
+        Path(output_path).write_bytes(data)
+        actual = _img_dimensions(data)
+        log.info("generate(sub) image done in %.1fs — req=%s tool=%s actual=%s (%d bytes) → %s",
+                 time.time() - t0, size, tool_size, actual, len(data), output_path)
+        if tool_size != "auto" and actual not in ("?", tool_size):
+            log.warning("generate(sub) 实际 %s ≠ 请求档位 %s（订阅工具未严格按 size 出图）", actual, tool_size)
         return AssetResult(file_path=output_path)
 
     def _map_size(self, size: str) -> str:

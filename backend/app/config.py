@@ -138,6 +138,7 @@ class HyperframesCfg(BaseModel):
     transition: str = "crossfade"
     subtitle_font_size: int = 48  # 字幕字号（px，按渲染分辨率计）
     subtitle_max_lines: int = 2  # 单条字幕最多显示行数，用于自动切分长句
+    subtitle_bottom_px: int = 80  # 字幕距画面底部的距离（px，按渲染分辨率计）
 
 
 class OverlayCfg(BaseModel):
