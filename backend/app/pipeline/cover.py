@@ -1,9 +1,11 @@
-"""视频固定封面（片头）纯逻辑：文案解析 + 封面 timeline entry 组装。"""
+"""视频固定封面（片头）纯逻辑：文案解析 + 封面 timeline entry 组装 + 素材准备。"""
 from __future__ import annotations
 
 import json
 import re
+import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 
 COVER_FALLBACK_MS = 4000  # 旁白为空时封面兜底时长
 
@@ -60,3 +62,46 @@ def build_cover_entry(cfg, run, *, image_rel: str, audio_rel: str, audio_ms: int
         "cover_font_size": cfg.font_size,
         "subtitle_text": "", "subtitle_lines": [],
     }
+
+
+async def prepare_cover_assets(cfg_cover, run, run_dir, tts, *, override_image: str = "") -> "dict | None":
+    """封面启用且非纯音频时，备好封面图/音频并返回封面 entry；否则 None。
+
+    - 图：override_image（per-run）优先，否则 cfg_cover.image（仓库根相对或绝对）；
+      拷到 run_dir/assets/cover_image.png。
+    - 音：narration 解析后非空且有 tts 则 TTS 出 run_dir/assets/cover_audio.mp3。
+    - 返回的 entry 里 image_path/audio_path 用【绝对路径】（与场景资产一致，
+      供 _render_html relative_to(run_dir) 正确相对化为 assets/...）。
+    """
+    if not cfg_cover.enabled:
+        return None
+    run_dir = Path(run_dir)
+    assets = run_dir / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+
+    # ── 封面图：override_image > cfg_cover.image；仓库根相对路径自动补全 ──
+    image_abs = ""
+    src_img = override_image or cfg_cover.image
+    if src_img:
+        sp = Path(src_img)
+        if not sp.is_absolute():
+            # 相对路径解析为仓库根（cover.py 在 backend/app/pipeline/，parents[3] = 仓库根）
+            sp = Path(__file__).resolve().parents[3] / src_img
+        if sp.is_file():
+            dst = assets / "cover_image.png"
+            shutil.copyfile(sp, dst)
+            image_abs = str(dst.resolve())
+
+    # ── 封面旁白 TTS：narration 非空且有 tts provider 则合成音频 ──
+    audio_abs, audio_ms = "", 0
+    narration = resolve_cover_text(cfg_cover.narration, run)
+    if narration and tts is not None:
+        from app.providers.tts.audio_duration import measure_audio_ms
+        out = str((assets / "cover_audio.mp3").resolve())
+        await tts.synthesize(text=narration, output_path=out)
+        measured = measure_audio_ms(out) or 0
+        if measured > 0:
+            audio_ms = measured
+            audio_abs = out
+
+    return build_cover_entry(cfg_cover, run, image_rel=image_abs, audio_rel=audio_abs, audio_ms=audio_ms)

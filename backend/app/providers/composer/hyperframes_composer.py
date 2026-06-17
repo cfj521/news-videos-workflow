@@ -143,9 +143,13 @@ class HyperframesComposer(ComposerProvider):
         优先用 hyperframes（与正片同款视觉）；npx 不可用/失败则 FFmpeg 兜底。
 
         hyperframes render 默认读当前工作目录的 index.html，不支持指定输入文件路径。
-        为避免覆盖正片的 index.html，在 run_dir/_cover/ 子目录里放封面专属 index.html，
-        并把 assets（图片/音频）以相对路径引用（cover_entry 里已是绝对路径，写 HTML 时
-        _render_html 会尝试相对化；assets 在 run_dir 内均可正确计算出 ../xxx 的相对路径）。
+        在 run_dir 本身写封面专属 index.html（comfyui 路线 stage4 不写 index.html，无冲突）。
+        若 run_dir/index.html 已存在（如 hyperframes 路线的正片预览），先备份、渲完后恢复，
+        确保不破坏正片 index.html。
+
+        封面 entry 的 image_path/audio_path 均为绝对路径（由 prepare_cover_assets 保证），
+        _render_html(timeline, resolution, run_dir) 的 relative_to(run_dir) 可正确得到
+        assets/cover_image.png、assets/cover_audio.mp3，npx cwd=run_dir 时引用路径正确。
         """
         # 构造只含封面 entry 的临时 timeline，start_ms 归 0
         e = dict(cover_entry)
@@ -154,43 +158,62 @@ class HyperframesComposer(ComposerProvider):
         e["end_ms"] = dur_ms
         timeline = {"entries": [e], "total_duration_ms": dur_ms}
 
-        # 子目录用于隔离封面渲染，避免污染正片 index.html
-        cover_dir = run_dir / "_cover"
-        cover_dir.mkdir(exist_ok=True)
+        # 以 run_dir 为渲染根目录：_render_html 的 relative_to(run_dir) 对 assets 下绝对路径
+        # 正确得到 assets/cover_image.png 等相对路径，npx cwd=run_dir 时能找到素材。
+        index_html = run_dir / "index.html"
+        backup_html = run_dir / "_index_backup.html"
 
-        # _render_html 里路径相对化以 run_dir 为基准，但 npx 渲染 cwd 是 cover_dir；
-        # 封面图片/音频均在 run_dir 内（或绝对路径），相对于 cover_dir 需加 "../" 前缀。
-        # 直接把绝对路径写入 HTML：浏览器 file:// 协议支持绝对路径，hyperframes 本地渲染同样支持。
-        html = self._render_html(timeline, resolution, cover_dir)
-        (cover_dir / "index.html").write_text(html, encoding="utf-8")
-
-        abs_out = str(Path(output_path).resolve())
+        # 备份已存在的 index.html（如 hyperframes 路线正片预览）
+        has_backup = False
+        if index_html.exists():
+            import shutil as _shutil
+            _shutil.copy2(str(index_html), str(backup_html))
+            has_backup = True
+            log.info("[cover] 已备份正片 index.html → _index_backup.html")
 
         try:
-            log.info("[cover] Running npx hyperframes render → %s (cwd=%s)", abs_out, cover_dir)
-            result = subprocess.run(
-                ["npx", "hyperframes", "render", "--output", abs_out, "--fps", "30", "--quality", "standard"],
-                cwd=str(cover_dir), capture_output=True, timeout=600, shell=_NEEDS_SHELL,
-            )
-            if result.returncode != 0:
-                stderr = ""
-                try:
-                    stderr = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else (result.stderr or "")
-                except Exception:
-                    stderr = str(result.stderr)
-                raise RuntimeError(f"Hyperframes cover render failed (code {result.returncode}): {stderr[:400]}")
+            html = self._render_html(timeline, resolution, run_dir)
+            index_html.write_text(html, encoding="utf-8")
 
-            if Path(abs_out).exists():
-                log.info("[cover] hyperframes 封面渲染成功 → %s", abs_out)
-                return abs_out
-            raise RuntimeError("npx 成功但输出文件不存在")
+            abs_out = str(Path(output_path).resolve())
 
-        except Exception as ex:
-            log.warning("[cover] 封面 hyperframes 渲染失败，回退 FFmpeg: %s", ex)
+            try:
+                log.info("[cover] Running npx hyperframes render → %s (cwd=%s)", abs_out, run_dir)
+                result = subprocess.run(
+                    ["npx", "hyperframes", "render", "--output", abs_out, "--fps", "30", "--quality", "standard"],
+                    cwd=str(run_dir), capture_output=True, timeout=600, shell=_NEEDS_SHELL,
+                )
+                if result.returncode != 0:
+                    stderr = ""
+                    try:
+                        stderr = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else (result.stderr or "")
+                    except Exception:
+                        stderr = str(result.stderr)
+                    raise RuntimeError(f"Hyperframes cover render failed (code {result.returncode}): {stderr[:400]}")
 
-        # FFmpeg 兜底
-        self._ffmpeg_cover_fallback(e, resolution, run_dir, abs_out)
-        return abs_out
+                if Path(abs_out).exists():
+                    log.info("[cover] hyperframes 封面渲染成功 → %s", abs_out)
+                    return abs_out
+                raise RuntimeError("npx 成功但输出文件不存在")
+
+            except Exception as ex:
+                log.warning("[cover] 封面 hyperframes 渲染失败，回退 FFmpeg: %s", ex)
+
+            # FFmpeg 兜底
+            self._ffmpeg_cover_fallback(e, resolution, run_dir, abs_out)
+            return abs_out
+
+        finally:
+            # 无论成功/失败，恢复或清理临时 index.html
+            if has_backup:
+                import shutil as _shutil
+                _shutil.copy2(str(backup_html), str(index_html))
+                backup_html.unlink(missing_ok=True)
+                log.info("[cover] 已恢复正片 index.html")
+            else:
+                # 没有备份说明原本没有 index.html，删除封面专属的临时文件
+                index_html.unlink(missing_ok=True)
+                log.info("[cover] 封面临时 index.html 已清理")
 
     def _ffmpeg_cover_fallback(self, entry: dict, resolution: str, run_dir: Path, out: str) -> None:
         """FFmpeg 兜底封面：静态图循环 + 可选音频 + 居中标题/副标题 drawtext。

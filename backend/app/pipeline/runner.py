@@ -761,6 +761,27 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
             await _wait_for_resume(run_id, db)
             run = db.get(PipelineRun, run_id)
 
+    # ─── 封面素材准备（stage3 完成后、stage4 之前）────────────────────────────
+    # 仅视频路线（hyperframes / comfyui）在此备封面图/音频；audio 路线无封面。
+    cover_entry = None
+    if cfg.cover.enabled and run.video_route in ("hyperframes", "comfyui"):
+        try:
+            from app.pipeline.cover import prepare_cover_assets
+            from app.providers.tts import build_tts_provider
+            log.info("[Cover] 准备封面素材 (route=%s)", run.video_route)
+            cover_entry = await prepare_cover_assets(
+                cfg.cover, run, run_dir, build_tts_provider(cfg))
+            if cover_entry:
+                log.info("[Cover] 封面 entry 准备完成: dur=%dms image=%s audio=%s",
+                         cover_entry.get("end_ms", 0),
+                         cover_entry.get("image_path", "")[-40:] or "(无)",
+                         cover_entry.get("audio_path", "")[-40:] or "(无)")
+            else:
+                log.info("[Cover] 封面已禁用或准备返回 None，跳过")
+        except Exception as _cover_err:
+            log.warning("[Cover] 封面素材准备失败，跳过封面: %s", _cover_err)
+            cover_entry = None
+
     # ─── Stage 4: 预览 ────────────────────────────────────
     if 4 in selected and run.video_route != "audio":
         _check_cancel(run.id)
@@ -771,7 +792,8 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
         timeline = run_stage4(
             script=script, scene_assets=scene_assets, scene_gap_ms=cfg.hyperframes.scene_gap_ms,
             resolution=resolution, subtitle_font_size=cfg.hyperframes.subtitle_font_size,
-            subtitle_max_lines=cfg.hyperframes.subtitle_max_lines)
+            subtitle_max_lines=cfg.hyperframes.subtitle_max_lines,
+            cover=cover_entry)
         (run_dir / "timeline.json").write_text(
             json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
         # 外挂字幕 SRT 落盘：供前端下载、发布时随视频上传（YouTube 等）
