@@ -1216,14 +1216,14 @@ export function SettingsPage() {
                   <img
                     src={`${api.settings.coverImageUrl(cur.image)}&t=${coverImgTs}`}
                     alt="封面预览"
-                    className="w-32 h-auto rounded-lg border border-white/[0.08] object-cover"
+                    className="w-64 h-auto rounded-lg border border-white/[0.08] object-cover"
                   />
                 ) : (
-                  <div className="w-32 h-44 rounded-lg border border-dashed border-white/[0.15] bg-white/[0.02] flex flex-col items-center justify-center gap-1.5 text-white/40">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <div className="w-64 h-36 rounded-lg border border-dashed border-white/[0.15] bg-white/[0.02] flex flex-col items-center justify-center gap-1.5 text-white/40">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="1.8" /><path d="m21 15-5-5L5 21" />
                     </svg>
-                    <span className="text-[11px]">未上传封面图</span>
+                    <span className="text-[11px]">未上传封面图（横版）</span>
                   </div>
                 )}
               </div>
