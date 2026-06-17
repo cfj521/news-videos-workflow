@@ -304,7 +304,7 @@ export const api = {
       ),
     /** 查询账号当前登录状态 */
     loginStatus: (slug: string) =>
-      fetchJSON<{ logged_in: boolean }>(`/publishers/${slug}/login-status`),
+      fetchJSON<{ logged_in: boolean; detail?: string }>(`/publishers/${slug}/login-status`),
   },
   settings: {
     get: () => fetchJSON<AppSettings>("/settings/"),

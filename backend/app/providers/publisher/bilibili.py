@@ -53,6 +53,28 @@ class BilibiliPublisher(PublisherAdapter):
         """转成 biliup login_by_cookies 期望的嵌套结构 {'cookie_info': {'cookies': [{name,value}]}}。"""
         return {"cookie_info": {"cookies": [{"name": k, "value": v} for k, v in self._cookie.items()]}}
 
+    async def check_login(self) -> tuple[bool, str]:
+        """调 B 站 nav 接口校验当前 cookie 是否仍登录（与发布前 biliup 的 -101 校验同源）。
+
+        返回 (是否登录, 说明)：登录返回用户名；未登录/缺项返回原因。供「发布管理」保存后即时校验、徽章展示与重新检测。
+        """
+        missing = self._missing_required()
+        if missing:
+            return False, f"缺少必填 Cookie: {', '.join(missing)}"
+        import httpx
+        cookie_str = "; ".join(f"{k}={v}" for k, v in self._cookie.items())
+        try:
+            async with httpx.AsyncClient(timeout=15) as c:
+                resp = await c.get("https://api.bilibili.com/x/web-interface/nav",
+                                   headers={"user-agent": _MODERN_UA, "Cookie": cookie_str})
+            data = resp.json()
+        except Exception as e:
+            return False, f"校验请求失败: {e}"
+        d = data.get("data") or {}
+        if data.get("code") == 0 and d.get("isLogin"):
+            return True, str(d.get("uname", ""))
+        return False, str(data.get("message") or "账号未登录（cookie 失效或过期）")
+
     async def publish(self, video_path: str, thumbnail_path: str | None, title: str, description: str, tags: list[str], subtitle_path: str | None = None) -> PublishResult:
         missing = self._missing_required()
         if missing:

@@ -185,27 +185,32 @@ function ScanLoginButton({ platform, account, onSuccess }: {
 
 function LoginBadge({ slug, refresh = 0 }: { slug: string; refresh?: number }) {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [detail, setDetail] = useState("");
+  const [tick, setTick] = useState(0);       // 点击徽章重新检测
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    api.publishers.loginStatus(slug).then((res) => {
-      if (!cancelled) setLoggedIn(res.logged_in);
-    }).catch(() => {
-      if (!cancelled) setLoggedIn(false);
-    });
+    setChecking(true);
+    api.publishers.loginStatus(slug)
+      .then((res) => { if (!cancelled) { setLoggedIn(res.logged_in); setDetail(res.detail ?? ""); } })
+      .catch(() => { if (!cancelled) { setLoggedIn(false); setDetail(""); } })
+      .finally(() => { if (!cancelled) setChecking(false); });
     return () => { cancelled = true; };
-  }, [slug, refresh]);
+  }, [slug, refresh, tick]);
 
-  if (loggedIn === null) return null;
-
+  const label = checking ? "检测中…" : loggedIn === null ? "—" : loggedIn ? "已登录" : "未登录";
+  const cls = checking ? "bg-white/[0.06] text-white/52"
+    : loggedIn ? "bg-emerald-500/15 text-emerald-300"
+    : "bg-amber-500/15 text-amber-300";
   return (
-    <span
-      className={`${chipCls} ${loggedIn
-        ? "bg-emerald-500/15 text-emerald-300"
-        : "bg-white/[0.06] text-white/52"}`}
+    <button
+      onClick={(e) => { e.stopPropagation(); if (!checking) setTick((x) => x + 1); }}
+      title={detail ? `${label} · ${detail}（点击重新检测）` : "点击重新检测登录态"}
+      className={`${chipCls} ${cls} cursor-pointer transition`}
     >
-      {loggedIn ? "已登录" : "未登录"}
-    </span>
+      {label}
+    </button>
   );
 }
 
@@ -375,7 +380,7 @@ export function PublishersPage() {
                     <span className={`${chipCls} bg-white/[0.06] text-white/66`}>
                       {MEDIA_LABEL[PLATFORM_MEDIA[t.platform] ?? "video"]}
                     </span>
-                    {isScanPlatform && <LoginBadge slug={t.id} refresh={loginTick} />}
+                    {(isScanPlatform || t.platform === "bilibili") && <LoginBadge slug={t.id} refresh={loginTick} />}
                     {!t.enabled && <span className="text-[10px] text-white/52 italic">已禁用</span>}
                   </div>
                   <div className="flex gap-4 mt-2">
@@ -416,7 +421,7 @@ export function PublishersPage() {
       {dialog && (
         <TargetDialog
           target={dialog.target}
-          onSave={() => { setDialog(null); mutate(); }}
+          onSave={() => { setDialog(null); refreshLogin(); }}
           onClose={() => setDialog(null)}
           loginTick={loginTick}
           onLoginSuccess={refreshLogin}

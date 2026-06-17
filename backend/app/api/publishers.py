@@ -149,9 +149,19 @@ async def target_login_status(slug: str, deep: bool = False):
     t = targets_store.get_target(slug)
     if t is None:
         raise HTTPException(status_code=404, detail="Target not found")
+    cfg = t.config or {}
+    # B 站非扫码：调 nav 接口实时校验 cookie 是否仍登录（与发布前 biliup 同源）
+    if t.platform == "bilibili":
+        from app.providers.publisher.bilibili import BilibiliPublisher
+        pub = BilibiliPublisher(
+            sessdata=cfg.get("sessdata", ""), bili_jct=cfg.get("bili_jct", ""),
+            dede_user_id=cfg.get("dede_user_id", ""), buvid3=cfg.get("buvid3", ""),
+            buvid4=cfg.get("buvid4", ""), ac_time_value=cfg.get("ac_time_value", ""))
+        ok, detail = await pub.check_login()
+        return {"logged_in": ok, "detail": detail}
     if t.platform not in _LOGIN_PLATFORMS:
-        raise HTTPException(status_code=422, detail="该平台不支持扫码登录态查询")
-    account = sau_runner.safe_account((t.config or {}).get("account", ""))
+        raise HTTPException(status_code=422, detail="该平台不支持登录态查询")
+    account = sau_runner.safe_account(cfg.get("account", ""))
     if not account:
         return {"logged_in": False}
     logged_in = await sau_runner.check_login(t.platform, account, deep=deep)
