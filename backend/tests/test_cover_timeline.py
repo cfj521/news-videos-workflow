@@ -1,5 +1,5 @@
-"""封面 entry 插入 timeline 的测试：Task 4。"""
-from app.pipeline.stage4_timeline import run_stage4
+"""封面 entry 插入 timeline 的测试：Task 4 + Task 5。"""
+from app.pipeline.stage4_timeline import generate_srt, run_stage4
 
 
 def _script():
@@ -35,3 +35,14 @@ def test_cover_prepended_and_shift():
     assert e[1]["scene_id"] == 1 and e[1]["start_ms"] == 5000
     assert e[2]["scene_id"] == 2 and e[2]["start_ms"] == 5000 + 3000
     assert tl["total_duration_ms"] == 5000 + 3000 + 4000
+
+
+def test_srt_skips_cover_and_offsets_news():
+    cover = {"scene_id": 0, "is_cover": True, "start_ms": 0, "end_ms": 5000,
+             "image_path": "", "audio_path": "", "audio_duration_ms": 5000,
+             "title": "每日AI资讯", "subtitle": "", "cover_font_size": 72,
+             "subtitle_text": "", "subtitle_lines": []}
+    tl = run_stage4(_script(), _assets(), scene_gap_ms=0, cover=cover)
+    srt = generate_srt(tl)
+    assert "每日AI资讯" not in srt          # 封面不进字幕
+    assert "00:00:05" in srt or "00:00:04," in srt  # 首条新闻字幕在封面之后
