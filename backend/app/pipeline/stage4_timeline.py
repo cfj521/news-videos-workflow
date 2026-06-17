@@ -28,6 +28,7 @@ def run_stage4(
     resolution: str = "1080x1920",
     subtitle_font_size: int = 48,
     subtitle_max_lines: int = 2,
+    cover: dict | None = None,
 ) -> dict:
     max_chars = _subtitle_max_chars(resolution, subtitle_font_size, subtitle_max_lines)
     narration_map = {s["id"]: s for s in script["scenes"]}
@@ -75,6 +76,16 @@ def run_stage4(
     if skipped:
         log.warning("Skipped %d scenes due to errors", skipped)
     log.info("Timeline: %d entries, %.1fs total (gap=%dms)", len(entries), current_ms / 1000, scene_gap_ms)
+
+    if cover:
+        shift = int(cover.get("end_ms", 0))
+        for e in entries:
+            e["start_ms"] += shift
+            e["end_ms"] += shift
+            # subtitle_lines 存的是相对该场景的偏移（generate_srt 会叠加 entry.start_ms），
+            # 插封面只顺延场景自身的 start_ms/end_ms，无需修改 subtitle_lines。
+        entries = [cover] + entries
+        current_ms += shift
 
     return {"entries": entries, "total_duration_ms": current_ms}
 
