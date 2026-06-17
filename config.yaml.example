@@ -64,6 +64,14 @@ overlay:
   bg_opacity: 0.45
   margin_ratio: 0.03
 
+cover:
+  enabled: false
+  image: ""                       # 设置页上传封面图后写入（如 data/cover/cover.png）
+  title_template: "{period}AI资讯"  # 变量：{period}(每日/每周/每月/最近X天) {days} {date}
+  subtitle: ""
+  narration: ""                   # 旁白文本；空则封面无配音，走 4s 兜底时长
+  font_size: 72                   # 标题字号（px，按渲染分辨率）；副标题自动 0.55×
+
 # ---- ComfyUI 参数库（image_provider 或 video_route 选 comfyui 时生效）----
 #      当前用哪个图片/视频 workflow 由 pipeline.image_model / video_model 决定，这里只配参数。
 comfyui:

@@ -151,6 +151,16 @@ class OverlayCfg(BaseModel):
     margin_ratio: float = 0.03       # 距右/上边距，相对画面短边
 
 
+class CoverCfg(BaseModel):
+    """视频固定封面（片头）。统一用 hyperframes 渲染；comfyui 路线拼接到成片开头。"""
+    enabled: bool = False
+    image: str = ""
+    title_template: str = "{period}AI资讯"
+    subtitle: str = ""
+    narration: str = ""
+    font_size: int = 72
+
+
 class InfraCfg(BaseModel):
     database_url: str = "sqlite:///../data/news_videos.db"
     data_dir: str = "../data"
@@ -258,6 +268,7 @@ class Settings(BaseModel):
     pipeline: PipelineCfg = PipelineCfg()
     hyperframes: HyperframesCfg = HyperframesCfg()
     overlay: OverlayCfg = OverlayCfg()
+    cover: CoverCfg = CoverCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
     # prompts：生效预设的镜像（prompt_presets[active] 注入，供 resolve_prompt 读，不写盘）
     prompts: PromptsCfg = PromptsCfg()
