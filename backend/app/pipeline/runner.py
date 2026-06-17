@@ -763,8 +763,9 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
 
     # ─── 封面素材准备（stage3 完成后、stage4 之前）────────────────────────────
     # 仅视频路线（hyperframes / comfyui）在此备封面图/音频；audio 路线无封面。
+    # 仅在 stage3（素材阶段）运行时重建封面素材，避免单跑 stage4/5 时多余 re-TTS。
     cover_entry = None
-    if cfg.cover.enabled and run.video_route in ("hyperframes", "comfyui"):
+    if cfg.cover.enabled and run.video_route in ("hyperframes", "comfyui") and 3 in selected:
         try:
             from app.pipeline.cover import prepare_cover_assets
             from app.providers.tts import build_tts_provider
@@ -885,27 +886,28 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                     )
                     final_path = result.file_path
                     log.info("[S5] ComfyUI render ok — %s", final_path)
-                    # ── 封面拼接：用 hyperframes 渲封面片段后 FFmpeg concat 到开头 ──
-                    cover_entry = next((e for e in timeline.get("entries", []) if e.get("is_cover")), None)
-                    if cover_entry:
-                        try:
-                            _update(db, run, progress_detail="S5 渲染封面片段中...")
-                            from app.providers.composer.hyperframes_composer import HyperframesComposer as _HFC
-                            cover_mp4 = str(run_dir / "cover.mp4")
-                            await _HFC(overlay=cfg.overlay).render_cover_clip(
-                                cover_entry, resolution, run_dir, cover_mp4)
-                            # 拼接输出用不同文件名，避免 FFmpeg 自读自写
-                            concat_out = str((run_dir / "output_with_cover.mp4").resolve())
-                            final_path = _ffmpeg_concat(
-                                [cover_mp4, final_path], concat_out,
-                                resolution, cfg.hyperframes.fps)
-                            log.info("[S5] 封面拼接完成 → %s", final_path)
-                        except Exception as cover_err:
-                            log.warning("[S5] 封面拼接失败，跳过封面直接用主视频: %s", cover_err)
                 except Exception as e:
                     log.warning("[S5] ComfyUI failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
                     final_path = _ffmpeg_compose(timeline, run_dir, resolution, cfg.hyperframes.fps, overlay=cfg.overlay)
+                # ── 封面拼接：对 comfyui 成功路径和 FFmpeg 回退路径都生效 ──
+                # 挪到 try/except 之后，final_path 已确定，再统一处理封面拼接。
+                cover_entry = next((e for e in timeline.get("entries", []) if e.get("is_cover")), None)
+                if cover_entry:
+                    try:
+                        _update(db, run, progress_detail="S5 渲染封面片段中...")
+                        from app.providers.composer.hyperframes_composer import HyperframesComposer as _HFC
+                        cover_mp4 = str(run_dir / "cover.mp4")
+                        await _HFC(overlay=cfg.overlay).render_cover_clip(
+                            cover_entry, resolution, run_dir, cover_mp4)
+                        # 拼接输出用不同文件名，避免 FFmpeg 自读自写
+                        concat_out = str((run_dir / "output_with_cover.mp4").resolve())
+                        final_path = _ffmpeg_concat(
+                            [cover_mp4, final_path], concat_out,
+                            resolution, cfg.hyperframes.fps)
+                        log.info("[S5] 封面拼接完成 → %s", final_path)
+                    except Exception as cover_err:
+                        log.warning("[S5] 封面拼接失败，跳过封面直接用主视频: %s", cover_err)
             else:
                 _update(db, run, current_stage=5, progress_detail="S5 Hyperframes 渲染中...")
                 log.info("[S5] Hyperframes rendering — output=%s", output_mp4)
@@ -1105,6 +1107,8 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str, ov
     concat_inputs = []
 
     for entry in entries:
+        if entry.get("is_cover"):
+            continue  # 封面不在主合成里渲染，由 _ffmpeg_concat 单独拼接到开头
         if not entry.get("image_path") or not entry.get("audio_path"):
             continue
         dur_s = (entry["end_ms"] - entry["start_ms"]) / 1000
@@ -1138,71 +1142,83 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str, ov
 
 
 def _ffmpeg_concat(parts: list[str], out: str, resolution: str, fps) -> str:
-    """把多个 mp4 重编码拼接成统一分辨率/帧率的单一 mp4。
+    """把多个 mp4 重编码拼接成统一分辨率/帧率，容忍部分输入无音轨（补同长静音）。
 
-    使用 concat filter（不用 concat demuxer -c copy），因为封面片段与主视频编码
-    参数可能不同（来源不同：hyperframes vs comfyui）。
-
-    ⚠️ 无音轨处理：封面片段在无旁白时可能只有视频无音轨；comfyui 主视频通常有 TTS
-    音轨，但也可能无音频。对每路输入用 anullsrc 补静音轨，再与实际音轨 amix，
-    最简单的做法是：先用 -f lavfi anullsrc 作为额外输入垫底，用 amix=inputs=2 混合
-    实际音轨（若有）与静音，使每路输出都有合法音频。
-
-    更简单稳妥方案：对每路视频输入，用 filter_complex 先把视频 scale/pad 统一，
-    再用 aevalsrc=0 生成静音、与实际音频 amix。但 amix 遇到纯静音输入通道会有
-    响度问题。
-
-    最终方案（最稳）：对每路分别准备视频流，音频用 anullsrc 兜底：
-      - 若该输入有音轨，直接用 [i:a]
-      - 若无音轨，无法在 filter_complex 里静态判断，因此统一做法：
-        为每路额外提供一个 anullsrc 输入，用 amix=inputs=2:normalize=0 混合
-        （真实音频 + 静音 = 真实音频，保持响度；纯静音 + 静音 = 静音）。
+    策略：ffprobe 探测每段是否有音轨 + 时长 → 逐段归一化（无音轨则补等长 anullsrc）
+    → 把归一化的临时文件写入 concat demuxer list → ffmpeg -f concat -c copy 拼合。
+    这样避免了 anullsrc -t 9999 撑爆时长 / amix inputs=2 遇缺流报错两个致命问题。
     """
+    import subprocess as _sp
+
     w, h = resolution.split("x")
-    fps_val = fps  # 可能是 str 或 int，ffmpeg 都接受
+    tmpdir = Path(out).parent
 
-    # 为每路视频准备一个对应的 anullsrc 静音输入（保证即使无音轨也有合法 a 流）
-    # 输入排列：[0]=parts[0], [1]=anullsrc, [2]=parts[1], [3]=anullsrc, ...
-    inputs: list[str] = []
-    n = len(parts)
-    for p in parts:
-        inputs += ["-i", p]
-        inputs += ["-f", "lavfi", "-t", "9999", "-i", "anullsrc=r=48000:cl=stereo"]
+    def _probe(p: str) -> tuple[bool, float]:
+        """返回 (has_audio, duration_seconds)。"""
+        r = _sp.run(
+            ["ffprobe", "-v", "error",
+             "-show_entries", "stream=codec_type:format=duration",
+             "-of", "json", p],
+            capture_output=True, text=True, timeout=60)
+        try:
+            info = json.loads(r.stdout or "{}")
+        except Exception:
+            info = {}
+        has_audio = any(s.get("codec_type") == "audio" for s in info.get("streams", []))
+        try:
+            dur = float(info.get("format", {}).get("duration") or 0)
+        except (TypeError, ValueError):
+            dur = 0.0
+        return has_audio, dur
 
-    # 每路：vi = i*2 (真实视频), ai_real = i*2 (真实可能有音轨), ai_null = i*2+1 (静音)
-    # 视频：scale+pad+setsar+fps
-    # 音频：实际音频 amix 静音（normalize=0 防响度折半）
-    filter_parts: list[str] = []
-    concat_inputs: list[str] = []
-    for i in range(n):
-        real_vi = i * 2       # 真实视频输入下标
-        real_ai = i * 2       # 真实音频输入下标（同一文件）
-        null_ai = i * 2 + 1   # anullsrc 输入下标
+    vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+          f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}")
+    norm_parts: list[str] = []
+    for i, p in enumerate(parts):
+        has_audio, dur = _probe(p)
+        np_ = str(tmpdir / f"_concat_norm_{i}.mp4")
+        if has_audio:
+            # 有音轨：直接重编码统一规格
+            cmd = ["ffmpeg", "-y", "-i", p,
+                   "-vf", vf,
+                   "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                   "-c:a", "aac", "-ar", "48000", "-ac", "2",
+                   np_]
+        else:
+            # 无音轨：补与视频等长的静音轨，-shortest 保证不超视频长度
+            cmd = ["ffmpeg", "-y", "-i", p,
+                   "-f", "lavfi", "-t", f"{max(dur, 0.1):.3f}",
+                   "-i", "anullsrc=r=48000:cl=stereo",
+                   "-map", "0:v", "-map", "1:a",
+                   "-vf", vf,
+                   "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                   "-c:a", "aac", "-shortest",
+                   np_]
+        log.info("[Concat] 归一化分段 %d/%d (has_audio=%s dur=%.2fs) → %s",
+                 i + 1, len(parts), has_audio, dur, np_)
+        _sp.run(cmd, capture_output=True, timeout=600)
+        norm_parts.append(np_)
 
-        filter_parts.append(
-            f"[{real_vi}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
-            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps_val}[cv{i}]"
-        )
-        # amix：混合真实音轨与静音兜底；若真实输入无音轨，ffmpeg 会用静音兜底那路
-        # 注意：[i:a?] 为可选音轨语法（ffmpeg ≥4.4），若流不存在该路直接跳过
-        filter_parts.append(
-            f"[{real_ai}:a?][{null_ai}:a]amix=inputs=2:normalize=0[ca{i}]"
-        )
-        concat_inputs.append(f"[cv{i}][ca{i}]")
+    # 写 concat list，路径用 POSIX 斜杠（ffmpeg concat demuxer 跨平台均支持）
+    listfile = str(tmpdir / "_concat_list.txt")
+    Path(listfile).write_text(
+        "".join(f"file '{Path(x).as_posix()}'\n" for x in norm_parts),
+        encoding="utf-8")
+    log.info("[Concat] concat list → %s (%d segments)", listfile, len(norm_parts))
+    _sp.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listfile, "-c", "copy", out],
+        capture_output=True, timeout=600)
 
-    concat_filter = "".join(concat_inputs) + f"concat=n={n}:v=1:a=1[outv][outa]"
-    fc = ";".join(filter_parts) + ";" + concat_filter
-
-    cmd = [
-        "ffmpeg", "-y",
-        *inputs,
-        "-filter_complex", fc,
-        "-map", "[outv]", "-map", "[outa]",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k",
-        out,
-    ]
-    _run_ffmpeg(cmd, service="封面拼接")
+    # 清理临时文件
+    for x in norm_parts:
+        try:
+            Path(x).unlink()
+        except OSError:
+            pass
+    try:
+        Path(listfile).unlink()
+    except OSError:
+        pass
     return out
 
 
