@@ -1453,9 +1453,13 @@ function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () =>
 
 // ─── Dashboard Page ─────────────────────────────────────
 
-// 视频路线 → 徽章文案
-const routeLabel = (r: string): string =>
-  ({ comfyui: "comfy", hyperframes: "hf", audio: "语音" } as Record<string, string>)[r] ?? r;
+// 视频路线 → hint 全称（chip 不再展示路线徽章，移到悬浮 hint 第二行）
+const routeName = (r: string): string =>
+  ({ comfyui: "ComfyUI", hyperframes: "Hyperframes", audio: "纯语音" } as Record<string, string>)[r] ?? r;
+
+// chip 悬浮 hint：第一行=内容摘要（标题），第二行=路线·模式·语言
+const chipHint = (run: PipelineRun): string =>
+  `${runSummary(run)}\n${routeName(run.video_route)} · ${run.mode === "auto" ? "自动" : "手动"} · ${langLabel(run.language)}`;
 
 // 语言代码 → 徽章文案
 const langLabel = (l: string | null): string => {
@@ -1486,6 +1490,30 @@ const runSummary = (run: PipelineRun): string => {
   let n = 0;
   try { n = run.source_ids ? (JSON.parse(run.source_ids) as unknown[]).length : 0; } catch { /* 解析失败按 0 */ }
   return `${n} 个信息源 ${fmtTimeRange(run.time_range)}资讯`;
+};
+
+// 内容日期范围（chip 标题用）：AI HOT 日报=报告日，周报=本周跨度，其余=按 time_range 从创建日回推的窗口
+const _md = (d: Date): string => `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const dateRange = (run: PipelineRun): string => {
+  if (run.aihot_config) {
+    try {
+      const c = JSON.parse(run.aihot_config) as { method?: string; report_date?: string; week_start?: string };
+      if (c.method === "daily" && c.report_date) return c.report_date.slice(5);  // MM-DD
+      if (c.method === "weekly" && c.week_start) {
+        const s = new Date(`${c.week_start}T00:00:00`);
+        const e = new Date(s); e.setDate(e.getDate() + 6);
+        return `${_md(s)}~${_md(e)}`;
+      }
+    } catch { /* 解析失败按下方回退 */ }
+  }
+  const m = /^(\d+)\s*([dwmy])$/.exec((run.time_range || "").trim());
+  if (m && run.created_at) {
+    const days = Number(m[1]) * ({ d: 1, w: 7, m: 30, y: 365 }[m[2]] ?? 1);
+    const end = new Date(run.created_at);
+    const start = new Date(end); start.setDate(start.getDate() - (days - 1));
+    return `${_md(start)}~${_md(end)}`;
+  }
+  return "";
 };
 
 export function DashboardPage() {
@@ -1559,11 +1587,11 @@ export function DashboardPage() {
                   : "bg-white/[0.02] border-white/[0.06] text-white/66 hover:text-white/85 hover:bg-white/[0.04]"
               }`}
             >
-              {/* 第一行：#编号 + 内容摘要 + 删除 */}
+              {/* 第一行：#编号 + 内容摘要 + 删除（路线/模式/语言移到悬浮 hint 第二行）*/}
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs shrink-0">#{run.id}</span>
-                <span className="text-xs flex-1 min-w-0 truncate" title={runSummary(run)}>{runSummary(run)}</span>
-                <span className={`${chipCls} bg-violet-500/15 text-violet-300 text-[10px] shrink-0`}>{routeLabel(run.video_route)}</span>
+                <span className="text-xs flex-1 min-w-0 truncate" title={chipHint(run)}>{runSummary(run)}</span>
+                {dateRange(run) && <span className="text-[10px] text-white/40 font-mono shrink-0" title="内容日期范围">{dateRange(run)}</span>}
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setPendingDelete(run); }}
@@ -1574,26 +1602,25 @@ export function DashboardPage() {
                   ×
                 </button>
               </div>
-              {/* 第二行：日期时间 + 自动/手动 + 语言 + 状态 + 终止 */}
+              {/* 第二行：日期时间 + 状态 + 终止 */}
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-white/52 shrink-0">{ts}</span>
-                <span className={`${chipCls} text-[10px] shrink-0 ${run.mode === "auto" ? "bg-yellow-500/15 text-yellow-300" : "bg-orange-500/15 text-orange-300"}`}>{run.mode === "auto" ? "自动" : "手动"}</span>
-                <span className={`${chipCls} text-[10px] shrink-0 ${(run.language || "zh").toLowerCase().startsWith("zh") ? "bg-cyan-500/15 text-cyan-300" : "bg-rose-500/15 text-rose-300"}`}>{langLabel(run.language)}</span>
-                <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px] whitespace-nowrap shrink-0`}>{STATUS_LABEL[run.status] ?? run.status}</span>
-                {run.status === "processing" && (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setPendingStop(run); }}
-                    title="终止此任务"
-                    aria-label="终止此任务"
-                    className={`${btnDeleteIcon} ml-auto`}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-                    </svg>
-                  </button>
-                )}
+                <span className="text-xs text-white/52 shrink-0" title={chipHint(run)}>{ts}</span>
+                <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px] whitespace-nowrap shrink-0 ml-auto`}>{STATUS_LABEL[run.status] ?? run.status}</span>
+                {/* 终止按钮：槽位始终占据（位置不被状态徽章挤占），仅运行中可见可点 */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setPendingStop(run); }}
+                  title="终止此任务"
+                  aria-label="终止此任务"
+                  aria-hidden={run.status !== "processing"}
+                  tabIndex={run.status === "processing" ? 0 : -1}
+                  className={`${btnDeleteIcon} ${run.status === "processing" ? "" : "invisible pointer-events-none"}`}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                  </svg>
+                </button>
               </div>
             </div>
           );
