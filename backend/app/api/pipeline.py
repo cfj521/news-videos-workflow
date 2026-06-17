@@ -818,6 +818,7 @@ def get_preview_html(
     cover_title: str | None = None,
     cover_subtitle: str | None = None,
     cover_font_size: int | None = None,
+    cover_text_color: str | None = None,
     db: Session = Depends(get_db),
 ):
     """生成 hyperframes 预览 HTML。
@@ -826,7 +827,7 @@ def get_preview_html(
     **仅作用于本次预览渲染，不写全局 config、不落盘 timeline**——供预览页试看，不影响默认值与成片。
     缺省时回退到全局 `cfg.hyperframes.*`，保持原有默认行为。
 
-    cover_title/cover_subtitle/cover_font_size 临时覆盖封面视觉字段（同样不落盘），
+    cover_title/cover_subtitle/cover_font_size/cover_text_color 临时覆盖封面视觉字段（同样不落盘），
     传入这三个参数任意一个也会触发重跑 run_stage4。
     """
     rd = _run_dir(run_id)
@@ -847,7 +848,7 @@ def get_preview_html(
 
     # 字号/行数/场景间隔/封面覆盖 影响 stage4 折行与排时长：有覆盖值时，用落盘 timeline 反推素材，
     # 临时重跑 run_stage4（纯函数，不写文件）重新折行/排时长，使预览实时反映这些参数。
-    # cover_title/cover_subtitle/cover_font_size 也纳入触发条件，以反映封面视觉覆盖。
+    # cover_title/cover_subtitle/cover_font_size/cover_text_color 也纳入触发条件，以反映封面视觉覆盖。
     needs_rerun = (
         scene_gap_ms is not None
         or subtitle_font_size is not None
@@ -855,6 +856,7 @@ def get_preview_html(
         or cover_title is not None
         or cover_subtitle is not None
         or cover_font_size is not None
+        or cover_text_color is not None
     )
     if needs_rerun:
         script_path = rd / "script.json"
@@ -870,6 +872,8 @@ def get_preview_html(
                     cover_entry["subtitle"] = cover_subtitle
                 if cover_font_size is not None:
                     cover_entry["cover_font_size"] = cover_font_size
+                if cover_text_color is not None:
+                    cover_entry["cover_text_color"] = cover_text_color
             # 过滤封面 entry（scene_id==0, is_cover），仅反推普通场景素材
             scene_assets = [{
                 "scene_id": e["scene_id"],

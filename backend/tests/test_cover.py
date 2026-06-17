@@ -1,5 +1,10 @@
 from types import SimpleNamespace
-from app.pipeline.cover import resolve_cover_text, build_cover_entry, COVER_FALLBACK_MS
+from app.pipeline.cover import (
+    resolve_cover_text,
+    build_cover_entry,
+    COVER_NARRATION_TAIL_MS,
+    COVER_SILENT_FALLBACK_MS,
+)
 from app.config import CoverCfg
 
 
@@ -24,6 +29,27 @@ def test_period_aihot_weekly():
 def test_days_and_date():
     assert resolve_cover_text("{days}天·{date}", _run(time_range="7d")) == "7天·2026-06-18"
 
+def test_date_daily_single_day():
+    # 日报：单日
+    assert resolve_cover_text("{date}", _run(aihot_config='{"method": "daily"}', time_range="1d")) == "2026-06-18"
+
+def test_date_weekly_span():
+    # 周报：本期跨度（7d → 06.12-06.18）
+    assert resolve_cover_text("{date}", _run(aihot_config='{"method": "weekly"}', time_range="7d")) == "06.12-06.18"
+
+def test_date_monthly_year_month():
+    # 月报：年.月
+    assert resolve_cover_text("{date}", _run(aihot_config='{"method": "monthly"}', time_range="1m")) == "2026.06"
+
+def test_date_normal_source_single_day():
+    # 普通源（无 method）：单日
+    assert resolve_cover_text("{date}", _run(time_range="7d")) == "2026-06-18"
+
+def test_cover_text_color_passthrough():
+    cfg = CoverCfg(enabled=True, text_color="#FF0000")
+    e = build_cover_entry(cfg, _run(), image_rel="", audio_rel="", audio_ms=0)
+    assert e["cover_text_color"] == "#FF0000"
+
 def test_empty_template():
     assert resolve_cover_text("", _run()) == ""
 
@@ -34,7 +60,10 @@ def test_build_cover_entry_with_audio():
                           audio_rel="assets/cover_audio.mp3", audio_ms=5200)
     assert e["is_cover"] is True
     assert e["scene_id"] == 0
-    assert e["start_ms"] == 0 and e["end_ms"] == 5200 and e["audio_duration_ms"] == 5200
+    # 有旁白：场景时长 = 旁白 + 1s 尾留；audio_duration_ms 仍为旁白真实时长
+    assert e["start_ms"] == 0
+    assert e["end_ms"] == 5200 + COVER_NARRATION_TAIL_MS
+    assert e["audio_duration_ms"] == 5200
     assert e["title"] == "最近7天AI资讯"
     assert e["subtitle"] == "每天3分钟"
     assert e["cover_font_size"] == 80
@@ -42,8 +71,19 @@ def test_build_cover_entry_with_audio():
     assert e["audio_path"] == "assets/cover_audio.mp3"
     assert e["subtitle_lines"] == []
 
-def test_build_cover_entry_no_audio_fallback():
-    cfg = CoverCfg(enabled=True)
+def test_build_cover_entry_no_audio_uses_silent_duration():
+    cfg = CoverCfg(enabled=True, silent_duration=3.0)
     e = build_cover_entry(cfg, _run(), image_rel="", audio_rel="", audio_ms=0)
-    assert e["end_ms"] == COVER_FALLBACK_MS
+    assert e["end_ms"] == 3000  # 无旁白：用配置 silent_duration（默认 3s）
+    assert e["audio_duration_ms"] == 0
     assert e["audio_path"] == ""
+
+def test_build_cover_entry_no_audio_custom_silent_duration():
+    cfg = CoverCfg(enabled=True, silent_duration=5.0)
+    e = build_cover_entry(cfg, _run(), image_rel="", audio_rel="", audio_ms=0)
+    assert e["end_ms"] == 5000
+
+def test_build_cover_entry_no_audio_zero_silent_falls_back():
+    cfg = CoverCfg(enabled=True, silent_duration=0)
+    e = build_cover_entry(cfg, _run(), image_rel="", audio_rel="", audio_ms=0)
+    assert e["end_ms"] == COVER_SILENT_FALLBACK_MS

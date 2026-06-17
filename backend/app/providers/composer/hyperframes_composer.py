@@ -114,6 +114,7 @@ class HyperframesComposer(ComposerProvider):
                 "title": entry.get("title", ""),
                 "subtitle": entry.get("subtitle", ""),
                 "cover_font_size": entry.get("cover_font_size", 72),
+                "cover_text_color": entry.get("cover_text_color", "#FFFFFF"),
             })
 
         title_overlays = []
@@ -267,14 +268,17 @@ class HyperframesComposer(ComposerProvider):
             font_size = entry.get("cover_font_size", 72)
             sub_size = max(24, int(font_size * 0.55))
             ff_path = font_file.replace("\\", "/")
+            # 统一字体颜色（标题+副标题共用）；ffmpeg 用 0xRRGGBB 形式
+            raw_color = entry.get("cover_text_color", "#FFFFFF") or "#FFFFFF"
+            text_color = "0x" + raw_color[1:] if raw_color.startswith("#") else raw_color
 
             if title:
                 vf += (f",drawtext=fontfile='{ff_path}':text='{_escape_drawtext(title)}':"
-                       f"fontsize={font_size}:fontcolor=white:borderw=3:bordercolor=black:"
+                       f"fontsize={font_size}:fontcolor={text_color}:borderw=3:bordercolor=black:"
                        f"x=(w-text_w)/2:y=(h-text_h)/2-{sub_size if subtitle else 0}")
             if subtitle:
                 vf += (f",drawtext=fontfile='{ff_path}':text='{_escape_drawtext(subtitle)}':"
-                       f"fontsize={sub_size}:fontcolor=white:borderw=2:bordercolor=black:"
+                       f"fontsize={sub_size}:fontcolor={text_color}:borderw=2:bordercolor=black:"
                        f"x=(w-text_w)/2:y=(h+{font_size})/2+10")
 
         vf += "[vout]"

@@ -834,8 +834,9 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const [coverTitle, setCoverTitle] = useState<string | null>(null);
   const [coverSubtitle, setCoverSubtitle] = useState<string | null>(null);
   const [coverFont, setCoverFont] = useState<number | null>(null);
+  const [coverColor, setCoverColor] = useState<string | null>(null);
   // 已应用到预览的参数快照（仅本地、不写全局配置）。null = 尚未覆盖，预览用落盘 timeline 默认渲染
-  const [applied, setApplied] = useState<{ transition: string; sceneGap: number; fps: string; subFont: number; subLines: number; coverTitle: string | null; coverSubtitle: string | null; coverFont: number | null } | null>(null);
+  const [applied, setApplied] = useState<{ transition: string; sceneGap: number; fps: string; subFont: number; subLines: number; coverTitle: string | null; coverSubtitle: string | null; coverFont: number | null; coverColor: string | null } | null>(null);
 
   // Playback state (synced via postMessage from iframe)
   const [playing, setPlaying] = useState(false);
@@ -882,6 +883,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     coverTitle: null as string | null,
     coverSubtitle: null as string | null,
     coverFont: null as number | null,
+    coverColor: null as string | null,
   } : null);
   const isDirty = !!base && (
     transition !== base.transition ||
@@ -891,12 +893,13 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     subLines !== base.subLines ||
     coverTitle !== base.coverTitle ||
     coverSubtitle !== base.coverSubtitle ||
-    coverFont !== base.coverFont
+    coverFont !== base.coverFont ||
+    coverColor !== base.coverColor
   );
 
   // 重新生成预览：仅把当前参数应用到本次预览（query 覆盖，不写全局配置、不落盘）
   const handleRegenerate = () => {
-    setApplied({ transition, sceneGap, fps, subFont, subLines, coverTitle, coverSubtitle, coverFont });
+    setApplied({ transition, sceneGap, fps, subFont, subLines, coverTitle, coverSubtitle, coverFont, coverColor });
     setIframeKey((k) => k + 1);
     setPlaying(false);
     showToast("已应用到预览（未改全局配置）", "success");
@@ -915,6 +918,7 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     if (applied.coverTitle !== null) q.set("cover_title", applied.coverTitle);
     if (applied.coverSubtitle !== null) q.set("cover_subtitle", applied.coverSubtitle);
     if (applied.coverFont !== null) q.set("cover_font_size", String(applied.coverFont));
+    if (applied.coverColor !== null) q.set("cover_text_color", applied.coverColor);
     return `${baseUrl}?${q.toString()}`;
   })();
   const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -1099,7 +1103,33 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
                 { value: "3", label: "3 行" },
               ]} />
             </div>
-            {/* 封面 per-run 覆盖（仅文字/字号；图片覆盖 MVP 暂不做） */}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div>
+              <label className={labelCls}>分辨率</label>
+              <div className="text-sm text-white/85 font-mono mt-2">{run.resolution || "—"}</div>
+            </div>
+            <div>
+              <label className={labelCls}>帧率</label>
+              <input value={fps} onChange={(e) => setFps(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>场景间隔</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input type="range" min={0} max={2000} step={100} value={sceneGap} onChange={(e) => setSceneGap(Number(e.target.value))} className="flex-1 accent-blue-500" />
+                <span className="text-xs text-white/66 w-14 text-right font-mono">{sceneGap}ms</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 封面设置 — per-run 覆盖（仅文字/字号；图片覆盖 MVP 暂不做），独立 section */}
+      {isHyperframes && (
+        <div className={`${cardCls} p-5`}>
+          <h4 className={`${sectionTitleCls} mb-3`}>封面设置</h4>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className={labelCls}>封面标题</label>
               <input
@@ -1125,27 +1155,20 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
                 <span className="text-xs text-white/66 w-14 text-right font-mono">{coverFont !== null ? `${coverFont}px` : "—"}</span>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
-              <label className={labelCls}>分辨率</label>
-              <div className="text-sm text-white/85 font-mono mt-2">{run.resolution || "—"}</div>
-            </div>
-            <div>
-              <label className={labelCls}>帧率</label>
-              <input value={fps} onChange={(e) => setFps(e.target.value)} className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>场景间隔</label>
+              <label className={labelCls}>字体颜色</label>
               <div className="flex items-center gap-2 mt-1">
-                <input type="range" min={0} max={2000} step={100} value={sceneGap} onChange={(e) => setSceneGap(Number(e.target.value))} className="flex-1 accent-blue-500" />
-                <span className="text-xs text-white/66 w-14 text-right font-mono">{sceneGap}ms</span>
+                <input type="color" value={coverColor ?? "#FFFFFF"} onChange={(e) => setCoverColor(e.target.value.toUpperCase())}
+                  className="h-8 w-10 rounded border border-white/[0.12] bg-transparent cursor-pointer p-0.5" />
+                <span className="text-xs text-white/66 font-mono flex-1">{coverColor ?? "沿用配置"}</span>
+                {coverColor !== null && (
+                  <button onClick={() => setCoverColor(null)} className="text-xs text-white/40 hover:text-white/70">重置</button>
+                )}
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Timeline */}
       {timeline && (

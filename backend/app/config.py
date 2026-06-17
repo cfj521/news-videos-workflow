@@ -159,6 +159,8 @@ class CoverCfg(BaseModel):
     subtitle: str = ""
     narration: str = ""
     font_size: int = 72
+    text_color: str = "#FFFFFF"  # 标题+副标题统一字体颜色
+    silent_duration: float = 3.0  # 无旁白时封面时长（秒）；有旁白时按旁白时长 + 1s 尾留，本项不用
 
 
 COVER_PRESET_COUNT = 3  # 固定 3 个封面预设槽位

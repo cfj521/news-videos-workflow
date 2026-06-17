@@ -4,10 +4,11 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-COVER_FALLBACK_MS = 4000  # 旁白为空时封面兜底时长
+COVER_NARRATION_TAIL_MS = 1000  # 有旁白时，旁白结束后多停留 1s 再切场景
+COVER_SILENT_FALLBACK_MS = 3000  # 无旁白且未配置 silent_duration 时的兜底时长
 
 
 def _fmt_time_range(tr: str) -> str:
@@ -28,8 +29,35 @@ def _aihot_method(run) -> str:
         return ""
 
 
+def _range_days(tr: str) -> int:
+    """把 time_range（如 7d / 1w / 1m）换算成天数；解析失败返回 0。"""
+    m = re.fullmatch(r"\s*(\d+)\s*([dwmy])\s*", tr or "")
+    if not m:
+        return 0
+    return int(m.group(1)) * {"d": 1, "w": 7, "m": 30, "y": 365}[m.group(2)]
+
+
+def _run_dt(run) -> datetime:
+    """取 run 的制作时间（created_at，本地时区）；缺失/解析失败回退当前时间。"""
+    created = getattr(run, "created_at", None)
+    try:
+        if isinstance(created, str) and created:
+            return datetime.fromisoformat(created).astimezone()
+        if isinstance(created, datetime):
+            return created.astimezone()
+    except Exception:
+        pass
+    return datetime.now(timezone.utc).astimezone()
+
+
 def resolve_cover_text(template: str, run) -> str:
-    """把封面模板里的 {period}/{days}/{date} 按 run 填充。"""
+    """把封面模板里的 {period}/{days}/{date} 按 run 填充。
+
+    {date} 按报告类型自适应：
+    - 日报 / 普通源：单日（如 2026-06-18）
+    - 周报：本期跨度（如 06.12-06.18，按 time_range 推算）
+    - 月报：年.月（如 2026.06）
+    """
     if not template:
         return ""
     tr = getattr(run, "time_range", "") or ""
@@ -37,29 +65,40 @@ def resolve_cover_text(template: str, run) -> str:
     period = {"daily": "每日", "weekly": "每周", "monthly": "每月"}.get(method) or f"最近{_fmt_time_range(tr)}"
     days_m = re.match(r"\s*(\d+)", tr)
     days = days_m.group(1) if days_m else ""
-    date_str = ""
-    created = getattr(run, "created_at", None)
-    try:
-        if isinstance(created, str) and created:
-            date_str = datetime.fromisoformat(created).astimezone().strftime("%Y-%m-%d")
-        elif isinstance(created, datetime):
-            date_str = created.astimezone().strftime("%Y-%m-%d")
-    except Exception:
-        date_str = ""
-    if not date_str:
-        date_str = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+    base = _run_dt(run)
+    if method == "monthly":
+        date_str = base.strftime("%Y.%m")
+    elif method == "weekly":
+        span = _range_days(tr) or 7
+        start = base - timedelta(days=span - 1)
+        date_str = f"{start.strftime('%m.%d')}-{base.strftime('%m.%d')}"
+    else:
+        date_str = base.strftime("%Y-%m-%d")
     return (template.replace("{period}", period).replace("{days}", days).replace("{date}", date_str))
 
 
 def build_cover_entry(cfg, run, *, image_rel: str, audio_rel: str, audio_ms: int) -> dict:
-    """组装 timeline 头部的封面 entry（视觉字段全内联）。"""
-    dur = audio_ms if audio_ms and audio_ms > 0 else COVER_FALLBACK_MS
+    """组装 timeline 头部的封面 entry（视觉字段全内联）。
+
+    时长规则：
+    - 有旁白：场景时长 = 旁白时长 + 1s 尾留（COVER_NARRATION_TAIL_MS），让语音念完再停 1s 才切场景；
+      audio_duration_ms 仍为旁白真实时长（音频只播一遍，末尾 1s 静默停留）。
+    - 无旁白：场景时长 = cfg.silent_duration（秒，默认 3s），audio_duration_ms 为 0。
+    """
+    if audio_ms and audio_ms > 0:
+        end_ms = audio_ms + COVER_NARRATION_TAIL_MS
+        audio_dur = audio_ms
+    else:
+        silent_s = getattr(cfg, "silent_duration", 0) or 0
+        end_ms = int(silent_s * 1000) if silent_s > 0 else COVER_SILENT_FALLBACK_MS
+        audio_dur = 0
     return {
-        "scene_id": 0, "is_cover": True, "start_ms": 0, "end_ms": dur,
-        "image_path": image_rel, "audio_path": audio_rel or "", "audio_duration_ms": dur,
+        "scene_id": 0, "is_cover": True, "start_ms": 0, "end_ms": end_ms,
+        "image_path": image_rel, "audio_path": audio_rel or "", "audio_duration_ms": audio_dur,
         "title": resolve_cover_text(cfg.title_template, run),
         "subtitle": resolve_cover_text(cfg.subtitle, run),
         "cover_font_size": cfg.font_size,
+        "cover_text_color": getattr(cfg, "text_color", "") or "#FFFFFF",  # 标题+副标题统一颜色
         "subtitle_text": "", "subtitle_lines": [],
     }
 

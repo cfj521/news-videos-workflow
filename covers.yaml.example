@@ -10,6 +10,8 @@ presets:
       subtitle: ""
       narration: ""
       font_size: 72
+      text_color: "#FFFFFF"   # 标题+副标题统一字体颜色
+      silent_duration: 3   # 无旁白时封面停留秒数；有旁白时按旁白时长 + 1s，本项不生效
   - name: 封面 2
     values: {}
   - name: 封面 3

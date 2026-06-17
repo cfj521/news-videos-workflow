@@ -58,8 +58,8 @@
          {% if not loop.first %}style="visibility:hidden;opacity:0;"{% endif %}>
       {% if entry.image_path %}<img src="{{ entry.image_path }}" alt="cover">{% endif %}
       <div class="cover-overlay">
-        <div class="cover-title" style="font-size:{{ entry.cover_font_size | default(72) }}px;">{{ entry.title }}</div>
-        {% if entry.subtitle %}<div class="cover-subtitle" style="font-size:{{ (entry.cover_font_size | default(72) * 0.55) | round | int }}px;">{{ entry.subtitle }}</div>{% endif %}
+        <div class="cover-title" style="font-size:{{ entry.cover_font_size | default(72) }}px; color:{{ entry.cover_text_color | default('#FFFFFF') }};">{{ entry.title }}</div>
+        {% if entry.subtitle %}<div class="cover-subtitle" style="font-size:{{ (entry.cover_font_size | default(72) * 0.55) | round | int }}px; color:{{ entry.cover_text_color | default('#FFFFFF') }};">{{ entry.subtitle }}</div>{% endif %}
       </div>
     </div>
     {% else %}
