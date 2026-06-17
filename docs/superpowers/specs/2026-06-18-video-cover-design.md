@@ -8,11 +8,15 @@
 
 封面 = 视频最前面的一个**带配音的「场景0」**：封面图作背景 + 标题/副标题文字叠加 + 旁白 TTS 音频，时长 = 旁白音频长度；之后才是正常新闻分镜。它是 timeline 头部一个带 `is_cover` 标记的 entry。
 
-### 路线范围（评审修正）
-- **仅 hyperframes 路线出封面**（封面的"满屏图 + 居中大标题 + 副标题"只在 `composition.html.j2`/HTML 路实现）。
-- **comfyui 路线跳过封面**（其 `comfyui_composer.py` 对每个 entry 做 img2video + 右上角 drawtext，没有居中大标题概念，且会把封面图错误地做成运动视频；comfyui 封面留作后续独立子任务）。
-- **纯音频路线跳过封面**（无画面）。
-- 判断：`run.video_route == "hyperframes"` 才加封面（注意 video_route 是运行时字符串值，`audio` 不在 `VideoRoute` 枚举里但运行时存在）。
+### 路线范围（封面统一 hyperframes 渲染）
+封面的"满屏图 + 居中大标题 + 副标题"**一律用 hyperframes/HTML 渲染**（`composition.html.j2`），保证两条视频路线封面视觉完全一致：
+- **hyperframes 路线**：封面作为 timeline 的 `scene 0`，在主合成里**内联**渲染。
+- **comfyui 路线**：comfyui 主视频**跳过** `is_cover` entry（只对新闻分镜做 img2video）；封面**单独用 hyperframes 渲成一个片段**（cover-only 合成 → `cover.mp4`），再用 **FFmpeg 拼接到 comfyui 主视频开头** → `output.mp4`。
+- **纯音频路线**：跳过封面（无画面）。
+
+封面 entry **两条视频路线都进 timeline**（scene 0），保证 SRT 偏移、总时长正确（comfyui 拼接后字幕仍对得上）。差异只在渲染：hyperframes 内联、comfyui 拼接。
+
+> 依赖说明：comfyui 路线的封面片段也需要 `npx hyperframes`（与 hyperframes 路线同款）。若不可用，回退用 FFmpeg 渲染封面片段（静态图 + 居中 drawtext + 音频）。
 
 ## 配置：`config.yaml` 新增 `cover` 段（位于 `overlay` 段下方）
 
@@ -80,6 +84,14 @@
 - 封面在头部，`loop.first` 自然不加转场；封面→首个新闻场景沿用现有 `transition`（`#s0` 作 prev，新闻 id 从 1 起不冲突）。
 - 注：`_render_html` **不加** `cover` 参数；模板只靠 `entry.is_cover` 分支。
 
+### Stage 5 渲染（`runner.py` / `pipeline.py` 的 S5）
+- **hyperframes 路线**：`HyperframesComposer.compose(timeline)` 含封面 entry，一次性出 `output.mp4`（封面内联）。
+- **comfyui 路线**（新增拼接逻辑）：
+  1. comfyui 主合成**跳过** `is_cover` entry（`comfyui_composer.py` 遍历时 `if entry.get("is_cover"): continue`），出 `main.mp4`（仅新闻分镜）。
+  2. 封面单独渲染：用 `HyperframesComposer` 对**仅含封面 entry 的 cover-only timeline** 渲成 `cover.mp4`（抽 `_render_cover_clip(cover_entry, resolution, run_dir) -> Path`；npx hyperframes 不可用则 FFmpeg 兜底：静态图+居中 drawtext+cover_audio）。
+  3. **FFmpeg 拼接** `cover.mp4 + main.mp4 → output.mp4`（统一分辨率/帧率，重编码确保兼容；复用现有 `_ffmpeg_*` 风格）。
+- 封面 entry 在 timeline 中始终存在（供 SRT/总时长），但 comfyui 主合成不渲染它、改由拼接补上。
+
 ## 所有"重跑 run_stage4"的入口都要带封面（评审 C，关键）
 
 现有从落盘 timeline **反推 scene_assets 重跑 run_stage4** 的地方，会把 `scene_id=0` 的封面当普通场景（`narration_map.get(0)` 为空）→ 静默破坏封面。修正：
@@ -99,6 +111,7 @@
 - 标题模板（输入框，提示可用变量 `{period}/{days}/{date}`）
 - 副标题、旁白（输入框/多行）
 - 标题字号（滑块）
+- **说明文案**（section 顶部 desc）：「封面统一用 hyperframes 渲染；comfyui 视频路线会把封面片段自动拼接到成片开头。纯音频路线不出封面。」
 
 ### 上传与回显接口
 - `POST /api/settings/cover-image`（multipart `UploadFile`，参照 `pipeline.py:import_article_file`）：存 `data/cover/cover.<ext>`，返回相对路径，前端写回 `cover.image`。
@@ -116,7 +129,7 @@
 - `frontend/src/api/client.ts`：新增 cover-image 上传/回显、preview-html 的 cover query 参数。
 
 ## 已定细节
-- 仅 hyperframes 路出封面；comfyui/纯音频跳过。
+- 封面统一用 hyperframes 渲染；hyperframes 路内联、comfyui 路拼接到开头、纯音频跳过。
 - 字号：单个 `font_size` 控标题，副标题自动 `*0.55`。
 - 副标题/旁白均支持 `{period}/{days}/{date}`。
 - 封面 entry 无字幕轨、`subtitle_lines: []`。
@@ -125,7 +138,6 @@
 - 所有重跑 run_stage4 的入口（preview-html / regen_scene_audio / regen-script[2,3,4]）都重新注入封面。
 
 ## 不做（YAGNI）
-- comfyui 路线封面（留作后续独立子任务：静态封面 clip + 居中 drawtext）。
 - 封面图不做 AI 生成（固定上传）。
 - 不做多套封面模板预设。
 - 预览页旁白覆盖不做实时 re-TTS（需整体重跑 stage3）。
