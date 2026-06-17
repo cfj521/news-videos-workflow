@@ -11,6 +11,8 @@ from app.prompts import PROMPTS
 
 log = get_logger("api.settings")
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+# 免登录路由：封面图回显供 <img> 加载（标签带不了 Authorization 头），与 pipeline 媒体同理
+public_router = APIRouter(prefix="/api/settings", tags=["settings-public"])
 
 # 封面图存储目录（仓库根 data/cover/）
 _COVER_DIR = Path(__file__).resolve().parents[3] / "data" / "cover"
@@ -85,24 +87,29 @@ async def comfyui_health(url: str = ""):
 
 
 @router.post("/cover-image")
-async def upload_cover_image(file: UploadFile = File(...)):
-    """上传封面图：保存到 data/cover/cover.<ext>（同名覆盖旧文件），返回相对路径。"""
+async def upload_cover_image(file: UploadFile = File(...), preset: int = 0):
+    """上传封面图：按预设保存到 data/cover/cover_{preset}.<ext>（同预设覆盖），返回相对路径。"""
     _COVER_DIR.mkdir(parents=True, exist_ok=True)
     ext = (Path(file.filename or "").suffix or ".png").lower()
-    # 删除旧封面（不同扩展名也清除）
-    for old in _COVER_DIR.glob("cover.*"):
+    # 清除该预设旧封面（不同扩展名也清除），各预设互不影响
+    for old in _COVER_DIR.glob(f"cover_{preset}.*"):
         old.unlink(missing_ok=True)
-    dst = _COVER_DIR / f"cover{ext}"
+    dst = _COVER_DIR / f"cover_{preset}{ext}"
     with dst.open("wb") as f:
         shutil.copyfileobj(file.file, f)
-    log.info("封面图已上传：%s", dst)
+    log.info("封面图已上传（预设 %d）：%s", preset, dst)
     return {"path": f"data/cover/{dst.name}"}
 
 
-@router.get("/cover-image")
-def get_cover_image():
-    """回显当前封面图文件（二进制流）；无封面时返回 404。"""
-    files = sorted(_COVER_DIR.glob("cover.*")) if _COVER_DIR.is_dir() else []
-    if not files:
+@public_router.get("/cover-image")
+def get_cover_image(path: str):
+    """回显封面图（免登录，供 <img> 加载）。path 为 data/cover/ 下相对路径，做目录穿越校验。"""
+    repo_root = Path(__file__).resolve().parents[3]
+    target = (repo_root / path).resolve()
+    try:
+        target.relative_to(_COVER_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid path")
+    if not target.is_file():
         raise HTTPException(status_code=404, detail="no cover image")
-    return FileResponse(files[0])
+    return FileResponse(target)

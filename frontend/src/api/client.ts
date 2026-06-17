@@ -320,11 +320,16 @@ export const api = {
     comfyuiHealth: (url: string) =>
       fetchJSON<{ ok: boolean; url: string; detail?: string; error?: string }>(`/settings/comfyui/health?url=${encodeURIComponent(url)}`),
     /** 当前封面图的直链 URL（用于 <img src=...> 展示） */
-    coverImageUrl: () => `${BASE}/settings/cover-image`,
-    /** 上传封面图文件，返回服务端相对路径 */
-    uploadCoverImage: (file: File) => {
+    /** 封面图回显 URL（免登录 public 路由，供 <img> 直接加载）；path 为服务端相对路径 */
+    coverImageUrl: (path: string) => `${BASE}/settings/cover-image?path=${encodeURIComponent(path)}`,
+    /** 上传封面图文件（按预设存），返回服务端相对路径 */
+    uploadCoverImage: (file: File, preset: number) => {
       const fd = new FormData(); fd.append("file", file);
-      return fetch(`${BASE}/settings/cover-image`, { method: "POST", body: fd }).then((r) => r.json() as Promise<{ path: string }>);
+      const token = getToken();
+      return fetch(`${BASE}/settings/cover-image?preset=${preset}`, {
+        method: "POST", body: fd,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }).then((r) => { if (!r.ok) throw new Error(`上传失败: ${r.status}`); return r.json() as Promise<{ path: string }>; });
     },
   },
   schedules: {

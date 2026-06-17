@@ -1203,7 +1203,7 @@ export function SettingsPage() {
                       const file = e.target.files?.[0];
                       if (!file) return;
                       try {
-                        const res = await api.settings.uploadCoverImage(file);
+                        const res = await api.settings.uploadCoverImage(file, coverActive);
                         patchCover({ image: (res as { path: string }).path });
                         setCoverImgTs(Date.now());
                         showToast("封面图已上传", "success");
@@ -1212,12 +1212,19 @@ export function SettingsPage() {
                       }
                     }} />
                 </label>
-                {cur.image && (
+                {cur.image ? (
                   <img
-                    src={`${api.settings.coverImageUrl()}?t=${coverImgTs}`}
+                    src={`${api.settings.coverImageUrl(cur.image)}&t=${coverImgTs}`}
                     alt="封面预览"
                     className="w-32 h-auto rounded-lg border border-white/[0.08] object-cover"
                   />
+                ) : (
+                  <div className="w-32 h-44 rounded-lg border border-dashed border-white/[0.15] bg-white/[0.02] flex flex-col items-center justify-center gap-1.5 text-white/40">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="1.8" /><path d="m21 15-5-5L5 21" />
+                    </svg>
+                    <span className="text-[11px]">未上传封面图</span>
+                  </div>
                 )}
               </div>
             </Field>
