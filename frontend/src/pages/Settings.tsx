@@ -455,6 +455,7 @@ const EMPTY_SETTINGS: AppSettings = {
   comfyui: { server_url: "http://127.0.0.1:8188", default_negative: "模糊, 丑陋, 变形, 低质量, 水印", wake: { enabled: false, mac: "", broadcast: "255.255.255.255", port: 9, ready_timeout: 180, poll_interval: 3 }, image_params: { "z_image_turbo": { steps: 9, cfg: 1.0 }, "qwen_image": { steps: 20, cfg: 2.5 } }, video_params: { "wan2.2_5b": { steps: 30, cfg: 5.0 }, "wan2.2_14b": { steps: 20, cfg: 3.5 }, "wan2.2_14b_lightx2v": { steps: 4, cfg: 1.0 }, "ltx_2.3": { steps: 4, cfg: 1.0 } } },
   overlay: { enabled: true, font_file: "C:/Windows/Fonts/msyh.ttc", font_size_ratio: 0.035, color: "#FFFFFF", bg_opacity: 0.45, margin_ratio: 0.03 },
   cover: { enabled: false, image: "", title_template: "{period}AI资讯", subtitle: "", narration: "", font_size: 72 },
+  cover_presets: { active: 0, presets: [] },
   prompts: {},
   prompt_presets: { active: 0, presets: [] },
 };
@@ -1113,66 +1114,139 @@ export function SettingsPage() {
         </Field>
       </Section>
 
-      <Section title="视频封面" desc="封面统一用 hyperframes 渲染；comfyui 视频路线会把封面片段自动拼接到成片开头。纯音频路线不出封面。">
-        <Field label="封面功能" center>
-          <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox" checked={settings.cover.enabled}
-              onChange={(e) => patch("cover", { enabled: e.target.checked })}
-              className="w-4 h-4 accent-blue-500 rounded" />
-            <span className="text-sm text-white/76">{settings.cover.enabled ? "已开启" : "已关闭"}</span>
-          </label>
-        </Field>
-        <Field label="封面图">
-          <div className="flex flex-col gap-2">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <span className="px-3 py-1.5 text-xs rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/76 hover:bg-white/[0.08] hover:text-white/92 transition cursor-pointer">上传图片</span>
-              <input type="file" accept="image/*" className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    const res = await api.settings.uploadCoverImage(file);
-                    patch("cover", { image: (res as { path: string }).path });
-                    setCoverImgTs(Date.now());
-                    showToast("封面图已上传", "success");
-                  } catch (err) {
-                    showToast(err instanceof Error ? err.message : "上传失败", "error");
+      {(() => {
+        const cp = settings.cover_presets;
+        const coverPresets = cp?.presets ?? [];
+        const coverActive = Math.min(Math.max(cp?.active ?? 0, 0), Math.max(coverPresets.length - 1, 0));
+        const COVER_DEFAULTS = { enabled: false, image: "", title_template: "{period}AI资讯", subtitle: "", narration: "", font_size: 72 } as const;
+        const cur = coverPresets[coverActive]?.values ?? COVER_DEFAULTS;
+        const patchCover = (partial: Partial<typeof cur>) =>
+          patch("cover_presets", { ...cp, presets: coverPresets.map((p, j) => j === coverActive ? { ...p, values: { ...p.values, ...partial } } : p) });
+        return (
+          <Section title="视频封面" desc="封面统一用 hyperframes 渲染；comfyui 视频路线会把封面片段自动拼接到成片开头。纯音频路线不出封面。">
+            {/* 封面预设切换条：单击切换、双击重命名；类型与 PresetBar 不兼容（values 含非 string 字段），故手写等价 JSX */}
+            {coverPresets.length > 0 && (() => {
+              // 内联封面预设条（与 PresetBar 外观/行为一致）
+              const CoverPresetBar = () => {
+                const [editing, setEditing] = useState<number | null>(null);
+                const [draft, setDraft] = useState("");
+                const [editWidth, setEditWidth] = useState<number>(0);
+                const [confirming, setConfirming] = useState(false);
+                const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+                const beginRename = (i: number, width: number) => { setEditing(i); setDraft(coverPresets[i]?.name || `预设 ${i + 1}`); setEditWidth(width); };
+                const commitRename = () => {
+                  if (editing === null) return;
+                  const name = draft.trim() || `预设 ${editing + 1}`;
+                  patch("cover_presets", { ...cp, presets: coverPresets.map((p, j) => j === editing ? { ...p, name } : p) });
+                  setEditing(null);
+                };
+                const clickClear = () => {
+                  if (confirming) {
+                    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+                    setConfirming(false);
+                    patchCover({ ...COVER_DEFAULTS });
+                  } else {
+                    setConfirming(true);
+                    confirmTimer.current = setTimeout(() => setConfirming(false), 3000);
                   }
-                }} />
-            </label>
-            {settings.cover.image && (
-              <img
-                src={`${api.settings.coverImageUrl()}?t=${coverImgTs}`}
-                alt="封面预览"
-                className="w-32 h-auto rounded-lg border border-white/[0.08] object-cover"
-              />
-            )}
-          </div>
-        </Field>
-        <Field label="标题模板" desc="变量：{period} {days} {date}">
-          <input value={settings.cover.title_template}
-            onChange={(e) => patch("cover", { title_template: e.target.value })}
-            placeholder="{period}AI资讯" className={inputCls} />
-        </Field>
-        <Field label="副标题">
-          <input value={settings.cover.subtitle}
-            onChange={(e) => patch("cover", { subtitle: e.target.value })}
-            placeholder="留空则无副标题" className={inputCls} />
-        </Field>
-        <Field label="旁白" desc="空则封面无配音">
-          <textarea value={settings.cover.narration}
-            onChange={(e) => patch("cover", { narration: e.target.value })}
-            placeholder="封面旁白文字，留空则无配音" rows={3}
-            className={`${inputCls} resize-none w-full`} />
-        </Field>
-        <Field label="标题字号" desc="按渲染分辨率计的像素值">
-          <div className="flex items-center gap-3">
-            <input type="range" value={settings.cover.font_size} min={24} max={160} step={4}
-              onChange={(e) => patch("cover", { font_size: Number(e.target.value) })} className="flex-1 accent-blue-500" />
-            <span className="text-sm text-white/76 tabular-nums w-16 text-right">{settings.cover.font_size}px</span>
-          </div>
-        </Field>
-      </Section>
+                };
+                return (
+                  <div className="flex items-center gap-2 mt-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {coverPresets.map((p, i) => (
+                        editing === i ? (
+                          <input key={i} autoFocus value={draft}
+                            style={{ width: editWidth, boxSizing: "border-box" }}
+                            onChange={(e) => setDraft(e.target.value)}
+                            onBlur={commitRename}
+                            onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setEditing(null); }}
+                            className="px-3 py-1 text-xs rounded-md bg-white/[0.06] text-white border border-blue-400/50 focus:outline-none" />
+                        ) : (
+                          <button key={i} onClick={() => patch("cover_presets", { ...cp, active: i })}
+                            onDoubleClick={(e) => beginRename(i, e.currentTarget.offsetWidth)}
+                            title="单击切换 · 双击重命名"
+                            className={`min-w-[88px] px-3 py-1 text-xs rounded-md border transition ${
+                              i === coverActive
+                                ? "bg-blue-500/20 text-white/92 border-blue-400/40 font-medium"
+                                : "bg-white/[0.04] text-white/70 border-white/[0.08] hover:text-white/92"
+                            }`}>
+                            {p.name || `预设 ${i + 1}`}
+                          </button>
+                        )
+                      ))}
+                    </div>
+                    <div className="ml-auto">
+                      <IconButton onClick={clickClear} title={confirming ? "再次点击确认清空当前预设" : "清空当前预设内容"}
+                        className={`p-1.5 ${confirming ? "text-red-300 bg-red-500/15 rounded-md" : ""}`}>
+                        <EraserIcon size={16} />
+                      </IconButton>
+                    </div>
+                  </div>
+                );
+              };
+              return <CoverPresetBar />;
+            })()}
+            <Field label="封面功能" center>
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={cur.enabled}
+                  onChange={(e) => patchCover({ enabled: e.target.checked })}
+                  className="w-4 h-4 accent-blue-500 rounded" />
+                <span className="text-sm text-white/76">{cur.enabled ? "已开启" : "已关闭"}</span>
+              </label>
+            </Field>
+            <Field label="封面图">
+              <div className="flex flex-col gap-2">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <span className="px-3 py-1.5 text-xs rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/76 hover:bg-white/[0.08] hover:text-white/92 transition cursor-pointer">上传图片</span>
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const res = await api.settings.uploadCoverImage(file);
+                        patchCover({ image: (res as { path: string }).path });
+                        setCoverImgTs(Date.now());
+                        showToast("封面图已上传", "success");
+                      } catch (err) {
+                        showToast(err instanceof Error ? err.message : "上传失败", "error");
+                      }
+                    }} />
+                </label>
+                {cur.image && (
+                  <img
+                    src={`${api.settings.coverImageUrl()}?t=${coverImgTs}`}
+                    alt="封面预览"
+                    className="w-32 h-auto rounded-lg border border-white/[0.08] object-cover"
+                  />
+                )}
+              </div>
+            </Field>
+            <Field label="标题模板" desc="变量：{period} {days} {date}">
+              <input value={cur.title_template}
+                onChange={(e) => patchCover({ title_template: e.target.value })}
+                placeholder="{period}AI资讯" className={inputCls} />
+            </Field>
+            <Field label="副标题">
+              <input value={cur.subtitle}
+                onChange={(e) => patchCover({ subtitle: e.target.value })}
+                placeholder="留空则无副标题" className={inputCls} />
+            </Field>
+            <Field label="旁白" desc="空则封面无配音">
+              <textarea value={cur.narration}
+                onChange={(e) => patchCover({ narration: e.target.value })}
+                placeholder="封面旁白文字，留空则无配音" rows={3}
+                className={`${inputCls} resize-none w-full`} />
+            </Field>
+            <Field label="标题字号" desc="按渲染分辨率计的像素值">
+              <div className="flex items-center gap-3">
+                <input type="range" value={cur.font_size} min={24} max={160} step={4}
+                  onChange={(e) => patchCover({ font_size: Number(e.target.value) })} className="flex-1 accent-blue-500" />
+                <span className="text-sm text-white/76 tabular-nums w-16 text-right">{cur.font_size}px</span>
+              </div>
+            </Field>
+          </Section>
+        );
+      })()}
 
       <Section title="存储目录" desc="任务半成品与成品的存放位置">
         <Field label="工作目录">
