@@ -34,10 +34,13 @@ class HyperframesComposer(ComposerProvider):
         abs_output = str(Path(output_path).resolve())
         abs_thumb = abs_output.replace(".mp4", "_thumb.jpg")
 
-        log.info("Running npx hyperframes render → %s", abs_output)
+        # npx 逐帧渲染慢，超时按视频时长放宽（长视频用固定 600s 会超时回退 FFmpeg、丢转场/标题）
+        dur_s = timeline_json.get("total_duration_ms", 0) / 1000
+        render_timeout = max(900, int(dur_s * 10))
+        log.info("Running npx hyperframes render → %s (timeout=%ds, dur=%.0fs)", abs_output, render_timeout, dur_s)
         result = subprocess.run(
             ["npx", "hyperframes", "render", "--output", abs_output, "--fps", "30", "--quality", "standard"],
-            cwd=str(run_dir), capture_output=True, timeout=600, shell=_NEEDS_SHELL,
+            cwd=str(run_dir), capture_output=True, timeout=render_timeout, shell=_NEEDS_SHELL,
         )
 
         if result.returncode != 0:
