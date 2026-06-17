@@ -316,6 +316,13 @@ export const api = {
     promptDefaults: () => fetchJSON<Record<string, { label: string; desc: string; default: string; default_en: string }>>("/settings/prompts/defaults"),
     comfyuiHealth: (url: string) =>
       fetchJSON<{ ok: boolean; url: string; detail?: string; error?: string }>(`/settings/comfyui/health?url=${encodeURIComponent(url)}`),
+    /** 当前封面图的直链 URL（用于 <img src=...> 展示） */
+    coverImageUrl: () => `${BASE}/settings/cover-image`,
+    /** 上传封面图文件，返回服务端相对路径 */
+    uploadCoverImage: (file: File) => {
+      const fd = new FormData(); fd.append("file", file);
+      return fetch(`${BASE}/settings/cover-image`, { method: "POST", body: fd }).then((r) => r.json() as Promise<{ path: string }>);
+    },
   },
   schedules: {
     list: () => fetchJSON<Schedule[]>("/schedules/"),

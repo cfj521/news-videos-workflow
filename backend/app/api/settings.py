@@ -1,5 +1,9 @@
+import shutil
+from pathlib import Path
+
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from app.config import Settings, get_settings, save_settings
 from app.logging import get_logger
@@ -7,6 +11,9 @@ from app.prompts import PROMPTS
 
 log = get_logger("api.settings")
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+# 封面图存储目录（仓库根 data/cover/）
+_COVER_DIR = Path(__file__).resolve().parents[3] / "data" / "cover"
 
 
 def _deep_merge(dst: dict, src: dict) -> None:
@@ -75,3 +82,27 @@ async def comfyui_health(url: str = ""):
     device = (devices[0].get("name") if devices else "") or ""
     detail = " · ".join(x for x in (f"ComfyUI {version}" if version else "", device) if x)
     return {"ok": True, "url": target, "detail": detail or "在线"}
+
+
+@router.post("/cover-image")
+async def upload_cover_image(file: UploadFile = File(...)):
+    """上传封面图：保存到 data/cover/cover.<ext>（同名覆盖旧文件），返回相对路径。"""
+    _COVER_DIR.mkdir(parents=True, exist_ok=True)
+    ext = (Path(file.filename or "").suffix or ".png").lower()
+    # 删除旧封面（不同扩展名也清除）
+    for old in _COVER_DIR.glob("cover.*"):
+        old.unlink(missing_ok=True)
+    dst = _COVER_DIR / f"cover{ext}"
+    with dst.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+    log.info("封面图已上传：%s", dst)
+    return {"path": f"data/cover/{dst.name}"}
+
+
+@router.get("/cover-image")
+def get_cover_image():
+    """回显当前封面图文件（二进制流）；无封面时返回 404。"""
+    files = sorted(_COVER_DIR.glob("cover.*")) if _COVER_DIR.is_dir() else []
+    if not files:
+        raise HTTPException(status_code=404, detail="no cover image")
+    return FileResponse(files[0])
