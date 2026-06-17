@@ -253,6 +253,7 @@ export const api = {
     previewHtmlUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/preview-html`,
     videoUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/video`,
     subtitlesUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/subtitles`,
+    subtitlesVttUrl: (runId: number) => `${BASE}/pipeline/runs/${runId}/subtitles.vtt`,
   },
   sources: {
     list: () => fetchJSON<NewsSource[]>("/sources/"),

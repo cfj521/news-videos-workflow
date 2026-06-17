@@ -1077,6 +1077,19 @@ def get_subtitles(run_id: int):
     return FileResponse(path, media_type="application/x-subrip", filename=f"run_{run_id}.srt")
 
 
+@public_router.get("/runs/{run_id}/subtitles.vtt")
+def get_subtitles_vtt(run_id: int):
+    """把外挂 SRT 转成 WebVTT 供 <video><track> 显示（成片不烧字幕，播放器按需挂轨显示）。
+    浏览器 <track> 只认 WebVTT：加 WEBVTT 头 + 时间码逗号→点（仅时间码行，避免动到正文逗号）。"""
+    import re
+    path = _run_dir(run_id) / "output.srt"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="No subtitles — run stage 4 first")
+    srt = path.read_text(encoding="utf-8")
+    vtt = "WEBVTT\n\n" + re.sub(r"(\d{2}:\d{2}:\d{2}),(\d{3})", r"\1.\2", srt)
+    return Response(content=vtt, media_type="text/vtt")
+
+
 @public_router.get("/runs/{run_id}/video")
 def get_video(run_id: int, db: Session = Depends(get_db)):
     run = db.get(PipelineRun, run_id)

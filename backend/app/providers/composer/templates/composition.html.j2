@@ -166,9 +166,6 @@
       if (e.data.type === 'pause') { tl.pause(); audios.forEach(function(a){a.pause();}); activeAudioId = null; }  // 清掉 → 恢复播放时 syncAudio 重新对齐并 play 当前段（否则同段守卫会跳过，声音要等下一分镜才回来）
       if (e.data.type === 'restart') { audios.forEach(function(a){ a.pause(); try { a.currentTime = 0; } catch (_) {} }); activeAudioId = null; tl.restart(); }
       if (e.data.type === 'seek') { tl.seek(e.data.time); activeAudioId = null; }  // 重置 → 下一帧重新对齐音频
-      if (e.data.type === 'subtitles') {  // 预览页「显示字幕」开关：成片走外挂 SRT 不烧字幕，此开关仅控制预览显隐
-        document.querySelectorAll('.subtitle').forEach(function (el) { el.style.display = e.data.show ? '' : 'none'; });
-      }
     });
   </script>
 </body>

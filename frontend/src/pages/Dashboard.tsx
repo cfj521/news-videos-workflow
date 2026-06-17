@@ -828,8 +828,6 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const [inited, setInited] = useState(false);
   // 已应用到预览的参数快照（仅本地、不写全局配置）。null = 尚未覆盖，预览用落盘 timeline 默认渲染
   const [applied, setApplied] = useState<{ transition: string; sceneGap: number; fps: string; subFont: number; subLines: number } | null>(null);
-  // 预览字幕显隐开关（仅控制预览；成片走外挂 SRT 本就不烧字幕）。默认显示
-  const [showSubtitles, setShowSubtitles] = useState(true);
 
   // Playback state (synced via postMessage from iframe)
   const [playing, setPlaying] = useState(false);
@@ -965,7 +963,6 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
             ref={iframeRef}
             src={previewUrl}
             title="预览"
-            onLoad={() => postCmd({ type: "subtitles", show: showSubtitles })}
             className="absolute top-0 left-0 pointer-events-none"
             style={{
               width: canvasW,
@@ -1043,17 +1040,9 @@ function S4Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       <div className={`${cardCls} p-5`}>
         <div className="flex justify-between items-center mb-3">
           <h4 className={sectionTitleCls}>{settingsLabel}</h4>
-          <div className="flex items-center gap-4">
-            <button onClick={handleRegenerate} disabled={!isDirty} className={`${btnCompact} ${isDirty ? "!border-blue-500/30 !text-blue-300" : ""}`}>
-              {"重新生成"}
-            </button>
-            <label className="inline-flex items-center gap-2 cursor-pointer select-none" title="仅控制预览显隐；成片走外挂 SRT，本就不烧字幕">
-              <span className="text-sm text-white/76">显示字幕</span>
-              <input type="checkbox" checked={showSubtitles}
-                onChange={(e) => { setShowSubtitles(e.target.checked); postCmd({ type: "subtitles", show: e.target.checked }); }}
-                className="w-4 h-4 accent-blue-500 rounded" />
-            </label>
-          </div>
+          <button onClick={handleRegenerate} disabled={!isDirty} className={`${btnCompact} ${isDirty ? "!border-blue-500/30 !text-blue-300" : ""}`}>
+            {"重新生成"}
+          </button>
         </div>
 
         {isHyperframes ? (
@@ -1146,6 +1135,15 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
   const audioOnly = run.video_route === "audio";
   const actionLabel = audioOnly ? "合成" : "渲染";
 
+  // 成片不烧字幕（外挂 SRT），播放器按需挂 VTT 字幕轨显示；默认显示
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showSubs, setShowSubs] = useState(true);
+  const applyTrackMode = (show: boolean) => {
+    const tt = videoRef.current?.textTracks?.[0];
+    if (tt) tt.mode = show ? "showing" : "hidden";
+  };
+  const toggleSubs = () => { const next = !showSubs; setShowSubs(next); applyTrackMode(next); };
+
   const handleRender = async () => {
     setRendering(true);
     try { await api.runs.triggerRender(runId); showToast(`开始${actionLabel}...`, "success"); }
@@ -1179,9 +1177,12 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
       {audioOnly ? (
         <audio controls className="w-full max-w-2xl mx-auto" src={mediaSrc} />
       ) : (
-        <video controls className="w-full max-w-2xl mx-auto rounded-lg" src={mediaSrc} />
+        <video ref={videoRef} controls className="w-full max-w-2xl mx-auto rounded-lg"
+          src={mediaSrc} onLoadedMetadata={() => applyTrackMode(showSubs)}>
+          <track kind="subtitles" srcLang="zh" label="字幕" src={api.runs.subtitlesVttUrl(runId)} default />
+        </video>
       )}
-      <div className="flex justify-center gap-3 mt-4">
+      <div className="flex justify-center items-center gap-3 mt-4">
         <a href={api.runs.videoUrl(runId)} download className={btnPrimary}>{audioOnly ? "下载 MP3" : "下载 MP4"}</a>
         {!audioOnly && (
           <a href={api.runs.subtitlesUrl(runId)} download className={btnCompact}>下载字幕</a>
@@ -1189,6 +1190,16 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
         <button onClick={handleRender} disabled={rendering} className={btnCompact}>
           {rendering ? `${actionLabel}中...` : `重新${actionLabel}`}
         </button>
+        {!audioOnly && (
+          <button type="button" role="switch" aria-checked={showSubs} onClick={toggleSubs}
+            title="仅在播放器中显示外挂字幕，不影响成片（成片不烧字幕）"
+            className="inline-flex items-center gap-2 cursor-pointer select-none">
+            <span className="text-sm text-white/76">显示字幕</span>
+            <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${showSubs ? "bg-blue-500" : "bg-white/20"}`}>
+              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${showSubs ? "translate-x-[18px]" : "translate-x-1"}`} />
+            </span>
+          </button>
+        )}
       </div>
     </div>
   );
