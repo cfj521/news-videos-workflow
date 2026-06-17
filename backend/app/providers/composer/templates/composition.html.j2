@@ -24,6 +24,21 @@
       padding: 8px 16px; border-radius: 12px; max-width: 60%;
       font-family: "Microsoft YaHei", "PingFang SC", sans-serif; opacity: 0;
     }
+    .cover .cover-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 0.4em; text-align: center; padding: 8%;
+      background: rgba(0,0,0,0.28);
+    }
+    .cover-title {
+      color: #fff; font-weight: 800; line-height: 1.25;
+      text-shadow: 2px 2px 10px rgba(0,0,0,0.8);
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    }
+    .cover-subtitle {
+      color: #eee; line-height: 1.4;
+      text-shadow: 1px 1px 6px rgba(0,0,0,0.8);
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    }
   </style>
 </head>
 <body>
@@ -35,6 +50,19 @@
        data-duration="{{ total_duration_s }}">
 
     {% for entry in entries %}
+    {% if entry.is_cover %}
+    <div class="scene clip cover" id="s{{ entry.scene_id }}"
+         data-start="{{ entry.start_s }}"
+         data-duration="{{ entry.duration_s }}"
+         data-track-index="0"
+         {% if not loop.first %}style="visibility:hidden;opacity:0;"{% endif %}>
+      {% if entry.image_path %}<img src="{{ entry.image_path }}" alt="cover">{% endif %}
+      <div class="cover-overlay">
+        <div class="cover-title" style="font-size:{{ entry.cover_font_size | default(72) }}px;">{{ entry.title }}</div>
+        {% if entry.subtitle %}<div class="cover-subtitle" style="font-size:{{ (entry.cover_font_size | default(72) * 0.55) | round | int }}px;">{{ entry.subtitle }}</div>{% endif %}
+      </div>
+    </div>
+    {% else %}
     <div class="scene clip" id="s{{ entry.scene_id }}"
          data-start="{{ entry.start_s }}"
          data-duration="{{ entry.duration_s }}"
@@ -44,6 +72,7 @@
         <img src="{{ entry.image_path }}" alt="scene {{ entry.scene_id }}">
       </div>
     </div>
+    {% endif %}
     {% endfor %}
 
     {# Per-line subtitle elements #}
@@ -58,12 +87,14 @@
     {% endfor %}
 
     {% for entry in entries %}
+    {% if entry.audio_path %}
     <audio id="narration-{{ entry.scene_id }}"
            data-start="{{ entry.start_s }}"
            data-duration="{{ entry.audio_duration_s }}"
            data-track-index="1"
            data-volume="1.0"
            src="{{ entry.audio_path }}"></audio>
+    {% endif %}
     {% endfor %}
   </div>
 
@@ -122,8 +153,8 @@
 
     // 各分镜旁白的时间区间，用于按时间轴驱动音频播放（预览用；导出由 hyperframes 按 data-* 合成）
     var audioEntries = [
-      {% for entry in entries %}{ id: "narration-{{ entry.scene_id }}", start: {{ entry.start_s }}, dur: {{ entry.audio_duration_s }} },
-      {% endfor %}
+      {% for entry in entries %}{% if entry.audio_path %}{ id: "narration-{{ entry.scene_id }}", start: {{ entry.start_s }}, dur: {{ entry.audio_duration_s }} },
+      {% endif %}{% endfor %}
     ];
     var activeAudioId = null;
     function syncAudio() {

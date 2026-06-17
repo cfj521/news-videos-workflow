@@ -72,28 +72,33 @@ class HyperframesComposer(ComposerProvider):
             prev_scene_ids.append(timeline["entries"][i - 1]["scene_id"] if i > 0 else None)
 
             img_abs = entry["image_path"]
-            audio_abs = entry["audio_path"]
+            audio_abs = entry.get("audio_path", "")
             try:
-                img_rel = str(Path(img_abs).relative_to(run_dir)).replace("\\", "/")
+                img_rel = str(Path(img_abs).relative_to(run_dir)).replace("\\", "/") if img_abs else ""
             except ValueError:
-                img_rel = Path(img_abs).name
+                img_rel = Path(img_abs).name if img_abs else ""
             try:
-                audio_rel = str(Path(audio_abs).relative_to(run_dir)).replace("\\", "/")
+                audio_rel = str(Path(audio_abs).relative_to(run_dir)).replace("\\", "/") if audio_abs else ""
             except ValueError:
-                audio_rel = Path(audio_abs).name
+                audio_rel = Path(audio_abs).name if audio_abs else ""
 
-            sub_lines = entry.get("subtitle_lines", [])
+            is_cover = entry.get("is_cover", False)
             scene_start_s = round(entry["start_ms"] / 1000, 3)
+
+            # 封面 entry 不走逐行字幕处理
             template_lines = []
-            for sl in sub_lines:
-                template_lines.append({
-                    "text": sl["text"],
-                    "start_s": round(sl["start_ms"] / 1000, 3),
-                    "end_s": round(sl["end_ms"] / 1000, 3),
-                })
+            if not is_cover:
+                sub_lines = entry.get("subtitle_lines", [])
+                for sl in sub_lines:
+                    template_lines.append({
+                        "text": sl["text"],
+                        "start_s": round(sl["start_ms"] / 1000, 3),
+                        "end_s": round(sl["end_ms"] / 1000, 3),
+                    })
 
             entries.append({
                 "scene_id": entry["scene_id"],
+                "is_cover": is_cover,
                 "start_s": scene_start_s,
                 "end_s": round(entry["end_ms"] / 1000, 3),
                 "duration_s": round((entry["end_ms"] - entry["start_ms"]) / 1000, 3),
@@ -104,10 +109,14 @@ class HyperframesComposer(ComposerProvider):
                 "subtitle_lines": template_lines,
                 "group_id": entry.get("group_id"),
                 "title": entry.get("title", ""),
+                "subtitle": entry.get("subtitle", ""),
+                "cover_font_size": entry.get("cover_font_size", 72),
             })
 
         title_overlays = []
         for e in entries:
+            if e.get("is_cover"):
+                continue  # 封面 entry 不渲染分组标题叠层
             gid = e.get("group_id")
             title = e.get("title", "")
             if title and gid is not None and title_overlays and title_overlays[-1]["group_id"] == gid:
