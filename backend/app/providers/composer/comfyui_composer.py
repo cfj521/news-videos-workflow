@@ -27,6 +27,8 @@ class ComfyUIVideoComposer(ComposerProvider):
         segs: list[str] = []
 
         for i, entry in enumerate(entries):
+            if entry.get("is_cover"):
+                continue  # 封面不走 comfyui，改由 hyperframes 渲片段后拼接
             sid = entry["scene_id"]
             image_path = entry.get("image_path", "")
             audio_path = entry.get("audio_path", "")

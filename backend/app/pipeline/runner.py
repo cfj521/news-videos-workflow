@@ -863,6 +863,23 @@ async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None
                     )
                     final_path = result.file_path
                     log.info("[S5] ComfyUI render ok — %s", final_path)
+                    # ── 封面拼接：用 hyperframes 渲封面片段后 FFmpeg concat 到开头 ──
+                    cover_entry = next((e for e in timeline.get("entries", []) if e.get("is_cover")), None)
+                    if cover_entry:
+                        try:
+                            _update(db, run, progress_detail="S5 渲染封面片段中...")
+                            from app.providers.composer.hyperframes_composer import HyperframesComposer as _HFC
+                            cover_mp4 = str(run_dir / "cover.mp4")
+                            await _HFC(overlay=cfg.overlay).render_cover_clip(
+                                cover_entry, resolution, run_dir, cover_mp4)
+                            # 拼接输出用不同文件名，避免 FFmpeg 自读自写
+                            concat_out = str((run_dir / "output_with_cover.mp4").resolve())
+                            final_path = _ffmpeg_concat(
+                                [cover_mp4, final_path], concat_out,
+                                resolution, cfg.hyperframes.fps)
+                            log.info("[S5] 封面拼接完成 → %s", final_path)
+                        except Exception as cover_err:
+                            log.warning("[S5] 封面拼接失败，跳过封面直接用主视频: %s", cover_err)
                 except Exception as e:
                     log.warning("[S5] ComfyUI failed: %s — falling back to FFmpeg", e)
                     _update(db, run, progress_detail="S5 ComfyUI 失败，FFmpeg 合成中...")
@@ -1096,6 +1113,75 @@ def _ffmpeg_compose(timeline: dict, run_dir: Path, resolution: str, fps: str, ov
     # 当 shell 自身的参数，ffmpeg 实际收到零参数而打印用法退出（Docker/WSL 即如此）。
     _run_ffmpeg(cmd, service="视频合成")
     return output_path
+
+
+def _ffmpeg_concat(parts: list[str], out: str, resolution: str, fps) -> str:
+    """把多个 mp4 重编码拼接成统一分辨率/帧率的单一 mp4。
+
+    使用 concat filter（不用 concat demuxer -c copy），因为封面片段与主视频编码
+    参数可能不同（来源不同：hyperframes vs comfyui）。
+
+    ⚠️ 无音轨处理：封面片段在无旁白时可能只有视频无音轨；comfyui 主视频通常有 TTS
+    音轨，但也可能无音频。对每路输入用 anullsrc 补静音轨，再与实际音轨 amix，
+    最简单的做法是：先用 -f lavfi anullsrc 作为额外输入垫底，用 amix=inputs=2 混合
+    实际音轨（若有）与静音，使每路输出都有合法音频。
+
+    更简单稳妥方案：对每路视频输入，用 filter_complex 先把视频 scale/pad 统一，
+    再用 aevalsrc=0 生成静音、与实际音频 amix。但 amix 遇到纯静音输入通道会有
+    响度问题。
+
+    最终方案（最稳）：对每路分别准备视频流，音频用 anullsrc 兜底：
+      - 若该输入有音轨，直接用 [i:a]
+      - 若无音轨，无法在 filter_complex 里静态判断，因此统一做法：
+        为每路额外提供一个 anullsrc 输入，用 amix=inputs=2:normalize=0 混合
+        （真实音频 + 静音 = 真实音频，保持响度；纯静音 + 静音 = 静音）。
+    """
+    w, h = resolution.split("x")
+    fps_val = fps  # 可能是 str 或 int，ffmpeg 都接受
+
+    # 为每路视频准备一个对应的 anullsrc 静音输入（保证即使无音轨也有合法 a 流）
+    # 输入排列：[0]=parts[0], [1]=anullsrc, [2]=parts[1], [3]=anullsrc, ...
+    inputs: list[str] = []
+    n = len(parts)
+    for p in parts:
+        inputs += ["-i", p]
+        inputs += ["-f", "lavfi", "-t", "9999", "-i", "anullsrc=r=48000:cl=stereo"]
+
+    # 每路：vi = i*2 (真实视频), ai_real = i*2 (真实可能有音轨), ai_null = i*2+1 (静音)
+    # 视频：scale+pad+setsar+fps
+    # 音频：实际音频 amix 静音（normalize=0 防响度折半）
+    filter_parts: list[str] = []
+    concat_inputs: list[str] = []
+    for i in range(n):
+        real_vi = i * 2       # 真实视频输入下标
+        real_ai = i * 2       # 真实音频输入下标（同一文件）
+        null_ai = i * 2 + 1   # anullsrc 输入下标
+
+        filter_parts.append(
+            f"[{real_vi}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
+            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps_val}[cv{i}]"
+        )
+        # amix：混合真实音轨与静音兜底；若真实输入无音轨，ffmpeg 会用静音兜底那路
+        # 注意：[i:a?] 为可选音轨语法（ffmpeg ≥4.4），若流不存在该路直接跳过
+        filter_parts.append(
+            f"[{real_ai}:a?][{null_ai}:a]amix=inputs=2:normalize=0[ca{i}]"
+        )
+        concat_inputs.append(f"[cv{i}][ca{i}]")
+
+    concat_filter = "".join(concat_inputs) + f"concat=n={n}:v=1:a=1[outv][outa]"
+    fc = ";".join(filter_parts) + ";" + concat_filter
+
+    cmd = [
+        "ffmpeg", "-y",
+        *inputs,
+        "-filter_complex", fc,
+        "-map", "[outv]", "-map", "[outa]",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k",
+        out,
+    ]
+    _run_ffmpeg(cmd, service="封面拼接")
+    return out
 
 
 def _ffmpeg_merge_audio(script: dict, assets_dir, run_dir) -> str:
