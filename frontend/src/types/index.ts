@@ -15,6 +15,7 @@ export interface PipelineRun {
   language: string | null;
   source_ids: string | null;
   aihot_config: string | null;
+  auto_collect: boolean;
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;

@@ -353,32 +353,37 @@ def get_timeline(run_id: int):
 
 
 @router.post("/runs/{run_id}/regen-script")
-async def regen_script(run_id: int, db: Session = Depends(get_db), _log=Depends(bind_run_log)):
+def regen_script(run_id: int, db: Session = Depends(get_db)):
+    """重新生成：重出脚本(S2) → 重生素材 旁白/图片/配音(S3) → 重建预览/时间轴(S4)；不渲染(S5)、不发布(S6)。
+    后台串行执行（同正常流水线，跳过各阶段审核暂停），前端按 run 状态显示进度。"""
     run = db.get(PipelineRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    rd = _run_dir(run_id)
-    articles_path = rd / "articles.json"
-    if not articles_path.exists():
+    if run.status not in ("done", "failed", "cancelled"):
+        # 有活任务（processing/review/pending）时重跑会与之冲突 → 拒绝，让用户先等完成或终止
+        raise HTTPException(status_code=409, detail="任务进行中，请先等待完成或终止后再重新生成")
+    if not (_run_dir(run_id) / "articles.json").exists():
         raise HTTPException(status_code=400, detail="No articles")
+    run.current_stage = 2
+    run.status = "processing"
+    run.progress_detail = "重新生成中…"
+    run.output_path = None          # 脚本/素材都将重做 → 旧成片作废
+    run.error_message = None
+    run.finished_at = None
+    run.started_at = datetime.now(timezone.utc)  # 刷新发起时间，避免被孤儿回收误判
+    db.commit()
+    serial_submit(_regen_bg, run_id, get_session_factory(), label=f"regen#{run_id}")
+    log.info("Regenerate (S2→S4) queued for run #%d", run_id)
+    return {"status": "regenerating"}
 
-    articles_raw = json.loads(articles_path.read_text(encoding="utf-8"))
-    arts = [_article_from_dict(d) for d in articles_raw]
 
-    cfg = get_settings()
-    tp = _build_text_provider()
-
-    from app.pipeline.stage2_script import run_stage2_multi
-    log.info("Regenerating multi-article script for run #%d (%d articles)", run_id, len(arts))
-    lang = run.language or cfg.pipeline.default_language
-    script = await run_stage2_multi(arts, tp, language=lang, max_articles=run.max_articles)
-    limit = run.max_images if run.max_images is not None else cfg.pipeline.max_images
-    if run.video_route != "audio" and limit and len(script.get("scenes", [])) > limit:
-        from app.pipeline.stage2_script import cap_scenes_by_score
-        script = cap_scenes_by_score(script, limit)
-    (rd / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
-    _write_scoring_json(rd, script.get("scoring_report"))   # AI HOT 评分明细同步刷新（非 aihot 为 None→不写）
-    return script
+def _regen_bg(run_id: int, session_factory):
+    token = set_run_context(run_id)  # 后台日志带 [run=N]
+    try:
+        # 只跑 S2(脚本)→S3(素材:旁白/图片/配音)→S4(预览/时间轴)，跳过审核暂停；不渲染/不发布
+        asyncio.run(execute_pipeline(run_id, session_factory, stages_override=[2, 3, 4], skip_review=True))
+    finally:
+        reset_run_context(token)
 
 
 # ─── Preview ──────────────────────────────────────────────
@@ -537,7 +542,32 @@ async def regen_scene_audio(run_id: int, scene_id: int, body: RegenAudioRequest,
     tts = build_tts_provider(cfg)  # 按流水线选型（edge-tts|openai|dashscope）
     audio_path = str(rd / "assets" / f"scene_{scene_id:02d}_audio.mp3")
     log.info("Regenerating audio for run #%d scene %d", run_id, scene_id)
-    await tts.synthesize(text=body.narration, output_path=audio_path)
+    result = await tts.synthesize(text=body.narration, output_path=audio_path)
+
+    # 新音频时长变了 → 重建时间轴：该场景时长跟随新音频，字幕按新旁白重排时序，
+    # 后续场景起止顺延；并刷新外挂 SRT。（run_stage4 为纯函数，从现有 timeline 反推素材，仅换该场景音频时长）
+    timeline_path = rd / "timeline.json"
+    if timeline_path.exists():
+        from app.providers.tts.audio_duration import measure_audio_ms
+        new_dur = result.duration_ms or measure_audio_ms(audio_path)
+        if new_dur > 0:
+            timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+            scene_assets = [{
+                "scene_id": e["scene_id"],
+                "image": {"file_path": e.get("image_path", "")},
+                "audio": {"file_path": e.get("audio_path", ""),
+                          "duration_ms": new_dur if e["scene_id"] == scene_id else e.get("audio_duration_ms", 0)},
+            } for e in timeline.get("entries", [])]
+            from app.pipeline.stage4_timeline import generate_srt, run_stage4
+            hf = cfg.hyperframes
+            new_timeline = run_stage4(script, scene_assets, scene_gap_ms=hf.scene_gap_ms,
+                                      resolution=(run.resolution or "1080x1920"),
+                                      subtitle_font_size=hf.subtitle_font_size,
+                                      subtitle_max_lines=hf.subtitle_max_lines)
+            timeline_path.write_text(json.dumps(new_timeline, ensure_ascii=False, indent=2), encoding="utf-8")
+            (rd / "output.srt").write_text(generate_srt(new_timeline), encoding="utf-8")
+            log.info("[regen-audio] 时间轴已重建 run #%d scene %d（新音频 %dms，共 %d 段，总 %.1fs）",
+                     run_id, scene_id, new_dur, len(new_timeline["entries"]), new_timeline["total_duration_ms"] / 1000)
 
     return {"status": "ok", "scene_id": scene_id}
 

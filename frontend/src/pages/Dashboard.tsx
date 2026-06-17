@@ -464,9 +464,9 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
     setRegenning(true);
     try {
       await api.runs.regenScript(runId);
-      showToast("脚本已重新生成", "success");
+      showToast("已开始重新生成…", "success");
       setConfirmRegen(false);
-      mutateScript();
+      globalMutate(`run-${runId}`);   // 刷新 run → 父组件感知 processing → 开 SSE 显示进度
     } catch (e) { showToast(e instanceof Error ? e.message : "重新生成失败", "error"); }
     finally { setRegenning(false); }
   };
@@ -503,7 +503,7 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
             </>
           )}
           <IconButton onClick={() => setConfirmRegen(true)} disabled={regenning}
-            title={regenning ? "生成中..." : "重新生成脚本（覆盖所有分镜）"}>
+            title={regenning ? "生成中..." : "重新生成（脚本+旁白/图片/配音+预览，不渲染）"}>
             <WandIcon className={regenning ? "animate-pulse" : ""} />
           </IconButton>
         </div>
@@ -538,8 +538,8 @@ function S2Panel({ runId, run, audioOnly }: { runId: number; run: PipelineRun; a
       {confirmRegen && (
         <div className={dialogOverlayCls} onClick={() => { if (!regenning) setConfirmRegen(false); }}>
           <div className={`${dialogPanelCls} w-[420px]`} onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-2">重新生成脚本</h2>
-            <p className="text-sm text-white/76 mb-5 leading-relaxed">将根据当前文章列表重新生成整个脚本，<span className="text-amber-300/80">会覆盖所有分镜及手工编辑</span>，不可恢复。</p>
+            <h2 className="text-lg font-semibold mb-2">重新生成</h2>
+            <p className="text-sm text-white/76 mb-5 leading-relaxed">将根据当前文章列表重新生成<span className="text-white">脚本 → 旁白/图片/配音 → 预览</span>（不渲染、不发布），<span className="text-amber-300/80">会覆盖所有分镜及手工编辑</span>，不可恢复。生成需一段时间，可在进度处查看。</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmRegen(false)} disabled={regenning} className={btnSecondary}>取消</button>
               <button onClick={handleRegenScript} disabled={regenning} className={btnPrimary}>{regenning ? "生成中..." : "确认重新生成"}</button>
@@ -1142,7 +1142,6 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
     const tt = videoRef.current?.textTracks?.[0];
     if (tt) tt.mode = show ? "showing" : "hidden";
   };
-  const toggleSubs = () => { const next = !showSubs; setShowSubs(next); applyTrackMode(next); };
 
   const handleRender = async () => {
     setRendering(true);
@@ -1182,24 +1181,27 @@ function S5Panel({ runId, run }: { runId: number; run: PipelineRun }) {
           <track kind="subtitles" srcLang="zh" label="字幕" src={api.runs.subtitlesVttUrl(runId)} default />
         </video>
       )}
-      <div className="flex justify-center items-center gap-3 mt-4">
-        <a href={api.runs.videoUrl(runId)} download className={btnPrimary}>{audioOnly ? "下载 MP3" : "下载 MP4"}</a>
-        {!audioOnly && (
-          <a href={api.runs.subtitlesUrl(runId)} download className={btnCompact}>下载字幕</a>
-        )}
-        <button onClick={handleRender} disabled={rendering} className={btnCompact}>
-          {rendering ? `${actionLabel}中...` : `重新${actionLabel}`}
-        </button>
-        {!audioOnly && (
-          <button type="button" role="switch" aria-checked={showSubs} onClick={toggleSubs}
-            title="仅在播放器中显示外挂字幕，不影响成片（成片不烧字幕）"
-            className="inline-flex items-center gap-2 cursor-pointer select-none">
-            <span className="text-sm text-white/76">显示字幕</span>
-            <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${showSubs ? "bg-blue-500" : "bg-white/20"}`}>
-              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${showSubs ? "translate-x-[18px]" : "translate-x-1"}`} />
-            </span>
+      <div className="flex items-center gap-3 mt-4">
+        <div className="flex-1" />
+        <div className="flex items-center justify-center gap-3">
+          <a href={api.runs.videoUrl(runId)} download className={btnPrimary}>{audioOnly ? "下载 MP3" : "下载 MP4"}</a>
+          {!audioOnly && (
+            <a href={api.runs.subtitlesUrl(runId)} download className={btnCompact}>下载字幕</a>
+          )}
+          <button onClick={handleRender} disabled={rendering} className={btnCompact}>
+            {rendering ? `${actionLabel}中...` : `重新${actionLabel}`}
           </button>
-        )}
+        </div>
+        <div className="flex-1 flex justify-end">
+          {!audioOnly && (
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none" title="仅在播放器中显示外挂字幕，不影响成片（成片不烧字幕）">
+              <input type="checkbox" checked={showSubs}
+                onChange={(e) => { setShowSubs(e.target.checked); applyTrackMode(e.target.checked); }}
+                className="w-4 h-4 accent-blue-500 rounded" />
+              <span className="text-xs text-white/76">显示字幕</span>
+            </label>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1383,6 +1385,41 @@ function RunWorkspace({ run, mutateRuns }: { run: PipelineRun; mutateRuns: () =>
 
 // ─── Dashboard Page ─────────────────────────────────────
 
+// 视频路线 → 徽章文案
+const routeLabel = (r: string): string =>
+  ({ comfyui: "comfy", hyperframes: "hf", audio: "语音" } as Record<string, string>)[r] ?? r;
+
+// 语言代码 → 徽章文案
+const langLabel = (l: string | null): string => {
+  const v = (l || "zh").toLowerCase();
+  if (v.startsWith("zh")) return "中文";
+  if (v.startsWith("en")) return "英文";
+  return (l || "中文").toUpperCase();
+};
+
+// 时间范围 "7d"/"1m" → "7天"/"1个月"
+const fmtTimeRange = (tr: string): string => {
+  const m = /^(\d+)\s*([dwmy])$/.exec((tr || "").trim());
+  if (!m) return tr || "";
+  const unit: Record<string, string> = { d: "天", w: "周", m: "个月", y: "年" };
+  return `${m[1]}${unit[m[2]] ?? ""}`;
+};
+
+// 任务内容摘要：AI HOT 日报/周报/动态xx条，或 xx个信息源x天资讯
+const runSummary = (run: PipelineRun): string => {
+  if (run.aihot_config) {
+    let method = "items";
+    try { method = (JSON.parse(run.aihot_config) as { method?: string }).method || "items"; } catch { /* 用默认 */ }
+    if (method === "daily") return "AI HOT 日报";
+    if (method === "weekly") return "AI HOT 周报";
+    return `AI HOT 动态 ${run.max_articles} 条`;
+  }
+  if (run.auto_collect === false) return "人工导入";   // 手动不采集：无信息源/时间范围
+  let n = 0;
+  try { n = run.source_ids ? (JSON.parse(run.source_ids) as unknown[]).length : 0; } catch { /* 解析失败按 0 */ }
+  return `${n} 个信息源 ${fmtTimeRange(run.time_range)}资讯`;
+};
+
 export function DashboardPage() {
   // 列表由展开任务的 SSE(progress)驱动 mutate；仅保留低频兜底覆盖新建/删除/断流
   const { data: runs, mutate } = useSWR<PipelineRun[]>("runs", api.runs.list, { refreshInterval: 15000 });
@@ -1448,38 +1485,48 @@ export function DashboardPage() {
             <div
               key={run.id}
               onClick={() => setExpandedId(run.id)}
-              className={`flex items-center gap-1.5 pl-1.5 pr-3 py-1.5 rounded-lg text-sm transition border cursor-pointer ${
+              className={`flex flex-col gap-1 px-3 py-2 rounded-lg text-sm transition border cursor-pointer w-64 ${
                 expandedId === run.id
                   ? "bg-white/[0.08] border-white/[0.12] text-white"
                   : "bg-white/[0.02] border-white/[0.06] text-white/66 hover:text-white/85 hover:bg-white/[0.04]"
               }`}
             >
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setPendingDelete(run); }}
-                disabled={run.status === "processing"}
-                title={run.status === "processing" ? "任务正在运行，无法删除" : "删除此任务"}
-                className={btnDeleteIcon}
-              >
-                ×
-              </button>
-              <span className="font-mono text-xs">#{run.id}</span>
-              <span className="text-xs text-white/52">{ts}</span>
-              <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px]`}>{STATUS_LABEL[run.status] ?? run.status}</span>
-              {run.status === "processing" && (
+              {/* 第一行：#编号 + 内容摘要 + 删除 */}
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs shrink-0">#{run.id}</span>
+                <span className="text-xs flex-1 min-w-0 truncate" title={runSummary(run)}>{runSummary(run)}</span>
+                <span className={`${chipCls} bg-violet-500/15 text-violet-300 text-[10px] shrink-0`}>{routeLabel(run.video_route)}</span>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setPendingStop(run); }}
-                  title="终止此任务"
-                  aria-label="终止此任务"
-                  className="ml-1 inline-flex items-center justify-center p-1 rounded text-red-300 bg-red-500/15 border border-red-500/25 hover:bg-red-500/25 transition"
+                  onClick={(e) => { e.stopPropagation(); setPendingDelete(run); }}
+                  disabled={run.status === "processing"}
+                  title={run.status === "processing" ? "任务正在运行，无法删除" : "删除此任务"}
+                  className={btnDeleteIcon}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-                  </svg>
+                  ×
                 </button>
-              )}
+              </div>
+              {/* 第二行：日期时间 + 自动/手动 + 语言 + 状态 + 终止 */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-white/52 shrink-0">{ts}</span>
+                <span className={`${chipCls} text-[10px] shrink-0 ${run.mode === "auto" ? "bg-yellow-500/15 text-yellow-300" : "bg-orange-500/15 text-orange-300"}`}>{run.mode === "auto" ? "自动" : "手动"}</span>
+                <span className={`${chipCls} text-[10px] shrink-0 ${(run.language || "zh").toLowerCase().startsWith("zh") ? "bg-cyan-500/15 text-cyan-300" : "bg-rose-500/15 text-rose-300"}`}>{langLabel(run.language)}</span>
+                <span className={`${chipCls} ${STATUS_CHIP[run.status] ?? ""} text-[10px]`}>{STATUS_LABEL[run.status] ?? run.status}</span>
+                {run.status === "processing" && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setPendingStop(run); }}
+                    title="终止此任务"
+                    aria-label="终止此任务"
+                    className="ml-auto inline-flex items-center justify-center p-1 rounded text-red-300 bg-red-500/15 border border-red-500/25 hover:bg-red-500/25 transition"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

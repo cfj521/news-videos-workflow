@@ -490,13 +490,13 @@ def _check_cancel(run_id: int) -> None:
         raise RunCancelled()
 
 
-async def execute_pipeline(run_id: int, db_factory) -> None:
+async def execute_pipeline(run_id: int, db_factory, stages_override: list[int] | None = None, skip_review: bool = False) -> None:
     reload_settings()  # 每次运行重载配置（含可编辑提示词），保证跨进程 worker 也拿到最新值
     clear_cancel(run_id)  # 清理上一次可能残留的终止标记
     db: Session = db_factory()
     run_token = set_run_context(run_id)  # 整个 pipeline 期间，所有日志（含各 stage/provider）都打上 [run=N]
     try:
-        await _run_inner(run_id, db)
+        await _run_inner(run_id, db, stages_override=stages_override, skip_review=skip_review)
     except RunCancelled:
         run = db.get(PipelineRun, run_id)
         if run:
@@ -521,14 +521,15 @@ async def execute_pipeline(run_id: int, db_factory) -> None:
         db.close()
 
 
-async def _run_inner(run_id: int, db: Session) -> None:
+async def _run_inner(run_id: int, db: Session, stages_override: list[int] | None = None, skip_review: bool = False) -> None:
     run = db.get(PipelineRun, run_id)
     if not run:
         return
 
     cfg = get_settings()
     cfg.ensure_data_dirs()
-    selected = json.loads(run.selected_stages)
+    # stages_override：只跑指定阶段（如「重新生成」跑 [2,3,4]）；否则按任务创建时的 selected_stages
+    selected = stages_override if stages_override is not None else json.loads(run.selected_stages)
     # 任务级分辨率（图片与视频共用），创建时必填；防御性兜底
     resolution = run.resolution or "1080x1920"
 
@@ -550,6 +551,8 @@ async def _run_inner(run_id: int, db: Session) -> None:
     timeline = None
     rendered = False  # 本次是否成功出片/成品音频（S5）；仅出片后才计入去重历史
     text_provider = None  # 提前声明，保证人工导入跳过采集时 stage2 也能拿到
+    # stages_override 跳过 S1 时（如「重新生成」跑 [2,3,4]），从已存 articles.json 载入，供 S2 使用
+    articles = _load_articles(run_dir) if 1 not in selected else []
 
     # ─── Stage 1: 搜索整理 ─────────────────────────────────
     if 1 in selected:
@@ -593,7 +596,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
             _update(db, run, progress_detail=f"S1 完成 — {len(articles)} 篇文章 ({elapsed:.1f}s)")
             log.info("[S1] Done — %d articles in %.1fs", len(articles), elapsed)
             _save_articles(articles, run_dir)
-            if run.mode == "manual":
+            if run.mode == "manual" and not skip_review:
                 _update(db, run, status="review",
                         progress_detail=f"S1 采集完成 ({len(articles)} 篇)，等待审核")
                 log.info("[S1] Paused for review")
@@ -652,7 +655,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
         for s in script.get("scenes", []):
             log.debug("[S2]   S%d: %s", s["id"], s["narration"][:60])
 
-        if run.mode == "manual":
+        if run.mode == "manual" and not skip_review:
             _update(db, run, status="review",
                     progress_detail=f"S2 脚本完成 ({scene_count} 分镜)，等待审核")
             log.info("[S2] Paused for review")
@@ -751,7 +754,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
         for err in errors:
             log.warning("[S3] Scene %d error: %s", err["scene_id"], err["error"])
 
-        if run.mode == "manual":
+        if run.mode == "manual" and not skip_review:
             _update(db, run, status="review",
                     progress_detail=f"S3 素材完成 ({ok}/{total})，等待审核")
             log.info("[S3] Paused for review")
@@ -802,7 +805,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
         _update(db, run, progress_detail=detail, preview_path=str(preview_path))
         log.info("[S4] Done in %.1fs", elapsed)
 
-        if run.mode == "manual":
+        if run.mode == "manual" and not skip_review:
             _update(db, run, status="review", progress_detail="S4 预览就绪，等待审核")
             log.info("[S4] Paused for review")
             await _wait_for_resume(run_id, db)
@@ -834,7 +837,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                 _update(db, run, status="failed", error_message="音频文件未生成",
                         finished_at=datetime.now(timezone.utc))
                 return
-            if run.mode == "manual":
+            if run.mode == "manual" and not skip_review:
                 _update(db, run, status="review", progress_detail="S5 合成完成，等待审核")
                 await _wait_for_resume(run_id, db)
                 run = db.get(PipelineRun, run_id)
@@ -894,7 +897,7 @@ async def _run_inner(run_id: int, db: Session) -> None:
                         finished_at=datetime.now(timezone.utc))
                 return
 
-            if run.mode == "manual":
+            if run.mode == "manual" and not skip_review:
                 _update(db, run, status="review", progress_detail="S5 渲染完成，等待审核")
                 log.info("[S5] Paused for review")
                 await _wait_for_resume(run_id, db)
