@@ -29,6 +29,7 @@ config.yaml
 model_providers.yaml
 publish_targets.yaml
 news_sources.yaml
+covers.yaml
 prompts.yaml
 schedule.yaml
 .auth_secret

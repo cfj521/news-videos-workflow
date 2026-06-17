@@ -161,6 +161,37 @@ class CoverCfg(BaseModel):
     font_size: int = 72
 
 
+COVER_PRESET_COUNT = 3  # 固定 3 个封面预设槽位
+
+
+class CoverPresetCfg(BaseModel):
+    name: str = ""
+    values: CoverCfg = CoverCfg()
+
+
+def _default_cover_presets() -> list[CoverPresetCfg]:
+    return [CoverPresetCfg(name=f"封面 {i + 1}") for i in range(COVER_PRESET_COUNT)]
+
+
+class CoverPresetsCfg(BaseModel):
+    """封面预设库（存仓库根 covers.yaml）：active 选中下标 + 固定 3 个预设。"""
+    active: int = 0
+    presets: list[CoverPresetCfg] = Field(default_factory=_default_cover_presets)
+
+    def normalized(self) -> "CoverPresetsCfg":
+        """补足/截断到 3 个预设，并把 active 夹到合法范围。"""
+        presets = list(self.presets)
+        while len(presets) < COVER_PRESET_COUNT:
+            presets.append(CoverPresetCfg(name=f"封面 {len(presets) + 1}"))
+        presets = presets[:COVER_PRESET_COUNT]
+        active = max(0, min(self.active, len(presets) - 1))
+        return CoverPresetsCfg(active=active, presets=presets)
+
+    def active_values(self) -> CoverCfg:
+        n = self.normalized()
+        return n.presets[n.active].values
+
+
 class InfraCfg(BaseModel):
     database_url: str = "sqlite:///../data/news_videos.db"
     data_dir: str = "../data"
@@ -268,7 +299,10 @@ class Settings(BaseModel):
     pipeline: PipelineCfg = PipelineCfg()
     hyperframes: HyperframesCfg = HyperframesCfg()
     overlay: OverlayCfg = OverlayCfg()
+    # cover：生效预设的镜像（cover_presets[active] 注入，前端只读，不写盘）
     cover: CoverCfg = CoverCfg()
+    # cover_presets：封面预设库，存仓库根 covers.yaml（不写 config.yaml）
+    cover_presets: CoverPresetsCfg = CoverPresetsCfg()
     comfyui: ComfyuiCfg = ComfyuiCfg()
     # prompts：生效预设的镜像（prompt_presets[active] 注入，供 resolve_prompt 读，不写盘）
     prompts: PromptsCfg = PromptsCfg()
@@ -441,13 +475,25 @@ def get_settings() -> Settings:
         raw.pop("collectors", None)  # 搜索 key 改由 sources_store 注入
         # 旧 config.yaml 的扁平 prompts → 迁入 prompts.yaml 的预设 #1
         legacy_prompts = raw.pop("prompts", None)
+        # 旧 config.yaml 的 cover → 迁入 covers.yaml 的预设 #1
+        legacy_cover = raw.pop("cover", None)
         _settings = Settings(**raw)
-        from app.store import prompts_store, providers_store, sources_store
+        from app.store import covers_store, prompts_store, providers_store, sources_store
         stored = providers_store.load_providers()
         if stored:
             _settings.providers = stored  # 从 model_providers.yaml 注入 providers 凭证
         # 搜索 key 从 news_sources.yaml 注入
         _settings.collectors = CollectorsCfg(**sources_store.load_search_keys())
+        # 封面预设从 covers.yaml 注入；文件不存在则用旧 config.yaml 的 cover 迁移生成预设 #1
+        cover_presets = covers_store.load_presets()
+        if cover_presets is None:
+            # covers.yaml 尚不存在：用旧 cover 生成预设 #1（仅内存，首次保存才落盘）
+            cover_presets = CoverPresetsCfg(presets=[
+                CoverPresetCfg(name="封面 1", values=CoverCfg(**(legacy_cover or {}))),
+                *(CoverPresetCfg(name=f"封面 {i + 1}") for i in range(1, COVER_PRESET_COUNT)),
+            ])
+        _settings.cover_presets = cover_presets.normalized()
+        _settings.cover = _settings.cover_presets.active_values()  # 生效预设镜像
         # 提示词预设从 prompts.yaml 注入；文件不存在则用旧 config.yaml 的 prompts 迁移生成预设 #1
         presets = prompts_store.load_presets()
         if presets is None:
@@ -467,10 +513,14 @@ def get_settings() -> Settings:
 
 def save_settings(settings: Settings) -> None:
     global _settings
-    from app.store import prompts_store, providers_store, sources_store
+    from app.store import covers_store, prompts_store, providers_store, sources_store
     providers_store.save_providers(settings.providers)  # providers 凭证写入 model_providers.yaml
     # 搜索 key 写入 news_sources.yaml
     sources_store.save_search_keys(settings.collectors.model_dump())
+    # 封面预设写入 covers.yaml，并同步生效预设镜像
+    settings.cover_presets = settings.cover_presets.normalized()
+    covers_store.save_presets(settings.cover_presets)
+    settings.cover = settings.cover_presets.active_values()
     # 提示词预设写入 prompts.yaml，并同步生效预设镜像
     settings.prompt_presets = settings.prompt_presets.normalized()
     prompts_store.save_presets(settings.prompt_presets)
@@ -479,6 +529,8 @@ def save_settings(settings: Settings) -> None:
     data = settings.model_dump()
     data.pop("providers", None)  # providers 走 providers_store，不写 config.yaml
     data.pop("collectors", None)  # collectors 走 sources_store，不写 config.yaml
+    data.pop("cover", None)          # 生效预设镜像，不写 config.yaml
+    data.pop("cover_presets", None)  # 预设走 covers_store，不写 config.yaml
     data.pop("prompts", None)  # 生效预设镜像，不写 config.yaml
     data.pop("prompt_presets", None)  # 预设走 prompts_store，不写 config.yaml
     _save_yaml(CONFIG_PATH, data)

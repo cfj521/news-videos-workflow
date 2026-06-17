@@ -1,0 +1,16 @@
+# 复制为 covers.yaml（仓库根，已 .gitignore 不入库）。视频封面预设库：3 个预设 + active 选中下标。
+# 在「设置 → 视频封面」页可视化编辑/切换/重命名，保存时写回本文件。
+active: 0
+presets:
+  - name: 封面 1
+    values:
+      enabled: false
+      image: ""
+      title_template: "{period}AI资讯"
+      subtitle: ""
+      narration: ""
+      font_size: 72
+  - name: 封面 2
+    values: {}
+  - name: 封面 3
+    values: {}
