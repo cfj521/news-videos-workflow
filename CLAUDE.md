@@ -86,12 +86,22 @@ pnpm test                        # Vitest
 ## Dependencies
 
 - **Scrapling**: 新闻抓取框架，需 Python 3.10+，安装时用 `pip install "scrapling[all]"`，首次运行 `scrapling install` 下载浏览器
-- **FFmpeg**: 视频合成必须在系统 PATH 中可用（是 Hyperframes 渲染失败时的兜底合成器；**ComfyUI 视频路失败/未启动则直接报错停止，不兜底 FFmpeg**——与图片路一致，选了 ComfyUI 就必须 ComfyUI 出片）
+- **FFmpeg**: 视频合成必须在系统 PATH 中可用（是 Hyperframes 渲染失败时的兜底合成器；**ComfyUI 视频路失败时也会回退 FFmpeg 合成**——`runner.py` Stage5 捕获 ComfyUI 渲染异常后 `_ffmpeg_compose` 兜底）。图片路是例外：image provider 为 comfyui 时 `ensure_comfyui_ready` 不可达即抛错（不兜底，选了 ComfyUI 就必须 ComfyUI 出图）
 - **CJK 字体（标题烧录，仅 FFmpeg 路）**: comfyui / FFmpeg 兜底路用 `drawtext` 把分镜标题烧到画面右上角，需一个可用的中日韩字体文件。Windows 默认 `C:/Windows/Fonts/msyh.ttc`（微软雅黑，系统自带）；其它平台在 `config.yaml` 的 `overlay.font_file` 指定（如 `/usr/share/fonts/.../NotoSansCJK-Regular.ttc`）。缺失时仅跳过烧录、不影响出片。hyperframes(HTML) 路不依赖此项（走 CSS 字体）。
 - **Hyperframes**（hyperframes 视频路线）: 需 Node.js + `npx hyperframes`（npm 包，非 Python 依赖，不在 requirements.txt）。首次渲染由 npx 联网拉取，或预装 `npm i -g hyperframes`。缺失时自动回退到 FFmpeg 合成。
 - **ComfyUI**（可选，本地图片/视频生成）: 默认视频路线，需本机运行 ComfyUI（默认 `http://127.0.0.1:8188`）+ 下载模型（见 `scripts/download-comfyui-models.ps1`）。工作流 JSON 在 `comfyui/workflows/api/`，配置在设置页「ComfyUI」标签。
 - **发布可选依赖**（按需）: B站投稿用 `biliup`；YouTube 用 `google-api-python-client` / `google-auth` / `google-auth-oauthlib`。均已列入 `requirements.txt`。发布平台凭证在「发布管理」页配置，详见 `docs/video-publish-guide.md`。
 - **APScheduler / tzlocal**（计划任务）: 「计划任务」页排期存仓库根 `schedule.yaml`，由进程内 `BackgroundScheduler` 到点自动建 run（执行模式强制 auto）。调度按**后端进程所在机器的本地时区**（`tzlocal` 自动取）。
+
+## Docker 部署
+
+单容器一体化（前端 + 后端 + 进程内流水线，单端口）。详见 [`docker/README.md`](docker/README.md)。构建文件在仓库根：`Dockerfile` / `docker-compose.yml` / `.dockerignore` / `.env.example`。要点：
+
+- **首启必须先 `bash docker/setup.sh`** 创建 7 个配置 YAML：bind mount 的宿主路径不存在时，Docker 会自动建**空目录**顶替文件，6 个 store 会 `open(目录)` 崩溃（只有 `config.py` 对 `config.yaml` 有目录兜底）。
+- **`_io.save_yaml` 必须原地写**：`os.replace` 原子写到单文件 bind mount 挂载点会 EBUSY（原子写版已改原地写），旧代码不要用于 Docker 部署。
+- **时区**：计划任务按本地时区（`tzlocal`），容器内即 `TZ` 环境变量（compose 注入，默认 `Asia/Shanghai`）。
+- **ComfyUI**：容器经 `NV_COMFYUI_URL=http://host.docker.internal:8188` 访问宿主 ComfyUI。WoL 唤醒广播不出 docker 网桥 → docker 下关 wake。设置页「测试连接」不走 `NV_COMFYUI_URL`，需手填 `host.docker.internal` 地址。
+- **端口**：`APP_PORT`（默认 8189）是前后端唯一端口。
 
 ## Configuration
 

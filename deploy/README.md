@@ -87,7 +87,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now news-videos-workflow
 ```
 
-浏览器打开 `http://<host>:8190`（端口见单元里 `APP_PORT`），默认登录 `admin / admin`（请尽快改密）。
+浏览器打开 `http://<host>:8189`（端口见单元里 `APP_PORT`），默认登录 `admin / admin`（请尽快改密）。
 
 ## 3. 运维
 
@@ -109,11 +109,11 @@ sudo systemctl restart news-videos-workflow
 
 ## 4. 反向代理（可选）
 
-如需 HTTPS / 域名，前面挂 Nginx 反代到 `127.0.0.1:8190`（并把单元里 `--host` 改为 `127.0.0.1` 只监听本地）。SSE（任务进度）需关闭代理缓冲：
+如需 HTTPS / 域名，前面挂 Nginx 反代到 `127.0.0.1:8189`（并把单元里 `--host` 改为 `127.0.0.1` 只监听本地）。SSE（任务进度）需关闭代理缓冲：
 
 ```nginx
 location / {
-    proxy_pass http://127.0.0.1:8190;
+    proxy_pass http://127.0.0.1:8189;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_buffering off;      # SSE 进度推送需要

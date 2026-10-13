@@ -63,6 +63,17 @@
 
 ## 安装
 
+### Docker（单容器一体化，推荐）
+
+单容器一体化部署（前端 + 后端 + 进程内流水线，单端口），详见 [`docker/README.md`](docker/README.md)。快速开始：
+
+```bash
+bash docker/setup.sh     # 从模板创建 7 个配置 YAML
+cp .env.example .env     # 端口 / ComfyUI 地址 / 时区
+docker compose up -d --build
+# 浏览器打开 http://localhost:8189 （默认登录 admin / admin）
+```
+
 ### 后端（conda + requirements.txt）
 
 依赖统一在根目录 `requirements.txt`，`backend/pyproject.toml` 只保留 ruff / pytest 配置。

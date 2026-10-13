@@ -64,6 +64,17 @@ When you create a run you choose: **time range** (1d / 3d / 7d / 15d / 1m) · **
 
 ## Setup
 
+### Docker (single container, recommended)
+
+For the single-container all-in-one deployment (frontend + backend + in-process pipeline, one port), see [`docker/README.md`](docker/README.md). Quick start:
+
+```bash
+bash docker/setup.sh     # create the 7 config YAMLs from templates
+cp .env.example .env     # port / ComfyUI address / timezone
+docker compose up -d --build
+# browser: http://localhost:8189 (default login admin / admin)
+```
+
 ### Backend (conda + requirements.txt)
 
 Dependencies live in the root `requirements.txt`; `backend/pyproject.toml` only keeps ruff / pytest config.

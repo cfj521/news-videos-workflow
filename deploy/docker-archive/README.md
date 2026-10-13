@@ -1,33 +1,18 @@
-# Docker 部署（已归档，暂不维护）
+# Docker 部署（已归档，勿直接使用）
 
-当前推荐用 **systemd**（见 `deploy/README.md`）部署。Docker 一体化方案暂停使用，相关文件归档于此：
+> **Docker 已于 2026-10 恢复为当前推荐的容器方案**：新的构建文件放在**仓库根**——`Dockerfile` / `docker-compose.yml` / `.dockerignore` / `.env.example` / `docker/setup.sh` / `docker/README.md`。**不要使用本目录的归档文件**（见下「为何过时」），用法见 [`docker/README.md`](../docker/README.md)。
+>
+> 非容器的推荐方案仍是 **systemd**（见 `deploy/README.md`）。
 
-| 文件 | 原位置 |
-|---|---|
-| `docker-compose.yml` | 仓库根 |
-| `Dockerfile` | `backend/Dockerfile` |
-| `.dockerignore` | 仓库根 |
-| `.env.example` | 仓库根 |
+## 为何归档方案过时（勿恢复）
 
-## 恢复使用 Docker
+下面这些文件是早期版本，已与当前代码不一致：
 
-把文件移回原位（路径很重要：compose 的构建上下文为仓库根、`dockerfile: backend/Dockerfile`，Dockerfile 内 `COPY` 也相对仓库根）：
+| 文件 | 原位置 | 过时原因 |
+|---|---|---|
+| `docker-compose.yml` | 仓库根 | 只挂 `config.yaml` + `data/`，漏掉后来新增的 6 个 YAML store 与 `publish_cookies/` |
+| `Dockerfile` | `backend/Dockerfile` | 前端用 `npm ci`（仓库无 `package-lock.json`，实际是 `pnpm-lock.yaml`）必挂；`node:20-alpine` 构建不了 Vite 8 |
+| `.dockerignore` | 仓库根 | 漏排除 6 个含凭证 yaml 与 `publish_cookies/` |
+| `.env.example` | 仓库根 | 缺 `TZ` / `WITH_PUBLISH` |
 
-```bash
-cd <仓库根>
-git mv deploy/docker-archive/docker-compose.yml ./docker-compose.yml
-git mv deploy/docker-archive/Dockerfile ./backend/Dockerfile
-git mv deploy/docker-archive/.dockerignore ./.dockerignore
-git mv deploy/docker-archive/.env.example ./.env.example
-```
-
-然后照旧：
-
-```bash
-cp config.yaml.example config.yaml   # 填密钥
-cp .env.example .env                 # APP_PORT / COMFYUI_URL（可选）
-docker compose up -d --build
-# 浏览器打开 http://localhost:8190 （默认 admin / admin）
-```
-
-> 归档期间这些文件不随代码改动更新；恢复后请核对 `requirements.txt`、`backend/` 结构是否与 Dockerfile 的 `COPY` 一致。
+这些文件仅保留作对照，**不要移回原位**——直接恢复会构建失败。

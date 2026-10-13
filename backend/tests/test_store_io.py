@@ -24,9 +24,19 @@ def test_load_corrupt_raises(tmp_path: Path):
         assert str(p) in str(e)
 
 
-def test_save_is_atomic_no_partial_temp_left(tmp_path: Path):
+def test_save_in_place_preserves_inode(tmp_path: Path):
+    """原地写：覆盖已存在文件应保留原 inode（无 os.replace 重命名）。
+
+    这是 EBUSY 修复的回归依据——单文件 bind mount 上 os.replace 到挂载点会 EBUSY，
+    原地截断写则保留 inode、安全。断言两次保存 inode 不变，证明没有 rename。
+    """
     p = tmp_path / "y.yaml"
     _io.save_yaml(p, {"k": "v"})
+    first_inode = p.stat().st_ino
+    _io.save_yaml(p, {"k": "v2"})
+    assert p.stat().st_ino == first_inode, "原地写应保留 inode（无 os.replace 重命名）"
+    assert _io.load_yaml(p) == {"k": "v2"}
+    # 无临时文件残留
     leftovers = [f.name for f in tmp_path.iterdir() if f.name != "y.yaml"]
     assert leftovers == []
 
