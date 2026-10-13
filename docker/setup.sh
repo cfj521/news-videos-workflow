@@ -38,4 +38,4 @@ echo
 echo "准备完成。下一步："
 echo "  1) cp .env.example .env   （按需改端口 / ComfyUI 地址 / 时区）"
 echo "  2) docker compose up -d --build"
-echo "  3) 浏览器打开 http://localhost:${APP_PORT:-8189}（默认登录 admin / admin）"
+echo "  3) 浏览器打开 http://localhost:${APP_PORT:-8190}（默认登录 admin / admin）"

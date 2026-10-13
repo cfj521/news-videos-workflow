@@ -61,7 +61,7 @@ docker/README.md               # Docker 部署手册
   - `COPY --from=frontend /fe/dist /app/frontend/dist`，`ENV FRONTEND_DIST=/app/frontend/dist`。
   - 软链 `/app/backend/comfyui → /app/comfyui`（工作流 JSON 路径 `comfyui/workflows/api` 按 cwd `/app/backend` 相对解析）。
   - `WORKDIR /app/backend`（与本地 `cd backend && uvicorn` 一致：`config.py` 的 `CONFIG_PATH = parents[2]/config.yaml` → `/app/config.yaml`；`infra.data_dir = ../data` → `/app/data`）。
-- **启动**：`CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT:-8189}"]`（端口由 CMD 读环境变量，与 systemd 单元同款做法）。
+- **启动**：`CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT:-8190}"]`（端口由 CMD 读环境变量，与 systemd 单元同款做法）。
 - **预估体积**：~2.5–3 GB（chromium + ffmpeg + python 依赖；SAU 变体另加 ~1 GB）。
 
 ## docker-compose.yml 设计
@@ -77,9 +77,9 @@ services:
     container_name: nvw-app
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8189}:${APP_PORT:-8189}"
+      - "${APP_PORT:-8190}:${APP_PORT:-8190}"
     environment:
-      - APP_PORT=${APP_PORT:-8189}
+      - APP_PORT=${APP_PORT:-8190}
       # 覆盖 config.yaml 的 comfyui.server_url（容器内不能用 127.0.0.1 连宿主 ComfyUI）
       - NV_COMFYUI_URL=${COMFYUI_URL:-http://host.docker.internal:8188}
       # 计划任务时区（tzlocal 跟随）
@@ -97,7 +97,7 @@ services:
       - ./data:/app/data
       - ./publish_cookies:/app/publish_cookies
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,os,sys; p=os.getenv('APP_PORT','8189'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/api/health').status==200 else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,os,sys; p=os.getenv('APP_PORT','8190'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/api/health').status==200 else 1)\""]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -107,7 +107,7 @@ services:
 ## .env.example
 
 ```
-APP_PORT=8189        # 容器对外端口 = 浏览器入口 = API 入口（单端口）
+APP_PORT=8190        # 容器对外端口 = 浏览器入口 = API 入口（单端口）
 COMFYUI_URL=http://host.docker.internal:8188   # 宿主机 ComfyUI 地址
 TZ=Asia/Shanghai     # 计划任务时区
 WITH_PUBLISH=0       # 1 = 装抖音/快手发布依赖（SAU + patchright chromium + Chrome 软链）
@@ -126,7 +126,7 @@ WITH_PUBLISH=0       # 1 = 装抖音/快手发布依赖（SAU + patchright chrom
 1. `cp .env.example .env`，按需改端口 / ComfyUI 地址 / 时区。
 2. `bash docker/setup.sh` 创建 7 个 YAML。
 3. `docker compose up -d --build`。
-4. 浏览器打开 `http://localhost:8189`（或 `.env` 的 `APP_PORT`），默认登录 `admin / admin`。
+4. 浏览器打开 `http://localhost:8190`（或 `.env` 的 `APP_PORT`），默认登录 `admin / admin`。
 5. 首次保存任意设置页会回写对应 YAML（已挂载，持久化）——**前提是先完成坑 B 的 `_io.save_yaml` 原地写修复**，否则任何一次保存都会 EBUSY 崩溃。
 
 ## 各功能路线支持矩阵
@@ -149,7 +149,7 @@ WITH_PUBLISH=0       # 1 = 装抖音/快手发布依赖（SAU + patchright chrom
 - **日志**：容器 stdout + `data/logs/pipeline.log`（任务日志写盘，随挂载持久）。
 - **重启语义**（与 systemd 一致）：排队中任务丢失；正在跑的任务被优雅停止并由僵尸回收判失败。
 - **反代**：SSE 进度推送需 `proxy_buffering off`（复用 systemd 文档的 Nginx 片段）。
-- **端口统一**：`.env` 的 `APP_PORT` 是唯一端口；建议把 CLAUDE.md 的 8189 与部署文档的 8190 一次对齐（docker 默认 8189，systemd 单元可改）。
+- **端口统一**：`.env` 的 `APP_PORT` 是唯一端口；建议把 CLAUDE.md 的 8190 与部署文档的 8190 一次对齐（docker 默认 8190，systemd 单元可改）。
 - **ComfyUI WoL**：docker 下广播包不出网桥，WoL 不可靠 → 关 wake 或整容器 `--network host`。
 - **ComfyUI「测试连接」不走 `NV_COMFYUI_URL`**：`api/settings.py:67-71` 的测试端点用前端输入框的值（留空则用 `config.yaml` 的 `comfyui.server_url`），**不套用 `NV_COMFYUI_URL` 环境变量**。后果：docker 下 `config.yaml` 默认 `http://127.0.0.1:8188`，点「测试连接」会探测容器自己的 127.0.0.1 报"离线"，而真实流水线走 `NV_COMFYUI_URL=host.docker.internal:8188` 是通的——两个入口结论互相矛盾。**docker/README 必须写明：测试连接框里要手填 `http://host.docker.internal:8188`**。
 - **SQLite WAL 在 Windows 宿主 FUSE 挂载上的可靠性**：`database.py:14` 强制 `PRAGMA journal_mode=WAL`。Linux 宿主 bind mount 无碍；**Windows 宿主**（Docker Desktop 的 gRPC-FUSE）上 `-shm` 共享内存文件与 POSIX 锁在 fuse 上不可靠，并发下有 "database is locked" 乃至库损坏风险。**生产建议 Linux 宿主；Windows 宿主仅作开发机使用**。
@@ -172,7 +172,7 @@ WITH_PUBLISH=0       # 1 = 装抖音/快手发布依赖（SAU + patchright chrom
 - `README.md` / `README.zh-CN.md`：Setup 节加 Docker 入口，与 systemd 并列两条路。
 - `deploy/docker-archive/README.md`：更新指向新方案（归档文件保留作对照）。
 - `CLAUDE.md`：补 Docker 特有说明（TZ / WoL / 端口 / bind mount 目录陷阱）。
-- 端口对齐：统一 8189（CLAUDE.md 口径），systemd 单元的 8190 可改。
+- 端口对齐：统一 8190（CLAUDE.md 口径），systemd 单元的 8190 可改。
 
 ## 独立发现（不属于 docker 本身，但文档要改）
 

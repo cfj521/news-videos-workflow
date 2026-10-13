@@ -65,7 +65,7 @@ conda create -n env_nvw python=3.12 && conda activate env_nvw
 pip install -r requirements.txt  # 安装依赖（含发布可选依赖 biliup / google-*）
 
 cd backend
-uvicorn app.main:app --reload --port 8189   # 启动 API 服务 (端口取 .env 的 APP_PORT，默认 8189)；流水线跑在进程内的后台任务，无需独立 worker
+uvicorn app.main:app --reload --port 8190   # 启动 API 服务 (端口取 .env 的 APP_PORT，默认 8190)；流水线跑在进程内的后台任务，无需独立 worker
 pytest                           # 运行全部测试
 pytest tests/test_collector.py -k "test_rss"  # 运行单个测试
 ruff check .                     # lint
@@ -101,7 +101,7 @@ pnpm test                        # Vitest
 - **`_io.save_yaml` 必须原地写**：`os.replace` 原子写到单文件 bind mount 挂载点会 EBUSY（原子写版已改原地写），旧代码不要用于 Docker 部署。
 - **时区**：计划任务按本地时区（`tzlocal`），容器内即 `TZ` 环境变量（compose 注入，默认 `Asia/Shanghai`）。
 - **ComfyUI**：容器经 `NV_COMFYUI_URL=http://host.docker.internal:8188` 访问宿主 ComfyUI。WoL 唤醒广播不出 docker 网桥 → docker 下关 wake。设置页「测试连接」不走 `NV_COMFYUI_URL`，需手填 `host.docker.internal` 地址。
-- **端口**：`APP_PORT`（默认 8189）是前后端唯一端口。
+- **端口**：`APP_PORT`（默认 8190）是前后端唯一端口。
 
 ## Configuration
 

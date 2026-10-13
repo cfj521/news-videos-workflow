@@ -32,7 +32,7 @@ cp .env.example .env            # 按需改端口 / ComfyUI 地址 / 时区
 docker compose up -d --build    # 构建 + 启动
 ```
 
-浏览器打开 `http://localhost:8189`（或 `.env` 的 `APP_PORT`），默认登录 `admin / admin`（请尽快改密，设置 → 用户管理）。
+浏览器打开 `http://localhost:8190`（或 `.env` 的 `APP_PORT`），默认登录 `admin / admin`（请尽快改密，设置 → 用户管理）。
 
 首次保存任意设置页会回写对应 YAML（已挂载，持久化）。
 

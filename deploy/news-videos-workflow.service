@@ -16,7 +16,7 @@
 # │      sudo cp deploy/news-videos-workflow.service /etc/systemd/system/  │
 # │      sudo systemctl daemon-reload                                      │
 # │      sudo systemctl enable --now news-videos-workflow                  │
-# │ 7) 浏览器开 http://<host>:8189 （默认 admin / admin）                   │
+# │ 7) 浏览器开 http://<host>:8190 （默认 admin / admin）                   │
 # └───────────────────────────────────────────────────────────────────────┘
 #   查看日志： journalctl -u news-videos-workflow -f
 
@@ -42,7 +42,7 @@ Group=sharing
 WorkingDirectory=/data/news-videos-workflow/backend
 
 # 监听端口（后端单端口同时托管 API 与前端）
-Environment=APP_PORT=8189
+Environment=APP_PORT=8190
 # 前端构建产物目录（缺省即仓库 frontend/dist，一般无需改）
 Environment=FRONTEND_DIST=/data/news-videos-workflow/frontend/dist
 # ── 改这里③：PATH 需含 conda 环境(uvicorn/python) + 系统(ffmpeg/ffprobe/node/npx)──

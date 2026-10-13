@@ -72,7 +72,7 @@ For the single-container all-in-one deployment (frontend + backend + in-process 
 bash docker/setup.sh     # create the 7 config YAMLs from templates
 cp .env.example .env     # port / ComfyUI address / timezone
 docker compose up -d --build
-# browser: http://localhost:8189 (default login admin / admin)
+# browser: http://localhost:8190 (default login admin / admin)
 ```
 
 ### Backend (conda + requirements.txt)

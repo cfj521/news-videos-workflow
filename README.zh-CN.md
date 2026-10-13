@@ -71,7 +71,7 @@
 bash docker/setup.sh     # 从模板创建 7 个配置 YAML
 cp .env.example .env     # 端口 / ComfyUI 地址 / 时区
 docker compose up -d --build
-# 浏览器打开 http://localhost:8189 （默认登录 admin / admin）
+# 浏览器打开 http://localhost:8190 （默认登录 admin / admin）
 ```
 
 ### 后端（conda + requirements.txt）
